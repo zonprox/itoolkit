@@ -1,0 +1,76 @@
+# ==============================================================================
+# IToolkit .gitignore — PowerShell IT Administration Toolkit
+# ==============================================================================
+
+# ─── Codebase Memory & AI Agent Tooling ───────────────────────────────────────
+.codebase-memory/
+.agents/
+.claude/
+.gemini/
+.cursor/
+.windsurf/
+.antigravity/
+scratch/
+.scratch/
+
+# ─── Planning, Specification & AI Handoff Documents ─────────────────────────
+ORIGINAL_REQUEST.md
+.continue-here.md
+PROJECT.md
+TEST_INFRA.md
+TEST_READY.md
+TEST_*.md
+*.handoff.md
+.planning/
+
+# ─── Execution Logs & Registry Backup Artifacts ──────────────────────────────
+Logs/*.log
+*.log
+*.log.*
+*.tmp
+*.temp
+*.bak
+*.orig
+RegistryBackup_*.reg
+*.reg.bak
+!Logs/.gitkeep
+
+# ─── Packaging, Distribution & Build Output ──────────────────────────────────
+*.zip
+IToolkit.zip
+dist/
+out/
+artifacts/
+
+# ─── Test & Pester Execution Artifacts ────────────────────────────────────────
+TestResults/
+TestResults.xml
+Pester*.xml
+coverage/
+*.lcov
+
+# ─── PowerShell Temporary & CLI Artifacts ─────────────────────────────────────
+*.ps1~
+*.psm1~
+*.psd1~
+*.clixml
+
+# ─── IDE & Editor Settings ───────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.swp
+*.swo
+*~
+.history/
+
+# ─── Operating System Metadata ────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+[Dd]esktop.ini
