@@ -511,14 +511,6 @@ function Start-IToolkitMenu {
         return
     }
 
-    $mainActions = @(
-        @{ Key = '1'; Label = 'Outlook & PST' },
-        @{ Key = '2'; Label = 'Office & Excel' },
-        @{ Key = '3'; Label = 'Network & Printers' },
-        @{ Key = '4'; Label = 'User Profile Backup' },
-        @{ Key = '5'; Label = 'Account Admin' },
-        @{ Key = '6'; Label = 'External Tools' }
-    )
     $mainNav = @(
         @{ Key = 'R'; Label = 'Refresh Screen' },
         @{ Key = 'Q'; Label = 'Exit Console' }
@@ -532,13 +524,11 @@ function Start-IToolkitMenu {
         @{ Key = '6'; Action = 'External Tools'; Description = 'Win11Debloat, Chris Titus WinUtil, network testing.'; Prerequisite = 'Internet access [READY]' }
     )
 
-    # If NonInteractive flag is set without MenuOption, display main menu Tri-Panel once and return
+    # If NonInteractive flag is set without MenuOption, display main menu once and return
     if ($NonInteractive -and [string]::IsNullOrWhiteSpace($MenuOption)) {
-        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $mainActions -NavActions $mainNav
-        Show-ToolkitDetailPanel -Details $mainDetails
         $sysInfo = Get-MainSystemInfoLines
-        Show-ToolkitStatusPanel -StatusItems $sysInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -InfoLines $sysInfo
+        Show-ToolkitDetailPanel -Details $mainDetails -NavActions $mainNav -Title 'ACTIONS & COMMANDS'
         Write-Host ""
         Write-ToolkitStatus -Message "Menu launched in non-interactive mode. Returning." -Type 'INFO'
         return
@@ -577,11 +567,9 @@ function Start-IToolkitMenu {
     # Main navigation loop
     $running = $true
     while ($running) {
-        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $mainActions -NavActions $mainNav
-        Show-ToolkitDetailPanel -Details $mainDetails
         $sysInfo = Get-MainSystemInfoLines
-        Show-ToolkitStatusPanel -StatusItems $sysInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -InfoLines $sysInfo
+        Show-ToolkitDetailPanel -Details $mainDetails -NavActions $mainNav -Title 'ACTIONS & COMMANDS'
 
         $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', 'R', 'Q', 'X') -Default $DefaultSelection
 
@@ -639,15 +627,6 @@ function Invoke-ToolkitSubmenuOutlook {
         return
     }
 
-    $outlookActions = @(
-        @{ Key = '1'; Label = 'Scan Data Files' },
-        @{ Key = '2'; Label = 'Relocate PST' },
-        @{ Key = '3'; Label = 'Update Profile Path' },
-        @{ Key = '4'; Label = 'Expand Size Limit' },
-        @{ Key = '5'; Label = 'Compact Data File' },
-        @{ Key = '6'; Label = 'Backup PST' },
-        @{ Key = '7'; Label = 'Restore PST' }
-    )
     $subnav = @(
         @{ Key = 'B'; Label = 'Back to Main Menu' },
         @{ Key = 'Q'; Label = 'Exit Console' }
@@ -665,11 +644,9 @@ function Invoke-ToolkitSubmenuOutlook {
     $inSubmenu = $true
     while ($inSubmenu) {
         $clear = if ($NonInteractive) { $false } else { $true }
-        Show-ToolkitHeader -Title 'ITOOLKIT > OUTLOOK & PST MANAGEMENT' -Subtitle 'PST/OST Discovery, Relocation, Compaction & Registry Policies' -ClearScreen:$clear -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $outlookActions -NavActions $subnav
-        Show-ToolkitDetailPanel -Details $outlookDetails
         $outlookInfo = Get-OutlookContextInfoLines
-        Show-ToolkitStatusPanel -StatusItems $outlookInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > OUTLOOK & PST MANAGEMENT' -Subtitle 'PST/OST Discovery, Relocation, Compaction & Registry Policies' -ClearScreen:$clear -InfoLines $outlookInfo
+        Show-ToolkitDetailPanel -Details $outlookDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Outlook & PST Data Management'." -Type 'INFO'
@@ -763,17 +740,6 @@ function Invoke-ToolkitSubmenuOffice {
         return
     }
 
-    $officeActions = @(
-        @{ Key = '1'; Label = 'Disable Acceleration' },
-        @{ Key = '2'; Label = 'Enable Acceleration' },
-        @{ Key = '3'; Label = 'Reset Excel UI Cache' },
-        @{ Key = '4'; Label = 'Clear Office Cache' },
-        @{ Key = '5'; Label = 'List COM Add-ins' },
-        @{ Key = '6'; Label = 'Reset Resiliency' },
-        @{ Key = '7'; Label = 'Audit GDI Handles' },
-        @{ Key = '8'; Label = 'Stop Leaking Excel' },
-        @{ Key = '9'; Label = 'Repair ClickToRun' }
-    )
     $subnav = @(
         @{ Key = 'B'; Label = 'Back to Main Menu' },
         @{ Key = 'Q'; Label = 'Exit Console' }
@@ -793,11 +759,9 @@ function Invoke-ToolkitSubmenuOffice {
     $inSubmenu = $true
     while ($inSubmenu) {
         $clear = if ($NonInteractive) { $false } else { $true }
-        Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE & EXCEL TROUBLESHOOTING' -Subtitle 'Graphics Acceleration, Cache Reset, COM Add-ins, GDI Leaks, Click-to-Run Repair' -ClearScreen:$clear -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $officeActions -NavActions $subnav
-        Show-ToolkitDetailPanel -Details $officeDetails
         $officeInfo = Get-OfficeContextInfoLines
-        Show-ToolkitStatusPanel -StatusItems $officeInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE & EXCEL TROUBLESHOOTING' -Subtitle 'Graphics Acceleration, Cache Reset, COM Add-ins, GDI Leaks, Click-to-Run Repair' -ClearScreen:$clear -InfoLines $officeInfo
+        Show-ToolkitDetailPanel -Details $officeDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Office & Excel Troubleshooting & Repair'." -Type 'INFO'
@@ -888,16 +852,6 @@ function Invoke-ToolkitSubmenuPrinters {
         return
     }
 
-    $printersActions = @(
-        @{ Key = '1'; Label = 'Spooler Status' },
-        @{ Key = '2'; Label = 'Purge Spooler Queue' },
-        @{ Key = '3'; Label = 'Register Spooler DLLs' },
-        @{ Key = '4'; Label = 'Reset Ne Ports' },
-        @{ Key = '5'; Label = 'Audit Point & Print' },
-        @{ Key = '6'; Label = 'Apply PnP Remediation' },
-        @{ Key = '7'; Label = 'Test Printer Network' },
-        @{ Key = '8'; Label = 'Refresh Connections' }
-    )
     $subnav = @(
         @{ Key = 'B'; Label = 'Back to Main Menu' },
         @{ Key = 'Q'; Label = 'Exit Console' }
@@ -916,11 +870,9 @@ function Invoke-ToolkitSubmenuPrinters {
     $inSubmenu = $true
     while ($inSubmenu) {
         $clear = if ($NonInteractive) { $false } else { $true }
-        Show-ToolkitHeader -Title 'ITOOLKIT > NETWORK & PRINT SPOOLER' -Subtitle 'Spooler Diagnostics, Queue Purge, Ne Ports, Point & Print' -ClearScreen:$clear -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $printersActions -NavActions $subnav
-        Show-ToolkitDetailPanel -Details $printersDetails
         $printersInfo = Get-PrintersContextInfoLines
-        Show-ToolkitStatusPanel -StatusItems $printersInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > NETWORK & PRINT SPOOLER' -Subtitle 'Spooler Diagnostics, Queue Purge, Ne Ports, Point & Print' -ClearScreen:$clear -InfoLines $printersInfo
+        Show-ToolkitDetailPanel -Details $printersDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Network & Print Spooler Troubleshooting'." -Type 'INFO'
@@ -1005,15 +957,6 @@ function Invoke-ToolkitSubmenuBackup {
         return
     }
 
-    $backupActions = @(
-        @{ Key = '1'; Label = 'Map Profile Folders' },
-        @{ Key = '2'; Label = 'Export Bookmarks' },
-        @{ Key = '3'; Label = 'Export Certificates' },
-        @{ Key = '4'; Label = 'Backup Profile Folders' },
-        @{ Key = '5'; Label = 'Generate Manifest' },
-        @{ Key = '6'; Label = 'Verify Manifest' },
-        @{ Key = '7'; Label = 'Restore Profile Data' }
-    )
     $subnav = @(
         @{ Key = 'B'; Label = 'Back to Main Menu' },
         @{ Key = 'Q'; Label = 'Exit Console' }
@@ -1031,11 +974,9 @@ function Invoke-ToolkitSubmenuBackup {
     $inSubmenu = $true
     while ($inSubmenu) {
         $clear = if ($NonInteractive) { $false } else { $true }
-        Show-ToolkitHeader -Title 'ITOOLKIT > USER PROFILE DATA BACKUP' -Subtitle 'Folders, Bookmarks, Certificates, Robocopy Engine & SHA-256 Manifests' -ClearScreen:$clear -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $backupActions -NavActions $subnav
-        Show-ToolkitDetailPanel -Details $backupDetails
         $backupInfo = Get-BackupContextInfoLines
-        Show-ToolkitStatusPanel -StatusItems $backupInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > USER PROFILE DATA BACKUP' -Subtitle 'Folders, Bookmarks, Certificates, Robocopy Engine & SHA-256 Manifests' -ClearScreen:$clear -InfoLines $backupInfo
+        Show-ToolkitDetailPanel -Details $backupDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'User Profile Data Backup & Migration'." -Type 'INFO'
@@ -1131,18 +1072,6 @@ function Invoke-ToolkitSubmenuAccounts {
         return
     }
 
-    $accountsActions = @(
-        @{ Key = '1'; Label = 'List Local Accounts' },
-        @{ Key = '2'; Label = 'Create Local Account' },
-        @{ Key = '3'; Label = 'Unlock Local Account' },
-        @{ Key = '4'; Label = 'Set Account Status' },
-        @{ Key = '5'; Label = 'Query Domain User' },
-        @{ Key = '6'; Label = 'Unlock Domain User' },
-        @{ Key = '7'; Label = 'Enable Admin (SID 500)' },
-        @{ Key = '8'; Label = 'Reset Admin Password' },
-        @{ Key = '9'; Label = 'Test Domain Health' },
-        @{ Key = '10'; Label = 'Disjoin Domain' }
-    )
     $subnav = @(
         @{ Key = 'B'; Label = 'Back to Main Menu' },
         @{ Key = 'Q'; Label = 'Exit Console' }
@@ -1163,11 +1092,9 @@ function Invoke-ToolkitSubmenuAccounts {
     $inSubmenu = $true
     while ($inSubmenu) {
         $clear = if ($NonInteractive) { $false } else { $true }
-        Show-ToolkitHeader -Title 'ITOOLKIT > USER & DOMAIN ACCOUNT ADMINISTRATION' -Subtitle 'Account Operations, Administrator SID -500, Domain Join/Disjoin' -ClearScreen:$clear -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $accountsActions -NavActions $subnav
-        Show-ToolkitDetailPanel -Details $accountsDetails
         $accountsInfo = Get-AccountsContextInfoLines
-        Show-ToolkitStatusPanel -StatusItems $accountsInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > USER & DOMAIN ACCOUNT ADMINISTRATION' -Subtitle 'Account Operations, Administrator SID -500, Domain Join/Disjoin' -ClearScreen:$clear -InfoLines $accountsInfo
+        Show-ToolkitDetailPanel -Details $accountsDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'User & Domain Account Administration'." -Type 'INFO'
@@ -1293,11 +1220,6 @@ function Invoke-ToolkitSubmenuExternalTools {
         return
     }
 
-    $toolsActions = @(
-        @{ Key = '1'; Label = 'Run Win11Debloat' },
-        @{ Key = '2'; Label = 'Run ChrisTitus WinUtil' },
-        @{ Key = '3'; Label = 'Test Connectivity' }
-    )
     $subnav = @(
         @{ Key = 'B'; Label = 'Back to Main Menu' },
         @{ Key = 'Q'; Label = 'Exit Console' }
@@ -1311,11 +1233,9 @@ function Invoke-ToolkitSubmenuExternalTools {
     $inSubmenu = $true
     while ($inSubmenu) {
         $clear = if ($NonInteractive) { $false } else { $true }
-        Show-ToolkitHeader -Title 'ITOOLKIT > EXTERNAL TOOLS & UTILITIES' -Subtitle 'Pre-Flight Internet Check & External Utility Launchers' -ClearScreen:$clear -NoSystemInfo
-        Show-ToolkitActionCatalog -Actions $toolsActions -NavActions $subnav
-        Show-ToolkitDetailPanel -Details $toolsDetails
         $toolsInfo = Get-ExternalToolsContextInfoLines
-        Show-ToolkitStatusPanel -StatusItems $toolsInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > EXTERNAL TOOLS & UTILITIES' -Subtitle 'Pre-Flight Internet Check & External Utility Launchers' -ClearScreen:$clear -InfoLines $toolsInfo
+        Show-ToolkitDetailPanel -Details $toolsDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'External Tools & Quick Launchers'." -Type 'INFO'

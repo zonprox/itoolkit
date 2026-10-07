@@ -8,10 +8,10 @@ if (-not (Get-Command -Name 'Get-ToolkitLayoutWidth' -ErrorAction SilentlyContin
 function Show-ToolkitDetailPanel {
 <#
 .SYNOPSIS
-    Renders the Action Details & Prerequisites panel with action descriptions, required elevation, and prerequisite status.
+    Renders the Actions & Commands panel with action descriptions, required elevation, and prerequisite status.
 .DESCRIPTION
     Presents structured action descriptions and prerequisite telemetry badges ([READY], [BLOCKED], [SAFE], [FAIL])
-    in a dedicated visual panel, ensuring administrators understand action impact and requirements before execution.
+    in a dedicated visual panel, concluding with optional navigation options and border.
 .PARAMETER Details
     Array of detail items (hashtables, PSCustomObjects, or formatted strings). Supported properties:
     - Key: Action shortcut key (e.g. '1', '2')
@@ -20,13 +20,17 @@ function Show-ToolkitDetailPanel {
     - Prerequisite: Specific prerequisite condition and status badge
     - Elevation: Required privilege ('Administrator' or 'Standard')
 .PARAMETER Title
-    Panel header title. Default is 'ACTION DETAILS & PREREQUISITES'.
+    Panel header title. Default is 'ACTIONS & COMMANDS'.
+.PARAMETER NavActions
+    Optional collection of navigation action objects or hashtables (e.g. Back, Refresh, Exit).
 .PARAMETER Width
     Total display width. Default is 0 (auto-fit to console).
+.PARAMETER NoBottomBorder
+    Switch to omit the closing double border line ('=' * Width).
 .EXAMPLE
     $details = @(
         @{ Key = '1'; Action = 'Scan Data Files'; Description = 'Deep discovery across registry & disk.'; Prerequisite = 'None [READY]' },
-        @{ Key = '2'; Action = 'Relocate PST'; Description = 'Move PST with SHA-256 validation.'; Prerequisite = 'Outlook must be stopped [READY]' }
+        @{ Key = '2'; Action = 'Relocate PST'; Description = 'Move PST with SHA-256 validation.'; Prerequisite = 'Outlook must be stopped [SAFE]' }
     )
     Show-ToolkitDetailPanel -Details $details
 #>
@@ -36,11 +40,17 @@ function Show-ToolkitDetailPanel {
         [array]$Details,
 
         [Parameter(Mandatory = $false)]
-        [string]$Title = 'ACTION DETAILS & PREREQUISITES',
+        [string]$Title = 'ACTIONS & COMMANDS',
+
+        [Parameter(Mandatory = $false)]
+        [array]$NavActions,
 
         [Parameter(Mandatory = $false)]
         [ValidateRange(0, 300)]
-        [int]$Width = 0
+        [int]$Width = 0,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoBottomBorder
     )
 
     if ($Width -le 0) {
@@ -54,7 +64,6 @@ function Show-ToolkitDetailPanel {
 
     # Render Panel Title
     if (-not [string]::IsNullOrWhiteSpace($Title)) {
-        Write-Host ""
         Write-Host "  $Title" -ForegroundColor Yellow
         if (Get-Command -Name 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue) {
             Write-ToolkitMenuDivider -Width $Width
@@ -65,6 +74,9 @@ function Show-ToolkitDetailPanel {
     }
 
     if ($null -eq $Details -or $Details.Count -eq 0) {
+        if (-not $NoBottomBorder) {
+            Write-Host ('=' * $Width) -ForegroundColor Cyan
+        }
         return
     }
 
@@ -144,14 +156,30 @@ function Show-ToolkitDetailPanel {
             if ($item.Elevation) { $elev = "$($item.Elevation)" }
         }
 
-        # Build prefix e.g. "  [1] Scan Data Files     : "
+        # Extract telemetry badge
+        $badge = ''
+        if ($prereq -match '(\[[^\]]+\])') {
+            $badge = $Matches[1]
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($elev)) {
+            $badge = "[$elev]"
+        }
+
+        # Aligned key bracket and action
         $keyPart = if (-not [string]::IsNullOrWhiteSpace($k)) { "[$k] " } else { "" }
         $actionHeader = "$keyPart$act"
-        # Standardize prefix alignment to 25 chars
         $pad = 25 - $actionHeader.Length
         if ($pad -lt 1) { $pad = 1 }
 
-        # Render first line
+        # Calculate space for description if width constraints allow
+        $badgeStr = if (-not [string]::IsNullOrWhiteSpace($badge)) { " $badge" } else { "" }
+        $prefixLen = 2 + $actionHeader.Length + $pad + 2
+        $availDesc = $Width - $prefixLen - $badgeStr.Length
+        $renderDesc = $desc
+        if ($availDesc -gt 10 -and $renderDesc.Length -gt $availDesc) {
+            $renderDesc = $renderDesc.Substring(0, [math]::Max(0, $availDesc - 3)) + '...'
+        }
+
         Write-Host "  " -NoNewline
         if (-not [string]::IsNullOrWhiteSpace($k)) {
             Write-Host "[$k] " -ForegroundColor Yellow -NoNewline
@@ -161,21 +189,106 @@ function Show-ToolkitDetailPanel {
         }
         Write-Host (' ' * $pad) -NoNewline
         Write-Host ": " -ForegroundColor DarkGray -NoNewline
-
-        # Description text
-        Write-TextWithBadges -Text $desc -DefaultColor ([System.ConsoleColor]::Gray)
-
-        # Render Prerequisite or Elevation if present
-        if (-not [string]::IsNullOrWhiteSpace($prereq) -or -not [string]::IsNullOrWhiteSpace($elev)) {
-            $indentSpaces = ' ' * 29
-            Write-Host $indentSpaces -NoNewline
-            Write-Host "Prerequisite: " -ForegroundColor DarkGray -NoNewline
-
-            $prereqFull = $prereq
-            if (-not [string]::IsNullOrWhiteSpace($elev) -and [string]::IsNullOrWhiteSpace($prereq)) {
-                $prereqFull = "$elev elevation required [READY]"
-            }
-            Write-TextWithBadges -Text $prereqFull -DefaultColor ([System.ConsoleColor]::DarkCyan)
+        if (-not [string]::IsNullOrWhiteSpace($renderDesc)) {
+            Write-Host "$renderDesc" -ForegroundColor Gray -NoNewline
         }
+        if (-not [string]::IsNullOrWhiteSpace($badge)) {
+            Write-Host " " -NoNewline
+            if ($badge -match '(?i)\[(READY|SAFE|PASS|YES|OK|ONLINE|CLEAN)') {
+                Write-Host $badge -ForegroundColor Green -NoNewline
+            }
+            elseif ($badge -match '(?i)\[(BLOCKED|FAIL|ERROR|NO|OFFLINE)') {
+                Write-Host $badge -ForegroundColor Red -NoNewline
+            }
+            elseif ($badge -match '(?i)\[(WARN|WARNING|LIMITED|DEFAULT)') {
+                Write-Host $badge -ForegroundColor Yellow -NoNewline
+            }
+            else {
+                Write-Host $badge -ForegroundColor Cyan -NoNewline
+            }
+        }
+        Write-Host ""
+    }
+
+    # Render Navigation Actions if provided
+    if ($null -ne $NavActions -and $NavActions.Count -gt 0) {
+        if (Get-Command -Name 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue) {
+            Write-ToolkitMenuDivider -Width $Width
+        }
+        else {
+            Write-Host ("  " + ('-' * [math]::Max(20, $Width - 2))) -ForegroundColor DarkGray
+        }
+
+        $navItems = [System.Collections.Generic.List[PSCustomObject]]::new()
+        foreach ($nav in $NavActions) {
+            $nk = ''
+            $nl = ''
+            if ($nav -is [System.Collections.IDictionary]) {
+                if ($nav.ContainsKey('Key')) { $nk = "$($nav['Key'])" }
+                if ($nav.ContainsKey('Label')) { $nl = "$($nav['Label'])" }
+                elseif ($nav.ContainsKey('Action')) { $nl = "$($nav['Action'])" }
+            }
+            elseif ($nav -is [PSCustomObject] -or $nav.PSObject) {
+                if ($nav.Key) { $nk = "$($nav.Key)" }
+                if ($nav.Label) { $nl = "$($nav.Label)" }
+                elseif ($nav.Action) { $nl = "$($nav.Action)" }
+            }
+            elseif ($nav -is [string]) {
+                if ($nav -match '^\s*\[?([^\]]+)\]?\s*[:\-\s]\s*(.*)$') {
+                    $nk = $Matches[1].Trim()
+                    $nl = $Matches[2].Trim()
+                }
+                else {
+                    $nl = $nav.Trim()
+                }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($nk) -or -not [string]::IsNullOrWhiteSpace($nl)) {
+                $navItems.Add([PSCustomObject]@{ Key = $nk; Label = $nl })
+            }
+        }
+
+        if ($navItems.Count -eq 1 -or $Width -lt 70) {
+            foreach ($n in $navItems) {
+                Write-Host "  " -NoNewline
+                if ($n.Key) { Write-Host "[$($n.Key)] " -ForegroundColor Yellow -NoNewline }
+                Write-Host "$($n.Label)" -ForegroundColor White
+            }
+        }
+        elseif ($navItems.Count -eq 2) {
+            $colW = [math]::Floor(($Width - 2) / 2)
+            $leftStr = "  [$($navItems[0].Key)] $($navItems[0].Label)"
+            Write-Host "  [$($navItems[0].Key)] " -ForegroundColor Yellow -NoNewline
+            Write-Host "$($navItems[0].Label)" -ForegroundColor White -NoNewline
+            $padL = $colW - $leftStr.Length
+            if ($padL -gt 0) { Write-Host (' ' * $padL) -NoNewline }
+            Write-Host "  [$($navItems[1].Key)] " -ForegroundColor Yellow -NoNewline
+            Write-Host "$($navItems[1].Label)" -ForegroundColor White
+        }
+        else {
+            $half = [math]::Ceiling($navItems.Count / 2)
+            $colW = [math]::Floor(($Width - 2) / 2)
+            for ($i = 0; $i -lt $half; $i++) {
+                $left = $navItems[$i]
+                $rightIdx = $i + $half
+                $right = if ($rightIdx -lt $navItems.Count) { $navItems[$rightIdx] } else { $null }
+
+                $leftStr = "  [$($left.Key)] $($left.Label)"
+                Write-Host "  [$($left.Key)] " -ForegroundColor Yellow -NoNewline
+                Write-Host "$($left.Label)" -ForegroundColor White -NoNewline
+                if ($null -ne $right) {
+                    $padW = $colW - $leftStr.Length
+                    if ($padW -gt 0) { Write-Host (' ' * $padW) -NoNewline }
+                    Write-Host "  [$($right.Key)] " -ForegroundColor Yellow -NoNewline
+                    Write-Host "$($right.Label)" -ForegroundColor White
+                }
+                else {
+                    Write-Host ""
+                }
+            }
+        }
+    }
+
+    if (-not $NoBottomBorder) {
+        Write-Host ('=' * $Width) -ForegroundColor Cyan
     }
 }
