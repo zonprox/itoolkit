@@ -21,7 +21,7 @@ function Read-ToolkitMenuChoice {
     [OutputType([string])]
     param(
         [Parameter(Mandatory = $false, Position = 0)]
-        [string]$Prompt = 'Select Option',
+        [string]$Prompt = 'Select',
 
         [Parameter(Mandatory = $false, Position = 1)]
         [string[]]$ValidKeys = @('1', '2', '3', '4', '5', '6', 'Q'),
@@ -30,14 +30,15 @@ function Read-ToolkitMenuChoice {
         [string]$Default
     )
 
-    $promptString = "  $Prompt"
-    if ($null -ne $ValidKeys -and $ValidKeys.Count -gt 0) {
-        $promptString = "$promptString [$($ValidKeys -join ',')]"
+    $cleanPrompt = $Prompt.TrimEnd(':', ' ')
+    if ([string]::IsNullOrWhiteSpace($cleanPrompt) -or $cleanPrompt -match '^(?i)Select(\s+[^\[:]+)?(\s*\[.*\])?$') {
+        $cleanPrompt = 'Select'
     }
+    $promptString = "  $cleanPrompt"
     if (-not [string]::IsNullOrWhiteSpace($Default)) {
         $promptString = "$promptString (Default: $Default)"
     }
-    $promptString = "$promptString : "
+    $promptString = $promptString + ': '
 
     # Safeguard loop: maximum 5 attempts to prevent hanging in headless sessions
     $maxAttempts = 5

@@ -1,3 +1,61 @@
+if (-not (Get-Command -Name 'Get-ToolkitTelemetryData' -ErrorAction SilentlyContinue)) {
+    $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
+    if (Test-Path $headerScript) {
+        . $headerScript
+    }
+}
+
+function Get-MainSystemInfoLines {
+    [CmdletBinding()]
+    param()
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $telemetry = Get-ToolkitTelemetryData
+
+    # 1. OS & Build
+    $lines.Add("OS & Build     : $($telemetry.OSDisplay) | $($telemetry.Architecture)")
+
+    # 2. Hardware Model
+    $lines.Add("Hardware Model : $($telemetry.HardwareDisplay)")
+
+    # 3. Hardware / CPU & RAM
+    $lines.Add("Processor & RAM: $($telemetry.CPUDisplay) | $($telemetry.RAMDisplay)")
+
+    # 4. Storage Space
+    $lines.Add("Storage Space  : $($telemetry.StorageDisplay)")
+
+    # 5. Network & Domain
+    $domain = "WORKGROUP"
+    if (-not [string]::IsNullOrWhiteSpace($env:USERDNSDOMAIN)) {
+        $domain = $env:USERDNSDOMAIN
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
+        $domain = $env:USERDOMAIN
+    }
+    $lines.Add("Network Status : IPv4: $($telemetry.ActiveIPv4) | Domain/Workgroup: $domain")
+
+    # 6. Security & Elevation
+    $adminStr = "Standard User [Non-Elevated]"
+    if (Get-Command -Name 'Test-IsAdmin' -ErrorAction SilentlyContinue) {
+        try {
+            if (Test-IsAdmin) {
+                $adminStr = "Administrator [Elevated - Full Access]"
+            }
+        }
+        catch {
+            $null = $_
+        }
+    }
+    $psVer = $PSVersionTable.PSVersion.ToString()
+    $lines.Add("Security & Env : $adminStr | PowerShell $psVer")
+
+    return $lines.ToArray()
+}
+
+if (Get-Command -Name 'Get-MainSystemInfoLines' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Get-MainSystemInfoLines' -Value (Get-Command -Name 'Get-MainSystemInfoLines').ScriptBlock
+}
+
 function Start-IToolkitMenu {
 <#
 .SYNOPSIS
@@ -47,107 +105,6 @@ function Start-IToolkitMenu {
     # ==============================================================================
     # Diagnostic Telemetry & Header Context Collectors
     # ==============================================================================
-
-    function Get-MainSystemInfoLines {
-        $lines = [System.Collections.Generic.List[string]]::new()
-
-        # 1. OS & Build
-        $osName = [System.Environment]::OSVersion.VersionString
-        $osArch = [System.IntPtr]::Size * 8
-        try {
-            if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion') {
-                $reg = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
-                if ($null -ne $reg -and -not [string]::IsNullOrWhiteSpace($reg.ProductName)) {
-                    $osName = $reg.ProductName
-                    if (-not [string]::IsNullOrWhiteSpace($reg.DisplayVersion)) {
-                        $osName = "$osName $($reg.DisplayVersion)"
-                    }
-                    if (-not [string]::IsNullOrWhiteSpace($reg.CurrentBuildNumber)) {
-                        $osName = "$osName (Build $($reg.CurrentBuildNumber))"
-                    }
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("OS & Build     : $osName | ${osArch}-bit Architecture")
-
-        # 2. Hardware / CPU & RAM
-        $cpuCount = [System.Environment]::ProcessorCount
-        $cpuName = "$cpuCount Logical Processors"
-        if (-not [string]::IsNullOrWhiteSpace($env:PROCESSOR_IDENTIFIER)) {
-            $cpuName = "$($env:PROCESSOR_IDENTIFIER) ($cpuCount Cores)"
-        }
-        $ramInfo = "Total RAM: Available"
-        try {
-            $gcMem = [System.GC]::GetGCMemoryInfo().TotalAvailableMemoryBytes
-            if ($gcMem -gt 0) {
-                $totalGB = [math]::Round($gcMem / 1GB, 1)
-                $ramInfo = "Total RAM: ${totalGB} GB"
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Processor & RAM: $cpuName | $ramInfo")
-
-        # 3. Storage
-        $driveInfo = "Storage: System Drive"
-        try {
-            $d = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and ($_.Name -match '^[Cc]:' -or $_.RootDirectory.FullName -eq '/') } | Select-Object -First 1
-            if ($null -ne $d) {
-                $freeGB = [math]::Round($d.AvailableFreeSpace / 1GB, 1)
-                $totalGB = [math]::Round($d.TotalSize / 1GB, 1)
-                $pctFree = [math]::Round(($d.AvailableFreeSpace / $d.TotalSize) * 100, 0)
-                $driveInfo = "System Drive ($($d.Name)) ${freeGB} GB Free / ${totalGB} GB Total (${pctFree}% Free)"
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Storage Space  : $driveInfo")
-
-        # 4. Network & Domain
-        $ipStr = "127.0.0.1"
-        try {
-            $ips = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) | Where-Object { $_.AddressFamily -eq 'InterNetwork' -and $_.ToString() -ne '127.0.0.1' }
-            if ($null -ne $ips) {
-                $firstIp = $ips | Select-Object -First 1
-                if ($null -ne $firstIp) {
-                    $ipStr = $firstIp.ToString()
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $domain = "WORKGROUP"
-        if (-not [string]::IsNullOrWhiteSpace($env:USERDNSDOMAIN)) {
-            $domain = $env:USERDNSDOMAIN
-        }
-        elseif (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
-            $domain = $env:USERDOMAIN
-        }
-        $lines.Add("Network Status : IPv4: $ipStr | Domain/Workgroup: $domain")
-
-        # 5. Security & Elevation
-        $adminStr = "Standard User [Non-Elevated]"
-        if (Get-Command -Name 'Test-IsAdmin' -ErrorAction SilentlyContinue) {
-            try {
-                if (Test-IsAdmin) {
-                    $adminStr = "Administrator [Elevated - Full Access]"
-                }
-            }
-            catch {
-                $null = $_
-            }
-        }
-        $psVer = $PSVersionTable.PSVersion.ToString()
-        $lines.Add("Security & Env : $adminStr | PowerShell $psVer")
-
-        return $lines.ToArray()
-    }
 
     function Get-OutlookContextInfoLines {
         $lines = [System.Collections.Generic.List[string]]::new()
@@ -261,7 +218,7 @@ function Start-IToolkitMenu {
         catch {
             $null = $_
         }
-        $lines.Add("Graphics Accel : $accelStatus")
+        $lines.Add("Graphics Acceleration : $accelStatus")
 
         # 3. Excel Process
         $excelStatus = "Stopped (Not Running)"
@@ -361,10 +318,9 @@ function Start-IToolkitMenu {
         # 2. Storage Free Space
         $freeSpace = "Drive Space Available"
         try {
-            $d = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and ($_.Name -match '^[Cc]:' -or $_.RootDirectory.FullName -eq '/') } | Select-Object -First 1
-            if ($null -ne $d) {
-                $freeGB = [math]::Round($d.AvailableFreeSpace / 1GB, 1)
-                $freeSpace = "System Drive ($($d.Name)) Free Space: ${freeGB} GB"
+            $telemetry = Get-ToolkitTelemetryData
+            if ($null -ne $telemetry -and -not [string]::IsNullOrWhiteSpace($telemetry.StorageDisplay)) {
+                $freeSpace = $telemetry.StorageDisplay
             }
         }
         catch {
@@ -373,7 +329,7 @@ function Start-IToolkitMenu {
         $lines.Add("Storage Target : $freeSpace")
 
         # 3. Backup Scope
-        $lines.Add("Backup Scope   : Desktop, Documents, Downloads, Edge/Chrome Bookmarks, Certs")
+        $lines.Add("Backup Scope   : Desktop, Documents, Downloads, Edge/Chrome Bookmarks, Certificates")
 
         return $lines.ToArray()
     }
@@ -406,8 +362,8 @@ function Start-IToolkitMenu {
         }
         $lines.Add("Domain Status  : $domStatus")
 
-        # 4. Built-in Admin
-        $lines.Add("Built-in Admin : Administrator (SID -500) Management Available")
+        # 4. Built-in Administrator
+        $lines.Add("Built-in Administrator : Active (SID -500) Management Available")
 
         return $lines.ToArray()
     }
@@ -471,13 +427,13 @@ function Start-IToolkitMenu {
     # If NonInteractive flag is set without MenuOption, display main menu once and return
     if ($NonInteractive -and [string]::IsNullOrWhiteSpace($MenuOption)) {
         Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 Enterprise Support Toolkit' -NoSystemInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'Outlook & PST Data Management' -Category 'OUTLOOK'
-        Show-ToolkitMenuOption -Key '2' -Label 'Office & Excel Troubleshooting & Repair' -Category 'OFFICE '
-        Show-ToolkitMenuOption -Key '3' -Label 'Network & Print Spooler Troubleshooting' -Category 'PRINTER'
-        Show-ToolkitMenuOption -Key '4' -Label 'User Profile Data Backup & Migration' -Category 'BACKUP '
-        Show-ToolkitMenuOption -Key '5' -Label 'User & Domain Account Administration' -Category 'ACCOUNT'
-        Show-ToolkitMenuOption -Key '6' -Label 'External Tools & Quick Launchers (Win11Debloat, WinUtil)' -Category 'TOOLS  '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key '1' -Label 'Outlook & PST Data Management'
+        Show-ToolkitMenuOption -Key '2' -Label 'Office & Excel Troubleshooting & Repair'
+        Show-ToolkitMenuOption -Key '3' -Label 'Network & Print Spooler Troubleshooting'
+        Show-ToolkitMenuOption -Key '4' -Label 'User Profile Data Backup & Migration'
+        Show-ToolkitMenuOption -Key '5' -Label 'User & Domain Account Administration'
+        Show-ToolkitMenuOption -Key '6' -Label 'External Tools & Quick Launchers (Win11Debloat, WinUtil)'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
         Write-ToolkitStatus -Message "Menu launched in non-interactive mode. Returning." -Type 'INFO'
         return
@@ -516,18 +472,18 @@ function Start-IToolkitMenu {
         $sysInfo = Get-MainSystemInfoLines
         Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -InfoLines $sysInfo
 
-        Show-ToolkitMenuOption -Key '1' -Label 'Outlook & PST Data Management' -Category 'OUTLOOK'
-        Show-ToolkitMenuOption -Key '2' -Label 'Office & Excel Troubleshooting & Repair' -Category 'OFFICE '
-        Show-ToolkitMenuOption -Key '3' -Label 'Network & Print Spooler Troubleshooting' -Category 'PRINTER'
-        Show-ToolkitMenuOption -Key '4' -Label 'User Profile Data Backup & Migration' -Category 'BACKUP '
-        Show-ToolkitMenuOption -Key '5' -Label 'User & Domain Account Administration' -Category 'ACCOUNT'
-        Show-ToolkitMenuOption -Key '6' -Label 'External Tools & Quick Launchers (Win11Debloat, WinUtil)' -Category 'TOOLS  '
+        Show-ToolkitMenuOption -Key '1' -Label 'Outlook & PST Data Management'
+        Show-ToolkitMenuOption -Key '2' -Label 'Office & Excel Troubleshooting & Repair'
+        Show-ToolkitMenuOption -Key '3' -Label 'Network & Print Spooler Troubleshooting'
+        Show-ToolkitMenuOption -Key '4' -Label 'User Profile Data Backup & Migration'
+        Show-ToolkitMenuOption -Key '5' -Label 'User & Domain Account Administration'
+        Show-ToolkitMenuOption -Key '6' -Label 'External Tools & Quick Launchers (Win11Debloat, WinUtil)'
         Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
-        Show-ToolkitMenuOption -Key 'R' -Label 'Refresh / Clear Screen' -Category 'SYSTEM '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key 'R' -Label 'Refresh Screen'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
 
-        $choice = Read-ToolkitMenuChoice -Prompt 'Select Category' -ValidKeys @('1', '2', '3', '4', '5', '6', 'R', 'Q', 'X') -Default $DefaultSelection
+        $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', 'R', 'Q', 'X') -Default $DefaultSelection
 
         if ([string]::IsNullOrWhiteSpace($choice)) {
             break
@@ -584,8 +540,8 @@ function Invoke-ToolkitSubmenuOutlook {
         Show-ToolkitMenuOption -Key '6' -Label 'Backup Outlook PST Data File'
         Show-ToolkitMenuOption -Key '7' -Label 'Restore Outlook PST Data File'
         Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu' -Category 'NAV    '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
 
         if ($NonInteractive) {
@@ -593,7 +549,7 @@ function Invoke-ToolkitSubmenuOutlook {
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', 'B', 'Q')
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
             break
@@ -670,7 +626,7 @@ function Invoke-ToolkitSubmenuOffice {
     $inSubmenu = $true
     while ($inSubmenu) {
         $officeInfo = Get-OfficeContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE & EXCEL TROUBLESHOOTING' -Subtitle 'Graphics Accel, Cache Reset, COM Add-ins, GDI Leaks, C2R Repair' -ClearScreen -InfoLines $officeInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE & EXCEL TROUBLESHOOTING' -Subtitle 'Graphics Acceleration, Cache Reset, COM Add-ins, GDI Leaks, Click-to-Run Repair' -ClearScreen -InfoLines $officeInfo
         Show-ToolkitMenuOption -Key '1' -Label 'Disable Excel Hardware Graphics Acceleration'
         Show-ToolkitMenuOption -Key '2' -Label 'Enable Excel Hardware Graphics Acceleration'
         Show-ToolkitMenuOption -Key '3' -Label 'Reset Excel UI & Printer Cache (Excel16.xlb & XLSTART)'
@@ -681,8 +637,8 @@ function Invoke-ToolkitSubmenuOffice {
         Show-ToolkitMenuOption -Key '8' -Label 'Stop Leaking Excel Processes'
         Show-ToolkitMenuOption -Key '9' -Label 'Launch Office ClickToRun Repair [Quick / Online]'
         Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu' -Category 'NAV    '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
 
         if ($NonInteractive) {
@@ -690,7 +646,7 @@ function Invoke-ToolkitSubmenuOffice {
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'B', 'Q')
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
             break
@@ -770,12 +726,12 @@ function Invoke-ToolkitSubmenuPrinters {
         Show-ToolkitMenuOption -Key '3' -Label 'Re-register Print Spooler DLLs & Subsystems'
         Show-ToolkitMenuOption -Key '4' -Label 'Reset Stale Ne Virtual Port Bindings'
         Show-ToolkitMenuOption -Key '5' -Label 'Audit Point & Print (PrintNightmare) Policies'
-        Show-ToolkitMenuOption -Key '6' -Label 'Apply Point & Print Strict Admin Remediation'
+        Show-ToolkitMenuOption -Key '6' -Label 'Apply Point & Print Strict Administrator Remediation'
         Show-ToolkitMenuOption -Key '7' -Label 'Test Network Printer Connectivity (SMB/RPC/9100)'
         Show-ToolkitMenuOption -Key '8' -Label 'Refresh Active User Printer Connections'
         Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu' -Category 'NAV    '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
 
         if ($NonInteractive) {
@@ -783,7 +739,7 @@ function Invoke-ToolkitSubmenuPrinters {
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', 'B', 'Q')
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
             break
@@ -851,7 +807,7 @@ function Invoke-ToolkitSubmenuBackup {
     $inSubmenu = $true
     while ($inSubmenu) {
         $backupInfo = Get-BackupContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > USER PROFILE DATA BACKUP' -Subtitle 'Folders, Bookmarks, Certs, Robocopy Engine & SHA-256 Manifests' -ClearScreen -InfoLines $backupInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > USER PROFILE DATA BACKUP' -Subtitle 'Folders, Bookmarks, Certificates, Robocopy Engine & SHA-256 Manifests' -ClearScreen -InfoLines $backupInfo
         Show-ToolkitMenuOption -Key '1' -Label 'Display User Profile Directory Map'
         Show-ToolkitMenuOption -Key '2' -Label 'Export Chromium Bookmarks (Chrome / Edge)'
         Show-ToolkitMenuOption -Key '3' -Label 'Export Personal Certificate Store (.pfx / .cer)'
@@ -860,8 +816,8 @@ function Invoke-ToolkitSubmenuBackup {
         Show-ToolkitMenuOption -Key '6' -Label 'Validate Backup Integrity Manifest'
         Show-ToolkitMenuOption -Key '7' -Label 'Restore User Profile Data from Backup'
         Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu' -Category 'NAV    '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
 
         if ($NonInteractive) {
@@ -869,7 +825,7 @@ function Invoke-ToolkitSubmenuBackup {
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', 'B', 'Q')
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
             break
@@ -948,7 +904,7 @@ function Invoke-ToolkitSubmenuAccounts {
     $inSubmenu = $true
     while ($inSubmenu) {
         $accountsInfo = Get-AccountsContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > USER & DOMAIN ACCOUNT ADMIN' -Subtitle 'Local/Domain CRUD, Admin SID -500, Domain Join/Disjoin' -ClearScreen -InfoLines $accountsInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > USER & DOMAIN ACCOUNT ADMINISTRATION' -Subtitle 'Account Operations, Administrator SID -500, Domain Join/Disjoin' -ClearScreen -InfoLines $accountsInfo
         Show-ToolkitMenuOption -Key '1' -Label 'List Local Windows User Accounts'
         Show-ToolkitMenuOption -Key '2' -Label 'Create New Local User Account'
         Show-ToolkitMenuOption -Key '3' -Label 'Unlock Local User Account (ADSI WinNT)'
@@ -960,8 +916,8 @@ function Invoke-ToolkitSubmenuAccounts {
         Show-ToolkitMenuOption -Key '9' -Label 'Test Domain Reachability (DNS SRV & Ports)'
         Show-ToolkitMenuOption -Key '10' -Label 'Safe Domain Disjoin (with Lockout Defense)'
         Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu' -Category 'NAV    '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
 
         if ($NonInteractive) {
@@ -969,7 +925,7 @@ function Invoke-ToolkitSubmenuAccounts {
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'B', 'Q')
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
             break
@@ -1083,8 +1039,8 @@ function Invoke-ToolkitSubmenuExternalTools {
         Show-ToolkitMenuOption -Key '2' -Label 'Launch Chris Titus Tech Windows Utility (WinUtil)'
         Show-ToolkitMenuOption -Key '3' -Label 'Test Pre-Flight Internet Reachability'
         Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu' -Category 'NAV    '
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Quit / Exit Console' -Category 'SYSTEM '
+        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
+        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
 
         if ($NonInteractive) {
@@ -1092,7 +1048,7 @@ function Invoke-ToolkitSubmenuExternalTools {
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '3', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', 'B', 'Q')
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
             break

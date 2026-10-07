@@ -50,5 +50,11 @@ if (Test-Path -LiteralPath $publicPath) {
 
 # 3. Export public functions explicitly
 if ($exportedFunctions.Count -gt 0) {
-    Export-ModuleMember -Function $exportedFunctions -Variable @()
+    $allExports = @($exportedFunctions)
+    foreach ($extraFn in @('Get-ToolkitTelemetryData', 'Get-MainSystemInfoLines')) {
+        if ($allExports -notcontains $extraFn -and (Get-Command -Name $extraFn -CommandType Function -ErrorAction SilentlyContinue)) {
+            $allExports += $extraFn
+        }
+    }
+    Export-ModuleMember -Function $allExports -Variable @()
 }

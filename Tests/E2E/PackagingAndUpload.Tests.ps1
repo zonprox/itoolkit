@@ -164,6 +164,18 @@ Describe 'E2E Tier 3: Packaging & Public Cloud Upload' {
             }
         }
 
+        It 'Build-IToolkitPackage.ps1 accepts -Provider parallel parameter without binding errors' {
+            $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_WhatIf_Parallel_" + [System.Guid]::NewGuid().ToString('N') + ".zip")
+            { & $script:BuildScriptPath -DestinationPath $tempZip -Provider parallel -WhatIf } | Should -Not -Throw
+            Test-Path -LiteralPath $tempZip | Should -BeFalse
+        }
+
+        It 'Build-IToolkitPackage.ps1 accepts -Provider catbox parameter without binding errors' {
+            $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_WhatIf_Catbox_" + [System.Guid]::NewGuid().ToString('N') + ".zip")
+            { & $script:BuildScriptPath -DestinationPath $tempZip -Provider catbox -WhatIf } | Should -Not -Throw
+            Test-Path -LiteralPath $tempZip | Should -BeFalse
+        }
+
         It 'scripts/package-and-upload.sh correctly handles --skip-upload without naming archive --skip-upload' {
             $shPath = Join-Path $script:ProjectRoot 'scripts/package-and-upload.sh'
             if (Test-Path $shPath) {

@@ -2,7 +2,7 @@
 # ==============================================================================
 # package-and-upload.sh
 # Release packaging and multi-provider public upload helper for IToolkit.
-# Creates clean standalone IToolkit.zip and uploads to public host (uguu.se / tmpfiles.org).
+# Creates clean standalone IToolkit.zip and uploads to public host (catbox.moe / onlyfiles.com / uguu.se).
 # ==============================================================================
 set -euo pipefail
 
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
                 PROVIDER="$2"
                 shift 2
             else
-                echo "[Error] --provider requires an argument (auto, onlyfiles, uguu, or tmpfiles)." >&2
+                echo "[Error] --provider requires an argument (auto, parallel, onlyfiles, catbox, or uguu)." >&2
                 exit 1
             fi
             ;;
@@ -38,7 +38,7 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "Options:"
             echo "  --skip-upload       Create archive locally without uploading"
-            echo "  --provider=NAME     Target provider (auto, onlyfiles, uguu, tmpfiles)"
+            echo "  --provider=NAME     Target provider (auto, parallel, onlyfiles, catbox, uguu)"
             echo "  -h, --help          Show this help message"
             echo ""
             echo "Positional Arguments (optional):"
@@ -178,35 +178,51 @@ else
         fi
     }
 
-    upload_tmpfiles() {
+    upload_catbox() {
         local target="$1"
         local resp
-        resp="$(curl -s -F "file=@$target" https://tmpfiles.org/api/v1/upload 2>/dev/null || true)"
-        if [ -n "$resp" ]; then
-            local raw_url
-            raw_url="$(echo "$resp" | grep -o 'https://tmpfiles.org/[^"]*' | head -n 1 || true)"
-            if [ -n "$raw_url" ]; then
-                echo "${raw_url/https:\/\/tmpfiles.org\//https:\/\/tmpfiles.org\/dl\/}"
-            fi
+        resp="$(curl -m 30 -s -F "reqtype=fileupload" -F "userhash=" -F "fileToUpload=@$target" https://catbox.moe/user/api.php 2>/dev/null || true)"
+        if [[ "$resp" =~ ^https?://files\.catbox\.moe/ ]]; then
+            echo "$resp"
+            return
+        fi
+        # Fallback to Litterbox (Catbox official temporary storage)
+        resp="$(curl -m 30 -s -F "reqtype=fileupload" -F "time=72h" -F "fileToUpload=@$target" https://litterbox.catbox.moe/resources/internals/api.php 2>/dev/null || true)"
+        if [[ "$resp" =~ ^https?://litter\.catbox\.moe/ ]]; then
+            echo "$resp"
         fi
     }
 
+    ONLYFILES_URL=""
+    CATBOX_URL=""
+
     if [ "$PROVIDER" = "onlyfiles" ]; then
-        UPLOAD_URL="$(upload_onlyfiles "$ZIP_PATH")"
+        ONLYFILES_URL="$(upload_onlyfiles "$ZIP_PATH")"
+        UPLOAD_URL="$ONLYFILES_URL"
     elif [ "$PROVIDER" = "uguu" ]; then
         UPLOAD_URL="$(upload_uguu "$ZIP_PATH")"
-    elif [ "$PROVIDER" = "tmpfiles" ]; then
-        UPLOAD_URL="$(upload_tmpfiles "$ZIP_PATH")"
+    elif [ "$PROVIDER" = "catbox" ]; then
+        CATBOX_URL="$(upload_catbox "$ZIP_PATH")"
+        UPLOAD_URL="$CATBOX_URL"
     else
-        echo "  Attempting primary provider: onlyfiles.com..."
-        UPLOAD_URL="$(upload_onlyfiles "$ZIP_PATH")"
+        # auto or parallel mode: run onlyfiles and catbox in parallel
+        echo "  Attempting parallel upload (onlyfiles.com + catbox.moe)..."
+        TMP_ONLY="$(mktemp)"
+        TMP_CAT="$(mktemp)"
+        upload_onlyfiles "$ZIP_PATH" > "$TMP_ONLY" 2>/dev/null &
+        PID1=$!
+        upload_catbox "$ZIP_PATH" > "$TMP_CAT" 2>/dev/null &
+        PID2=$!
+        wait "$PID1" 2>/dev/null || true
+        wait "$PID2" 2>/dev/null || true
+        ONLYFILES_URL="$(cat "$TMP_ONLY" 2>/dev/null | tr -d '\r\n')"
+        CATBOX_URL="$(cat "$TMP_CAT" 2>/dev/null | tr -d '\r\n')"
+        rm -f "$TMP_ONLY" "$TMP_CAT"
+
+        UPLOAD_URL="${ONLYFILES_URL:-$CATBOX_URL}"
         if [ -z "$UPLOAD_URL" ]; then
-            echo "  Primary provider failed. Falling back to secondary provider (uguu.se)..."
+            echo "  Parallel providers failed. Falling back to tertiary provider (uguu.se)..."
             UPLOAD_URL="$(upload_uguu "$ZIP_PATH")"
-        fi
-        if [ -z "$UPLOAD_URL" ]; then
-            echo "  Secondary provider failed. Falling back to tertiary provider (tmpfiles.org)..."
-            UPLOAD_URL="$(upload_tmpfiles "$ZIP_PATH")"
         fi
     fi
 fi
@@ -221,8 +237,16 @@ if [ "$SKIP_UPLOAD" = true ]; then
     echo "  Upload       : Skipped (Local package build only)"
     echo "================================================================================"
     echo "  Distribution Ready: Standalone package created at $ZIP_PATH."
-elif [ -n "$UPLOAD_URL" ]; then
-    echo "  Download URL : $UPLOAD_URL"
+elif [ -n "${ONLYFILES_URL:-}" ] || [ -n "${CATBOX_URL:-}" ] || [ -n "$UPLOAD_URL" ]; then
+    if [ -n "${ONLYFILES_URL:-}" ]; then
+        echo "  Download URL (OnlyFiles) : $ONLYFILES_URL"
+    fi
+    if [ -n "${CATBOX_URL:-}" ]; then
+        echo "  Download URL (Catbox)    : $CATBOX_URL"
+    fi
+    if [ -z "${ONLYFILES_URL:-}" ] && [ -z "${CATBOX_URL:-}" ] && [ -n "$UPLOAD_URL" ]; then
+        echo "  Download URL             : $UPLOAD_URL"
+    fi
     echo "================================================================================"
     echo "  Distribution Ready: Download and extract on Windows 10/11,"
     echo "  then run Run-IToolkit.bat or Start-IToolkit.ps1."

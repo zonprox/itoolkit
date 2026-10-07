@@ -27,7 +27,9 @@
         'Show-ToolkitMenuOption',
         'Read-ToolkitMenuChoice',
         'Write-ToolkitStatus',
-        'Start-IToolkitMenu'
+        'Start-IToolkitMenu',
+        'Get-ToolkitTelemetryData',
+        'Get-MainSystemInfoLines'
     )
 
     CmdletsToExport        = @()
