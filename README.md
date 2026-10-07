@@ -27,12 +27,18 @@
 
 ## Quick Start
 
-### Option 1: Batch Launcher (Recommended for Desktop Technicians)
+### Option 1: One-Liner Web Launcher (Recommended)
+Open an elevated PowerShell console (or standard console; UAC will auto-prompt) and run:
+```powershell
+irm https://itk.muoi.net | iex
+```
+
+### Option 2: Batch Launcher (Local Offline Package)
 1. Extract `IToolkit.zip` to your desired folder (e.g. `C:\IToolkit`).
 2. Double-click `Run-IToolkit.bat` (or right-click and choose **Run as administrator**).
 3. If not already elevated, Windows UAC will prompt for Administrator consent and re-launch automatically.
 
-### Option 2: PowerShell Console
+### Option 3: PowerShell Console (Local Source)
 Open an elevated PowerShell console and run:
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
