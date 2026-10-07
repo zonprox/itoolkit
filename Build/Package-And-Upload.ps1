@@ -6,7 +6,7 @@
     Build/Package-And-Upload.ps1 is the dedicated CI/CD and release automation script.
     It builds a standalone, production-only IToolkit.zip archive (with zero tests,
     telemetry, or development residue) and automatically uploads it to public
-    file hosting (onlyfiles.com / catbox.moe / uguu.se), providing an accessible public download URL.
+    file hosting (onlyfiles.com / storage.to / uguu.se), providing an accessible public download URL.
 
 .PARAMETER DestinationPath
     Optional output archive path. Defaults to "$ProjectRoot/IToolkit.zip".
@@ -15,14 +15,14 @@
     If specified, creates the standalone zip archive locally without uploading.
 
 .PARAMETER Provider
-    Public cloud host provider: 'auto' (default: onlyfiles.com and catbox.moe in parallel with fallback to uguu.se),
-    'parallel', 'onlyfiles', 'catbox', or 'uguu'.
+    Public cloud host provider: 'auto' (default: onlyfiles.com and storage.to in parallel with fallback to uguu.se),
+    'parallel', 'onlyfiles', 'storage.to', 'storageto', or 'uguu'.
 
 .PARAMETER Force
     Overwrites existing archive at DestinationPath.
 
 .OUTPUTS
-    [PSCustomObject] Containing Path, SizeBytes, SHA256, EntriesCount, DownloadUrl, OnlyFilesUrl, CatboxUrl, and Success.
+    [PSCustomObject] Containing Path, SizeBytes, SHA256, EntriesCount, DownloadUrl, OnlyFilesUrl, StorageToUrl, and Success.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -33,7 +33,7 @@ param(
     [switch]$SkipUpload,
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet('auto', 'parallel', 'onlyfiles', 'catbox', 'uguu')]
+    [ValidateSet('auto', 'parallel', 'onlyfiles', 'storage.to', 'storageto', 'catbox', 'uguu')]
     [string]$Provider = 'auto',
 
     [Parameter(Mandatory = $false)]

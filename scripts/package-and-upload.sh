@@ -2,7 +2,7 @@
 # ==============================================================================
 # package-and-upload.sh
 # Release packaging and multi-provider public upload helper for IToolkit.
-# Creates clean standalone IToolkit.zip and uploads to public host (catbox.moe / onlyfiles.com / uguu.se).
+# Creates clean standalone IToolkit.zip and uploads to public host (onlyfiles.com / storage.to / uguu.se).
 # ==============================================================================
 set -euo pipefail
 
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
                 PROVIDER="$2"
                 shift 2
             else
-                echo "[Error] --provider requires an argument (auto, parallel, onlyfiles, catbox, or uguu)." >&2
+                echo "[Error] --provider requires an argument (auto, parallel, onlyfiles, storage.to, or uguu)." >&2
                 exit 1
             fi
             ;;
@@ -38,7 +38,7 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "Options:"
             echo "  --skip-upload       Create archive locally without uploading"
-            echo "  --provider=NAME     Target provider (auto, parallel, onlyfiles, catbox, uguu)"
+            echo "  --provider=NAME     Target provider (auto, parallel, onlyfiles, storage.to, uguu)"
             echo "  -h, --help          Show this help message"
             echo ""
             echo "Positional Arguments (optional):"
@@ -178,48 +178,75 @@ else
         fi
     }
 
-    upload_catbox() {
+    upload_storage_to() {
         local target="$1"
-        local resp
-        resp="$(curl -m 30 -s -F "reqtype=fileupload" -F "userhash=" -F "fileToUpload=@$target" https://catbox.moe/user/api.php 2>/dev/null || true)"
-        if [[ "$resp" =~ ^https?://files\.catbox\.moe/ ]]; then
-            echo "$resp"
+        local fname
+        fname="$(basename "$target")"
+        local fsize
+        fsize="$(stat -c %s "$target" 2>/dev/null || wc -c < "$target")"
+        fsize="$(echo "$fsize" | tr -d ' ')"
+
+        local init_json
+        init_json="$(curl -m 30 -s -X POST "https://storage.to/api/upload/init" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: curl/7.88.1" \
+            -d "{\"filename\":\"$fname\",\"size\":$fsize,\"content_type\":\"application/zip\"}" 2>/dev/null || true)"
+
+        local upload_url
+        upload_url="$(echo "$init_json" | grep -o '"upload_url":"[^"]*' | cut -d'"' -f4 || true)"
+        local r2_key
+        r2_key="$(echo "$init_json" | grep -o '"r2_key":"[^"]*' | cut -d'"' -f4 || true)"
+
+        if [ -z "$upload_url" ] || [ -z "$r2_key" ]; then
             return
         fi
-        # Fallback to Litterbox (Catbox official temporary storage)
-        resp="$(curl -m 30 -s -F "reqtype=fileupload" -F "time=72h" -F "fileToUpload=@$target" https://litterbox.catbox.moe/resources/internals/api.php 2>/dev/null || true)"
-        if [[ "$resp" =~ ^https?://litter\.catbox\.moe/ ]]; then
-            echo "$resp"
+
+        local put_status
+        put_status="$(curl -m 60 -s -o /dev/null -w "%{http_code}" -X PUT -T "$target" -H "Content-Type: application/zip" "$upload_url" 2>/dev/null || true)"
+        if [ "$put_status" != "200" ]; then
+            return
+        fi
+
+        local confirm_json
+        confirm_json="$(curl -m 30 -s -X POST "https://storage.to/api/upload/confirm" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: curl/7.88.1" \
+            -d "{\"filename\":\"$fname\",\"size\":$fsize,\"content_type\":\"application/zip\",\"r2_key\":\"$r2_key\"}" 2>/dev/null || true)"
+
+        local file_url
+        file_url="$(echo "$confirm_json" | grep -o '"url":"[^"]*' | cut -d'"' -f4 || true)"
+        if [[ "$file_url" =~ ^https?://storage\.to/ ]]; then
+            echo "$file_url"
         fi
     }
 
     ONLYFILES_URL=""
-    CATBOX_URL=""
+    STORAGE_TO_URL=""
 
     if [ "$PROVIDER" = "onlyfiles" ]; then
         ONLYFILES_URL="$(upload_onlyfiles "$ZIP_PATH")"
         UPLOAD_URL="$ONLYFILES_URL"
     elif [ "$PROVIDER" = "uguu" ]; then
         UPLOAD_URL="$(upload_uguu "$ZIP_PATH")"
-    elif [ "$PROVIDER" = "catbox" ]; then
-        CATBOX_URL="$(upload_catbox "$ZIP_PATH")"
-        UPLOAD_URL="$CATBOX_URL"
+    elif [ "$PROVIDER" = "storage.to" ] || [ "$PROVIDER" = "storageto" ] || [ "$PROVIDER" = "catbox" ]; then
+        STORAGE_TO_URL="$(upload_storage_to "$ZIP_PATH")"
+        UPLOAD_URL="$STORAGE_TO_URL"
     else
         # auto or parallel mode: run onlyfiles and catbox in parallel
-        echo "  Attempting parallel upload (onlyfiles.com + catbox.moe)..."
+        echo "  Attempting parallel upload (onlyfiles.com + storage.to)..."
         TMP_ONLY="$(mktemp)"
-        TMP_CAT="$(mktemp)"
+        TMP_STORAGE="$(mktemp)"
         upload_onlyfiles "$ZIP_PATH" > "$TMP_ONLY" 2>/dev/null &
         PID1=$!
-        upload_catbox "$ZIP_PATH" > "$TMP_CAT" 2>/dev/null &
+        upload_storage_to "$ZIP_PATH" > "$TMP_STORAGE" 2>/dev/null &
         PID2=$!
         wait "$PID1" 2>/dev/null || true
         wait "$PID2" 2>/dev/null || true
         ONLYFILES_URL="$(cat "$TMP_ONLY" 2>/dev/null | tr -d '\r\n')"
-        CATBOX_URL="$(cat "$TMP_CAT" 2>/dev/null | tr -d '\r\n')"
-        rm -f "$TMP_ONLY" "$TMP_CAT"
+        STORAGE_TO_URL="$(cat "$TMP_STORAGE" 2>/dev/null | tr -d '\r\n')"
+        rm -f "$TMP_ONLY" "$TMP_STORAGE"
 
-        UPLOAD_URL="${ONLYFILES_URL:-$CATBOX_URL}"
+        UPLOAD_URL="${ONLYFILES_URL:-$STORAGE_TO_URL}"
         if [ -z "$UPLOAD_URL" ]; then
             echo "  Parallel providers failed. Falling back to tertiary provider (uguu.se)..."
             UPLOAD_URL="$(upload_uguu "$ZIP_PATH")"
@@ -237,14 +264,14 @@ if [ "$SKIP_UPLOAD" = true ]; then
     echo "  Upload       : Skipped (Local package build only)"
     echo "================================================================================"
     echo "  Distribution Ready: Standalone package created at $ZIP_PATH."
-elif [ -n "${ONLYFILES_URL:-}" ] || [ -n "${CATBOX_URL:-}" ] || [ -n "$UPLOAD_URL" ]; then
+elif [ -n "${ONLYFILES_URL:-}" ] || [ -n "${STORAGE_TO_URL:-}" ] || [ -n "$UPLOAD_URL" ]; then
     if [ -n "${ONLYFILES_URL:-}" ]; then
         echo "  Download URL (OnlyFiles) : $ONLYFILES_URL"
     fi
-    if [ -n "${CATBOX_URL:-}" ]; then
-        echo "  Download URL (Catbox)    : $CATBOX_URL"
+    if [ -n "${STORAGE_TO_URL:-}" ]; then
+        echo "  Download URL (Storage.to) : $STORAGE_TO_URL"
     fi
-    if [ -z "${ONLYFILES_URL:-}" ] && [ -z "${CATBOX_URL:-}" ] && [ -n "$UPLOAD_URL" ]; then
+    if [ -z "${ONLYFILES_URL:-}" ] && [ -z "${STORAGE_TO_URL:-}" ] && [ -n "$UPLOAD_URL" ]; then
         echo "  Download URL             : $UPLOAD_URL"
     fi
     echo "================================================================================"

@@ -9,7 +9,7 @@
     and all production modules under Modules/) into an isolated temporary directory,
     validates that zero dev/test artifacts (.git, .agents, Tests, Logs, Backups, dev configs)
     are included, packages the contents into IToolkit.zip, computes SHA-256 checksums,
-    and optionally uploads to public hosting services (catbox.moe / onlyfiles.com / uguu.se).
+    and optionally uploads to public hosting services (onlyfiles.com / storage.to / uguu.se).
 
 .PARAMETER DestinationPath
     Destination file path for the output archive.
@@ -23,14 +23,14 @@
     If specified, disables upload even if -Upload was also passed.
 
 .PARAMETER Provider
-    Public upload provider to use. Valid choices: 'auto', 'parallel', 'onlyfiles', 'catbox', 'uguu'.
-    Defaults to 'auto' (uploads to onlyfiles.com and catbox.moe in parallel with fallback to uguu.se).
+    Public upload provider to use. Valid choices: 'auto', 'parallel', 'onlyfiles', 'storage.to', 'storageto', 'uguu'.
+    Defaults to 'auto' (uploads to onlyfiles.com and storage.to in parallel with fallback to uguu.se).
 
 .PARAMETER Force
     Forces overwriting of any existing archive file at DestinationPath.
 
 .OUTPUTS
-    [PSCustomObject] Containing Path, SizeBytes, SHA256, EntriesCount, DownloadUrl, OnlyFilesUrl, CatboxUrl, and Success.
+    [PSCustomObject] Containing Path, SizeBytes, SHA256, EntriesCount, DownloadUrl, OnlyFilesUrl, StorageToUrl, and Success.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -44,7 +44,7 @@ param(
     [switch]$SkipUpload,
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet('auto', 'parallel', 'onlyfiles', 'catbox', 'uguu')]
+    [ValidateSet('auto', 'parallel', 'onlyfiles', 'storage.to', 'storageto', 'catbox', 'uguu')]
     [string]$Provider = 'auto',
 
     [Parameter(Mandatory = $false)]
@@ -336,95 +336,117 @@ try {
             return $null
         }
 
-        # Helper function for Catbox.moe upload (with Litterbox fallback)
-        $tryCatbox = {
+        # Helper function for Storage.to upload (https://storage.to/api/)
+        $tryStorageTo = {
             param([string]$FilePath)
             try {
+                $fileInfo = Get-Item -LiteralPath $FilePath
+                $fname = $fileInfo.Name
+                $fsize = $fileInfo.Length
+
+                # 1. Try with curl if available
                 $curl = Get-Command -Name 'curl.exe' -ErrorAction SilentlyContinue
                 if ($null -eq $curl) {
                     $curl = Get-Command -Name 'curl' -ErrorAction SilentlyContinue
                 }
                 if ($null -ne $curl) {
-                    # 1. Try permanent Catbox API first
-                    $raw = & $curl.Source -m 30 -s -F "reqtype=fileupload" -F "userhash=" -F "fileToUpload=@$FilePath" "https://catbox.moe/user/api.php"
-                    if ($raw) {
-                        $url = ($raw -join "`n").Trim()
-                        if ($url -match '^https?://files\.catbox\.moe/') {
-                            return $url
-                        }
-                    }
+                    $initPayload = (@{
+                        filename     = $fname
+                        size         = $fsize
+                        content_type = 'application/zip'
+                    } | ConvertTo-Json -Compress)
 
-                    # 2. Fallback to Litterbox (Catbox official temporary storage)
-                    $rawLitter = & $curl.Source -m 30 -s -F "reqtype=fileupload" -F "time=72h" -F "fileToUpload=@$FilePath" "https://litterbox.catbox.moe/resources/internals/api.php"
-                    if ($rawLitter) {
-                        $url = ($rawLitter -join "`n").Trim()
-                        if ($url -match '^https?://litter\.catbox\.moe/') {
-                            return $url
+                    $rawInit = & $curl.Source -m 30 -s -X POST "https://storage.to/api/upload/init" `
+                        -H "Content-Type: application/json" `
+                        -H "User-Agent: curl/7.88.1" `
+                        -d $initPayload
+
+                    if ($rawInit) {
+                        $initJson = ($rawInit -join "`n") | ConvertFrom-Json -ErrorAction SilentlyContinue
+                        if ($initJson -and $initJson.upload_url -and $initJson.r2_key) {
+                            $uploadUrl = $initJson.upload_url
+                            $r2Key = $initJson.r2_key
+
+                            $putResult = & $curl.Source -m 60 -s -o /dev/null -w "%{http_code}" -X PUT -T $FilePath -H "Content-Type: application/zip" $uploadUrl
+                            if ($putResult -eq '200') {
+                                $confirmPayload = (@{
+                                    filename     = $fname
+                                    size         = $fsize
+                                    content_type = 'application/zip'
+                                    r2_key       = $r2Key
+                                } | ConvertTo-Json -Compress)
+
+                                $rawConfirm = & $curl.Source -m 30 -s -X POST "https://storage.to/api/upload/confirm" `
+                                    -H "Content-Type: application/json" `
+                                    -H "User-Agent: curl/7.88.1" `
+                                    -d $confirmPayload
+
+                                if ($rawConfirm) {
+                                    $confirmJson = ($rawConfirm -join "`n") | ConvertFrom-Json -ErrorAction SilentlyContinue
+                                    if ($confirmJson -and $confirmJson.file -and $confirmJson.file.url) {
+                                        return [string]$confirmJson.file.url
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                # Fallback to System.Net.Http.HttpClient
+                # 2. Fallback to System.Net.Http.HttpClient
                 Add-Type -AssemblyName 'System.Net.Http' -ErrorAction SilentlyContinue
                 $client = [System.Net.Http.HttpClient]::new()
                 try {
-                    $client.Timeout = [System.TimeSpan]::FromSeconds(45)
-                    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
+                    $client.Timeout = [System.TimeSpan]::FromSeconds(60)
 
-                    # 1. Try permanent Catbox
-                    try {
-                        $content = [System.Net.Http.MultipartFormDataContent]::new()
-                        $content.Add([System.Net.Http.StringContent]::new('fileupload'), 'reqtype')
-                        $content.Add([System.Net.Http.StringContent]::new(''), 'userhash')
-                        $byteContent = [System.Net.Http.ByteArrayContent]::new($bytes)
-                        $byteContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/zip')
-                        $content.Add($byteContent, 'fileToUpload', [System.IO.Path]::GetFileName($FilePath))
+                    $initPayload = (@{
+                        filename     = $fname
+                        size         = $fsize
+                        content_type = 'application/zip'
+                    } | ConvertTo-Json -Compress)
+                    $initContent = [System.Net.Http.StringContent]::new($initPayload, [System.Text.Encoding]::UTF8, 'application/json')
+                    $initResp = $client.PostAsync('https://storage.to/api/upload/init', $initContent).GetAwaiter().GetResult()
+                    if (-not $initResp.IsSuccessStatusCode) { return $null }
 
-                        $response = $client.PostAsync('https://catbox.moe/user/api.php', $content).GetAwaiter().GetResult()
-                        if ($response.IsSuccessStatusCode) {
-                            $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult().Trim()
-                            if ($body -match '^https?://files\.catbox\.moe/') {
-                                return $body
-                            }
+                    $initJson = $initResp.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+                    if (-not $initJson -or -not $initJson.upload_url -or -not $initJson.r2_key) { return $null }
+
+                    $uploadUrl = $initJson.upload_url
+                    $r2Key = $initJson.r2_key
+
+                    $fileBytes = [System.IO.File]::ReadAllBytes($FilePath)
+                    $putContent = [System.Net.Http.ByteArrayContent]::new($fileBytes)
+                    $putContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/zip')
+                    $putResp = $client.PutAsync($uploadUrl, $putContent).GetAwaiter().GetResult()
+                    if (-not $putResp.IsSuccessStatusCode) { return $null }
+
+                    $confirmPayload = (@{
+                        filename     = $fname
+                        size         = $fsize
+                        content_type = 'application/zip'
+                        r2_key       = $r2Key
+                    } | ConvertTo-Json -Compress)
+                    $confirmContent = [System.Net.Http.StringContent]::new($confirmPayload, [System.Text.Encoding]::UTF8, 'application/json')
+                    $confirmResp = $client.PostAsync('https://storage.to/api/upload/confirm', $confirmContent).GetAwaiter().GetResult()
+                    if ($confirmResp.IsSuccessStatusCode) {
+                        $confirmJson = $confirmResp.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+                        if ($confirmJson -and $confirmJson.file -and $confirmJson.file.url) {
+                            return [string]$confirmJson.file.url
                         }
-                    } catch {
-                        Write-Verbose "Permanent Catbox upload failed, attempting Litterbox: $($_.Exception.Message)"
-                    }
-
-                    # 2. Try Litterbox
-                    try {
-                        $content = [System.Net.Http.MultipartFormDataContent]::new()
-                        $content.Add([System.Net.Http.StringContent]::new('fileupload'), 'reqtype')
-                        $content.Add([System.Net.Http.StringContent]::new('72h'), 'time')
-                        $byteContent = [System.Net.Http.ByteArrayContent]::new($bytes)
-                        $byteContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/zip')
-                        $content.Add($byteContent, 'fileToUpload', [System.IO.Path]::GetFileName($FilePath))
-
-                        $response = $client.PostAsync('https://litterbox.catbox.moe/resources/internals/api.php', $content).GetAwaiter().GetResult()
-                        if ($response.IsSuccessStatusCode) {
-                            $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult().Trim()
-                            if ($body -match '^https?://litter\.catbox\.moe/') {
-                                return $body
-                            }
-                        }
-                    } catch {
-                        Write-Verbose "Litterbox upload failed: $($_.Exception.Message)"
                     }
                 } finally {
                     $client.Dispose()
                 }
             } catch {
-                $null = $_
-                Write-Verbose "Catbox upload failed: $($_.Exception.Message)"
+                Write-Verbose "Storage.to upload failed: $($_.Exception.Message)"
             }
             return $null
         }
 
-        # Helper function for parallel upload to both OnlyFiles.com and Catbox.moe
+        # Helper function for parallel upload to both OnlyFiles.com and Storage.to
         $tryParallelUpload = {
             param([string]$FilePath)
             $resOnlyFiles = $null
-            $resCatbox    = $null
+            $resStorageTo = $null
 
             # 1. Attempt parallel upload via background curl processes if curl is present
             $curl = Get-Command -Name 'curl.exe' -ErrorAction SilentlyContinue
@@ -434,13 +456,12 @@ try {
 
             if ($null -ne $curl) {
                 $tmp1 = [System.IO.Path]::GetTempFileName()
-                $tmp2 = [System.IO.Path]::GetTempFileName()
                 try {
                     $p1 = Start-Process -FilePath $curl.Source -ArgumentList "-m", "35", "-s", "-F", "file=@$FilePath", "-F", "expire=0", "https://api.onlyfiles.com/v1/upload" -RedirectStandardOutput $tmp1 -PassThru -NoNewWindow
-                    $p2 = Start-Process -FilePath $curl.Source -ArgumentList "-m", "35", "-s", "-F", "reqtype=fileupload", "-F", "userhash=", "-F", "fileToUpload=@$FilePath", "https://catbox.moe/user/api.php" -RedirectStandardOutput $tmp2 -PassThru -NoNewWindow
+                    
+                    $resStorageTo = & $tryStorageTo -FilePath $FilePath
 
-                    $null = $p1.WaitForExit(45000)
-                    $null = $p2.WaitForExit(45000)
+                    $null = $p1.WaitForExit(35000)
 
                     if (Test-Path -LiteralPath $tmp1) {
                         $out1 = Get-Content -LiteralPath $tmp1 -Raw -ErrorAction SilentlyContinue
@@ -455,118 +476,49 @@ try {
                             }
                         }
                     }
-
-                    if (Test-Path -LiteralPath $tmp2) {
-                        $out2 = (Get-Content -LiteralPath $tmp2 -Raw -ErrorAction SilentlyContinue)
-                        if ($out2) {
-                            $trimmed2 = $out2.Trim()
-                            if ($trimmed2 -match '^https?://files\.catbox\.moe/') {
-                                $resCatbox = $trimmed2
-                            }
-                        }
-                    }
-
-                    # If Catbox returned error or non-URL (e.g. 412 Invalid uploader on cloud IP), fallback to Litterbox
-                    if ([string]::IsNullOrEmpty($resCatbox)) {
-                        $rawLitter = & $curl.Source -m 30 -s -F "reqtype=fileupload" -F "time=72h" -F "fileToUpload=@$FilePath" "https://litterbox.catbox.moe/resources/internals/api.php"
-                        if ($rawLitter) {
-                            $trimmedLitter = ($rawLitter -join "`n").Trim()
-                            if ($trimmedLitter -match '^https?://litter\.catbox\.moe/') {
-                                $resCatbox = $trimmedLitter
-                            }
-                        }
-                    }
                 } catch {
                     Write-Verbose "Parallel curl upload failed: $($_.Exception.Message)"
                 } finally {
-                    Remove-Item -LiteralPath $tmp1, $tmp2 -Force -ErrorAction SilentlyContinue
+                    Remove-Item -LiteralPath $tmp1 -Force -ErrorAction SilentlyContinue
                 }
             }
 
-            # 2. Fallback to System.Net.Http.HttpClient async if both failed and/or curl was unavailable
-            if ([string]::IsNullOrEmpty($resOnlyFiles) -and [string]::IsNullOrEmpty($resCatbox)) {
-                try {
-                    Add-Type -AssemblyName 'System.Net.Http' -ErrorAction SilentlyContinue
-                    $client = [System.Net.Http.HttpClient]::new()
-                    try {
-                        $client.Timeout = [System.TimeSpan]::FromSeconds(45)
-                        $bytes = [System.IO.File]::ReadAllBytes($FilePath)
-
-                        # OnlyFiles request
-                        $c1 = [System.Net.Http.MultipartFormDataContent]::new()
-                        $bc1 = [System.Net.Http.ByteArrayContent]::new($bytes)
-                        $bc1.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/zip')
-                        $c1.Add($bc1, 'file', [System.IO.Path]::GetFileName($FilePath))
-                        $c1.Add([System.Net.Http.StringContent]::new('0'), 'expire')
-
-                        # Catbox request (using Litterbox endpoint for reliable direct access)
-                        $c2 = [System.Net.Http.MultipartFormDataContent]::new()
-                        $c2.Add([System.Net.Http.StringContent]::new('fileupload'), 'reqtype')
-                        $c2.Add([System.Net.Http.StringContent]::new('72h'), 'time')
-                        $bc2 = [System.Net.Http.ByteArrayContent]::new($bytes)
-                        $bc2.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/zip')
-                        $c2.Add($bc2, 'fileToUpload', [System.IO.Path]::GetFileName($FilePath))
-
-                        $t1 = $client.PostAsync('https://api.onlyfiles.com/v1/upload', $c1)
-                        $t2 = $client.PostAsync('https://litterbox.catbox.moe/resources/internals/api.php', $c2)
-
-                        $null = [System.Threading.Tasks.Task]::WaitAll(@($t1, $t2), 45000)
-
-                        if ($t1.IsCompleted -and -not $t1.IsFaulted -and $t1.Result.IsSuccessStatusCode) {
-                            $b1 = $t1.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-                            $j1 = ConvertFrom-Json -InputObject $b1 -ErrorAction SilentlyContinue
-                            if ($null -ne $j1 -and $j1.status -and $null -ne $j1.data -and $null -ne $j1.data.file) {
-                                if ($null -ne $j1.data.file.url -and -not [string]::IsNullOrEmpty($j1.data.file.url.full)) {
-                                    $resOnlyFiles = [string]$j1.data.file.url.full
-                                } elseif ($null -ne $j1.data.file.url -and -not [string]::IsNullOrEmpty($j1.data.file.url.short)) {
-                                    $resOnlyFiles = [string]$j1.data.file.url.short
-                                }
-                            }
-                        }
-
-                        if ($t2.IsCompleted -and -not $t2.IsFaulted -and $t2.Result.IsSuccessStatusCode) {
-                            $b2 = $t2.Result.Content.ReadAsStringAsync().GetAwaiter().GetResult().Trim()
-                            if ($b2 -match '^https?://litter\.catbox\.moe/') {
-                                $resCatbox = $b2
-                            }
-                        }
-                    } finally {
-                        $client.Dispose()
-                    }
-                } catch {
-                    Write-Verbose "Parallel HttpClient upload failed: $($_.Exception.Message)"
-                }
+            if ([string]::IsNullOrEmpty($resOnlyFiles)) {
+                $resOnlyFiles = & $tryOnlyFiles -FilePath $FilePath
+            }
+            if ([string]::IsNullOrEmpty($resStorageTo)) {
+                $resStorageTo = & $tryStorageTo -FilePath $FilePath
             }
 
             return @{
                 OnlyFiles = $resOnlyFiles
-                Catbox    = $resCatbox
+                StorageTo = $resStorageTo
             }
         }
 
         $onlyFilesUrl = $null
-        $catboxUrl    = $null
+        $storageToUrl = $null
 
         # Execute upload based on provider choice
         if ($Provider -eq 'onlyfiles') {
             $onlyFilesUrl = & $tryOnlyFiles -FilePath $zipPath
             $downloadUrl = $onlyFilesUrl
-        } elseif ($Provider -eq 'catbox') {
-            $catboxUrl = & $tryCatbox -FilePath $zipPath
-            $downloadUrl = $catboxUrl
+        } elseif ($Provider -eq 'storage.to' -or $Provider -eq 'storageto' -or $Provider -eq 'catbox') {
+            $storageToUrl = & $tryStorageTo -FilePath $zipPath
+            $downloadUrl = $storageToUrl
         } elseif ($Provider -eq 'uguu') {
             $downloadUrl = & $tryUguu -FilePath $zipPath
         } else {
             # 'auto' or 'parallel' mode: Upload to OnlyFiles and Catbox in parallel
-            Write-Host "  Attempting parallel upload (onlyfiles.com + catbox.moe)..." -ForegroundColor Cyan
+            Write-Host "  Attempting parallel upload (onlyfiles.com + storage.to)..." -ForegroundColor Cyan
             $parallelResult = & $tryParallelUpload -FilePath $zipPath
             $onlyFilesUrl = $parallelResult.OnlyFiles
-            $catboxUrl    = $parallelResult.Catbox
+            $storageToUrl = $parallelResult.StorageTo
 
             if (-not [string]::IsNullOrEmpty($onlyFilesUrl)) {
                 $downloadUrl = $onlyFilesUrl
-            } elseif (-not [string]::IsNullOrEmpty($catboxUrl)) {
-                $downloadUrl = $catboxUrl
+            } elseif (-not [string]::IsNullOrEmpty($storageToUrl)) {
+                $downloadUrl = $storageToUrl
             } else {
                 Write-Host "  Parallel providers failed. Falling back to tertiary provider (uguu.se)..." -ForegroundColor Yellow
                 $downloadUrl = & $tryUguu -FilePath $zipPath
@@ -576,10 +528,10 @@ try {
         if (-not [string]::IsNullOrEmpty($onlyFilesUrl)) {
             Write-Host "  -> Public Download URL (OnlyFiles) : $onlyFilesUrl" -ForegroundColor Green
         }
-        if (-not [string]::IsNullOrEmpty($catboxUrl)) {
-            Write-Host "  -> Public Download URL (Catbox)    : $catboxUrl" -ForegroundColor Green
+        if (-not [string]::IsNullOrEmpty($storageToUrl)) {
+            Write-Host "  -> Public Download URL (Storage.to) : $storageToUrl" -ForegroundColor Green
         }
-        if ([string]::IsNullOrEmpty($onlyFilesUrl) -and [string]::IsNullOrEmpty($catboxUrl) -and -not [string]::IsNullOrEmpty($downloadUrl)) {
+        if ([string]::IsNullOrEmpty($onlyFilesUrl) -and [string]::IsNullOrEmpty($storageToUrl) -and -not [string]::IsNullOrEmpty($downloadUrl)) {
             Write-Host "  -> Public Download URL             : $downloadUrl" -ForegroundColor Green
         }
         if ([string]::IsNullOrEmpty($downloadUrl)) {
@@ -599,10 +551,10 @@ try {
     if (-not [string]::IsNullOrEmpty($onlyFilesUrl)) {
         Write-Host "  Download URL (OnlyFiles) : $onlyFilesUrl" -ForegroundColor Green
     }
-    if (-not [string]::IsNullOrEmpty($catboxUrl)) {
-        Write-Host "  Download URL (Catbox)    : $catboxUrl" -ForegroundColor Green
+    if (-not [string]::IsNullOrEmpty($storageToUrl)) {
+        Write-Host "  Download URL (Storage.to) : $storageToUrl" -ForegroundColor Green
     }
-    if ([string]::IsNullOrEmpty($onlyFilesUrl) -and [string]::IsNullOrEmpty($catboxUrl) -and -not [string]::IsNullOrEmpty($downloadUrl)) {
+    if ([string]::IsNullOrEmpty($onlyFilesUrl) -and [string]::IsNullOrEmpty($storageToUrl) -and -not [string]::IsNullOrEmpty($downloadUrl)) {
         Write-Host "  Download URL             : $downloadUrl" -ForegroundColor Green
     }
     Write-Host "================================================================================" -ForegroundColor Cyan
@@ -615,7 +567,8 @@ try {
         SHA256       = $sha256Hash
         DownloadUrl  = $downloadUrl
         OnlyFilesUrl = $onlyFilesUrl
-        CatboxUrl    = $catboxUrl
+        StorageToUrl = $storageToUrl
+        CatboxUrl    = $storageToUrl
         Success      = $true
     }
 } finally {

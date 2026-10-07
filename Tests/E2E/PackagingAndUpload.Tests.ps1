@@ -170,9 +170,9 @@ Describe 'E2E Tier 3: Packaging & Public Cloud Upload' {
             Test-Path -LiteralPath $tempZip | Should -BeFalse
         }
 
-        It 'Build-IToolkitPackage.ps1 accepts -Provider catbox parameter without binding errors' {
-            $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_WhatIf_Catbox_" + [System.Guid]::NewGuid().ToString('N') + ".zip")
-            { & $script:BuildScriptPath -DestinationPath $tempZip -Provider catbox -WhatIf } | Should -Not -Throw
+        It 'Build-IToolkitPackage.ps1 accepts -Provider storage.to parameter without binding errors' {
+            $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_WhatIf_StorageTo_" + [System.Guid]::NewGuid().ToString('N') + ".zip")
+            { & $script:BuildScriptPath -DestinationPath $tempZip -Provider storage.to -WhatIf } | Should -Not -Throw
             Test-Path -LiteralPath $tempZip | Should -BeFalse
         }
 
