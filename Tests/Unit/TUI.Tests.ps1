@@ -13,6 +13,9 @@ BeforeAll {
     $root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
     $script:ProjectRoot = $root
     $script:TUIManifest = Join-Path $root 'Modules/TUI/TUI.psd1'
+    if (-not (Get-Command -Name 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) {
+        function global:Write-ToolkitMenuDivider { param([int]$Width = 78) Write-Host ('  ' + ('-' * [math]::Max(20, $Width - 2))) }
+    }
     $manifests = Get-ChildItem -Path (Join-Path $root "Modules") -Filter "*.psd1" -Recurse -ErrorAction SilentlyContinue
     if ($manifests) {
         foreach ($m in $manifests) {
@@ -132,6 +135,71 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $categories = @('1', '2', '3', '4', '5', '6')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat } | Should -Not -Throw
+            }
+        }
+    }
+
+    Context 'Submenu Invocations: Non-Interactive & Immediate Exit Contract' {
+        It 'Invoke-ToolkitSubmenuOutlook renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuOutlook -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuOutlook returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuOutlook -ExitImmediately } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuOffice renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuOffice -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuOffice returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuOffice -ExitImmediately } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuPrinters renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuPrinters -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuPrinters returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuPrinters -ExitImmediately } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuBackup renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuBackup -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuBackup returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuBackup -ExitImmediately } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuAccounts renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuAccounts -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuAccounts returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuAccounts -ExitImmediately } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuExternalTools renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuExternalTools -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuExternalTools returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuExternalTools -ExitImmediately } | Should -Not -Throw
+        }
+    }
+
+    Context 'Headless Menu Invocation & Telemetry Extraction' {
+        It 'Start-IToolkitMenu extracts system telemetry without prompting for user interaction' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { throw "Read-Host should never be invoked in non-interactive headless mode" }
+            { Start-IToolkitMenu -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Start-IToolkitMenu extracts category telemetry across all submenus in headless mode' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { throw "Read-Host should never be invoked in non-interactive headless mode" }
+            $categories = @('1', '2', '3', '4', '5', '6')
+            foreach ($cat in $categories) {
+                { Start-IToolkitMenu -MenuOption $cat -NonInteractive } | Should -Not -Throw
             }
         }
     }

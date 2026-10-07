@@ -20,7 +20,10 @@
         'Public/Set-OutlookPstThreshold.ps1',
         'Public/Invoke-OutlookCompaction.ps1',
         'Public/Backup-OutlookPst.ps1',
-        'Public/Restore-OutlookPst.ps1'
+        'Public/Restore-OutlookPst.ps1',
+        'Public/Get-OutlookSystemContext.ps1',
+        'Public/Get-OutlookPstThreshold.ps1',
+        'Public/Test-OutlookDataFileLock.ps1'
     )
 
     # Explicit Whitelist of Public Functions (Strictly hides Private helpers)
@@ -31,7 +34,10 @@
         'Set-OutlookPstThreshold',
         'Invoke-OutlookCompaction',
         'Backup-OutlookPst',
-        'Restore-OutlookPst'
+        'Restore-OutlookPst',
+        'Get-OutlookSystemContext',
+        'Get-OutlookPstThreshold',
+        'Test-OutlookDataFileLock'
     )
 
     CmdletsToExport        = @()

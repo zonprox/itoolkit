@@ -71,6 +71,23 @@ function Move-OutlookDataFile {
             }
         }
 
+        # Step 2b: Verify exclusive file lock
+        if (Get-Command -Name 'Test-OutlookDataFileLock' -ErrorAction SilentlyContinue) {
+            $lockCheck = Test-OutlookDataFileLock -Path $SourcePath
+            if ($lockCheck.IsLocked) {
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Source data file is locked by an external process: '$SourcePath' ($($lockCheck.ErrorMessage))" -Level 'ERROR' -Component 'Outlook:Move'
+                }
+                return [PSCustomObject]@{
+                    SourcePath      = $SourcePath
+                    DestinationPath = $DestinationPath
+                    HashMatched     = $false
+                    ProfileUpdated  = $false
+                    Success         = $false
+                }
+            }
+        }
+
         # Step 3: Destination volume and disk space pre-flight validation
         $requiredBytes = [int64]0
         try {

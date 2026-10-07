@@ -56,6 +56,9 @@
         'Invoke-OutlookCompaction',
         'Backup-OutlookPst',
         'Restore-OutlookPst',
+        'Get-OutlookSystemContext',
+        'Get-OutlookPstThreshold',
+        'Test-OutlookDataFileLock',
 
         # Office & Excel Troubleshooting Services
         'Set-ExcelHardwareAcceleration',

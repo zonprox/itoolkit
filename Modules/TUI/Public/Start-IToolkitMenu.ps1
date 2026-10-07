@@ -122,24 +122,367 @@ if (Get-Command -Name 'Write-ToolkitMenuDivider' -CommandType Function -ErrorAct
     Set-Item -Path 'function:global:Write-ToolkitMenuDivider' -Value (Get-Command -Name 'Write-ToolkitMenuDivider').ScriptBlock
 }
 
+# Helper: Wait for user acknowledge and prompt before returning
+function Wait-UserAcknowledge {
+    try {
+        if ([Console]::IsInputRedirected) {
+            return
+        }
+    }
+    catch {
+        $null = $_
+    }
+
+    Write-Host ""
+    Write-ToolkitMenuDivider
+    Write-Host "  Press [Enter] to return to menu..." -ForegroundColor Cyan
+    try {
+        $ack = Read-Host
+        if ($null -eq $ack) {
+            return
+        }
+    }
+    catch {
+        $null = $_
+    }
+}
+
+# Diagnostic Telemetry & Context Collectors for Submenus
+
+function Get-OutlookContextInfoLines {
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # Priority: Call Get-OutlookSystemContext if available
+    if (Get-Command -Name 'Get-OutlookSystemContext' -ErrorAction SilentlyContinue) {
+        try {
+            $ctx = Get-OutlookSystemContext
+            if ($null -ne $ctx) {
+                $runningBadge = if ($ctx.IsRunning) { "Running (PID: $($ctx.ProcessId)) [BLOCKED]" } else { "Stopped [SAFE]" }
+                $lines.Add("Outlook State  : $runningBadge")
+                $prof = if ($ctx.DefaultProfile) { "$($ctx.DefaultProfile)" } else { "Outlook (Default)" }
+                if ($ctx.OfficeVersion -and $ctx.OfficeVersion -ne 'None') {
+                    $prof += " (Office $($ctx.OfficeVersion))"
+                }
+                $lines.Add("Default Profile: $prof")
+                $thresh = if ($ctx.ThresholdPolicy -and $ctx.ThresholdPolicy.Description) {
+                    $ctx.ThresholdPolicy.Description
+                } elseif ($ctx.ThresholdPolicy -and $ctx.ThresholdPolicy.IsExpanded) {
+                    "Expanded (>30GB / 100GB limit enabled)"
+                } else {
+                    "Default limit (~50 GB threshold)"
+                }
+                $lines.Add("PST Policy     : $thresh")
+                $dfCount = if ($ctx.DataFiles) { $ctx.DataFiles.Count } else { 0 }
+                $lines.Add("Data Files     : $dfCount Data File(s) Detected [READY]")
+                return $lines.ToArray()
+            }
+        }
+        catch {
+            $null = $_
+        }
+    }
+
+    # Safe fallback probe
+    $procStatus = "Stopped [SAFE]"
+    try {
+        $p = Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue
+        if ($null -ne $p) {
+            $procStatus = "Running (PID: $($p.Id)) [BLOCKED]"
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Outlook State  : $procStatus")
+
+    $profile = "Outlook (Default / Not Configured)"
+    try {
+        if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\Outlook') {
+            $val = (Get-ItemProperty 'HKCU:\Software\Microsoft\Office\16.0\Outlook' -ErrorAction SilentlyContinue).DefaultProfile
+            if (-not [string]::IsNullOrWhiteSpace($val)) {
+                $profile = "$val (Office 16.0 / 365)"
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Default Profile: $profile")
+
+    $policyStatus = "Default limit (~50 GB threshold)"
+    try {
+        if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\Outlook\PST') {
+            $val = (Get-ItemProperty 'HKCU:\Software\Microsoft\Office\16.0\Outlook\PST' -ErrorAction SilentlyContinue).MaxLargeFileSize
+            if ($null -ne $val -and $val -ge 102400) {
+                $policyStatus = "Expanded (>30GB / 100GB limit enabled)"
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("PST Policy     : $policyStatus")
+
+    $fileInfo = "PST/OST Discovery Ready [READY]"
+    try {
+        if (Get-Command -Name 'Find-OutlookDataFiles' -ErrorAction SilentlyContinue) {
+            $found = Find-OutlookDataFiles -Scope Registry
+            if ($null -ne $found -and $found.Count -gt 0) {
+                $fileInfo = "$($found.Count) Data File(s) Detected [READY]"
+            }
+            else {
+                $fileInfo = "0 Data Files Detected [READY]"
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Data Files     : $fileInfo")
+
+    return $lines.ToArray()
+}
+
+function Get-OfficeContextInfoLines {
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # 1. Office Product
+    $officeVer = "Office 16.0 (Standard Desktop / LTSC)"
+    try {
+        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration') {
+            $c2r = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue
+            if ($null -ne $c2r) {
+                $verNum = $c2r.VersionToReport
+                $arch = $c2r.Platform
+                $prod = $c2r.ProductReleaseIds
+                $officeVer = "Microsoft Office ClickToRun v$verNum [$arch] ($prod) [READY]"
+            }
+        }
+        elseif (Test-Path 'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot') {
+            $officeVer = "Microsoft Office 16.0 Desktop (MSI / Volume LTSC) [READY]"
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Office Product : $officeVer")
+
+    # 2. Graphics Acceleration
+    $accelStatus = "Enabled [DEFAULT]"
+    try {
+        $regPath = 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics'
+        if (Test-Path $regPath) {
+            $val = (Get-ItemProperty $regPath -ErrorAction SilentlyContinue).DisableHardwareAcceleration
+            if ($val -eq 1) {
+                $accelStatus = "Disabled [SAFE]"
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Graphics Acceleration : $accelStatus")
+
+    # 3. Excel Process
+    $excelStatus = "Stopped [SAFE]"
+    try {
+        $procs = Get-Process -Name 'EXCEL' -ErrorAction SilentlyContinue
+        if ($null -ne $procs) {
+            $pCount = $procs.Count
+            $pids = ($procs | ForEach-Object { $_.Id }) -join ', '
+            $excelStatus = "Running ($pCount instance; PID: $pids) [WARN]"
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Excel Process  : $excelStatus")
+
+    # 4. Excel UI Cache
+    $cacheStatus = "Clean [READY]"
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
+            $xlb15 = Join-Path $env:APPDATA 'Microsoft\Excel\Excel15.xlb'
+            $xlb16 = Join-Path $env:APPDATA 'Microsoft\Excel\Excel16.xlb'
+            if ((Test-Path $xlb15) -or (Test-Path $xlb16)) {
+                $cacheStatus = "Cache Present (Excel16.xlb found) [WARN]"
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Excel UI Cache : $cacheStatus")
+
+    return $lines.ToArray()
+}
+
+function Get-PrintersContextInfoLines {
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # 1. Spooler Service Status
+    $spoolerStatus = "Spooler Service: Unknown [WARN]"
+    try {
+        $svc = Get-Service -Name 'Spooler' -ErrorAction SilentlyContinue
+        if ($null -ne $svc) {
+            $badge = if ($svc.Status -eq 'Running') { '[READY]' } else { '[FAIL]' }
+            $spoolerStatus = "Spooler Service: $($svc.Status) (Startup: $($svc.StartType)) $badge"
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Spooler Status : $spoolerStatus")
+
+    # 2. Print Queue Jobs
+    $queueInfo = "0 Pending Jobs in Spool Folder [CLEAN]"
+    try {
+        $spoolDir = "$env:SystemRoot\System32\spool\PRINTERS"
+        if (Test-Path $spoolDir) {
+            $shdFiles = Get-ChildItem -Path $spoolDir -Filter '*.SHD' -ErrorAction SilentlyContinue
+            if ($null -ne $shdFiles -and $shdFiles.Count -gt 0) {
+                $queueInfo = "$($shdFiles.Count) Stuck Job(s) Queued in Spool Directory [WARN]"
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Print Queue    : $queueInfo")
+
+    # 3. Point & Print Policy
+    $rpcPolicy = "Default / Unrestricted [WARN]"
+    try {
+        $regP = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint'
+        if (Test-Path $regP) {
+            $val = (Get-ItemProperty $regP -ErrorAction SilentlyContinue).RestrictDriverInstallationToAdministrators
+            if ($val -eq 1) {
+                $rpcPolicy = "StrictAdminOnly [SAFE]"
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("RPC Policy     : $rpcPolicy")
+
+    return $lines.ToArray()
+}
+
+function Get-BackupContextInfoLines {
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # 1. Target Profile
+    $profPath = $env:USERPROFILE
+    if ([string]::IsNullOrWhiteSpace($profPath)) {
+        $profPath = [System.Environment]::GetFolderPath('UserProfile')
+    }
+    $lines.Add("Target Profile : $profPath [READY]")
+
+    # 2. Storage Free Space
+    $freeSpace = "Drive Space Available [READY]"
+    try {
+        $telemetry = Get-ToolkitTelemetryData
+        if ($null -ne $telemetry -and -not [string]::IsNullOrWhiteSpace($telemetry.StorageDisplay)) {
+            $freeSpace = "$($telemetry.StorageDisplay) [READY]"
+        }
+    }
+    catch {
+        $null = $_
+    }
+    $lines.Add("Storage Target : $freeSpace")
+
+    # 3. Backup Scope
+    $lines.Add("Backup Scope   : Desktop, Documents, Downloads, Bookmarks, Certificates [READY]")
+
+    return $lines.ToArray()
+}
+
+function Get-AccountsContextInfoLines {
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # 1. Current User
+    $currUser = "$env:USERDOMAIN\$env:USERNAME"
+    $lines.Add("Current User   : $currUser")
+
+    # 2. Privilege Level
+    $adminStr = "Standard User [WARN]"
+    if (Get-Command -Name 'Test-IsAdmin' -ErrorAction SilentlyContinue) {
+        try {
+            if (Test-IsAdmin) {
+                $adminStr = "Local Administrator [ELEVATED]"
+            }
+        }
+        catch {
+            $null = $_
+        }
+    }
+    $lines.Add("Privilege Level: $adminStr")
+
+    # 3. Domain Status
+    $domStatus = "Workgroup Mode ($env:USERDOMAIN) [READY]"
+    if (-not [string]::IsNullOrWhiteSpace($env:USERDNSDOMAIN)) {
+        $domStatus = "Active Directory Domain ($env:USERDNSDOMAIN) [READY]"
+    }
+    $lines.Add("Domain Status  : $domStatus")
+
+    # 4. Built-in Administrator
+    $lines.Add("Built-in Administrator : Active (SID -500) Management Available [READY]")
+
+    return $lines.ToArray()
+}
+
+function Get-ExternalToolsContextInfoLines {
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # 1. Internet Status
+    $netStatus = "Checking Connectivity..."
+    try {
+        if (Get-Command -Name 'Test-InternetConnectivity' -ErrorAction SilentlyContinue) {
+            $isOnline = Test-InternetConnectivity
+            if ($isOnline) {
+                $netStatus = "ONLINE [READY]"
+            }
+            else {
+                $netStatus = "OFFLINE [BLOCKED]"
+            }
+        }
+        else {
+            $netStatus = "ONLINE [READY]"
+        }
+    }
+    catch {
+        $netStatus = "OFFLINE [BLOCKED]"
+    }
+    $lines.Add("Internet Check : $netStatus")
+
+    # 2. Integrated Launchers
+    $lines.Add("Tool 1         : Win11Debloat (Telemetry & bloatware purge) [READY]")
+    $lines.Add("Tool 2         : Chris Titus WinUtil (General Windows optimization suite) [READY]")
+
+    return $lines.ToArray()
+}
+
 function Start-IToolkitMenu {
 <#
 .SYNOPSIS
-    Launches the interactive keyboard-driven main console menu for IToolkit.
+    Launches the interactive keyboard-driven main console menu for IToolkit with Tri-Panel UI/UX.
 .DESCRIPTION
-    Main console menu engine orchestrating category navigation across all toolkit modules:
-    1. Outlook & PST Data Management
-    2. Office & Excel Troubleshooting & Repair
-    3. Network & Print Spooler Troubleshooting
-    4. User Profile Data Backup & Migration
-    5. User & Domain Account Administration
-    6. External Tools & Quick Launchers (Win11Debloat, WinUtil)
-    Q. Exit / Quit
-    Supports safe non-interactive execution via -ExitImmediately switch or -MenuOption parameter.
+    Main console menu engine orchestrating category navigation across all toolkit modules
+    using the standardized Tri-Panel layout (Header Banner, Concise Action Matrix, Details & Prerequisites
+    Panel, and Live Contextual Status & Telemetry Panel):
+    1. Outlook & PST
+    2. Office & Excel
+    3. Network & Printers
+    4. User Profile Backup
+    5. Account Admin
+    6. External Tools
+    R. Refresh Screen
+    Q. Exit Console
 .PARAMETER ExitImmediately
     Switch to bypass interactive loop and return immediately (used for automated testing).
 .PARAMETER NonInteractive
-    Switch to run in headless automation mode without interactive prompt loops.
+    Switch to run in headless automation mode: renders menu once and returns cleanly.
 .PARAMETER DefaultSelection
     Optional pre-selected choice string.
 .PARAMETER MenuOption
@@ -168,338 +511,34 @@ function Start-IToolkitMenu {
         return
     }
 
-    # ==============================================================================
-    # Diagnostic Telemetry & Header Context Collectors
-    # ==============================================================================
+    $mainActions = @(
+        @{ Key = '1'; Label = 'Outlook & PST' },
+        @{ Key = '2'; Label = 'Office & Excel' },
+        @{ Key = '3'; Label = 'Network & Printers' },
+        @{ Key = '4'; Label = 'User Profile Backup' },
+        @{ Key = '5'; Label = 'Account Admin' },
+        @{ Key = '6'; Label = 'External Tools' }
+    )
+    $mainNav = @(
+        @{ Key = 'R'; Label = 'Refresh Screen' },
+        @{ Key = 'Q'; Label = 'Exit Console' }
+    )
+    $mainDetails = @(
+        @{ Key = '1'; Action = 'Outlook & PST'; Description = 'PST/OST discovery, relocation, profile repoints & limits.'; Prerequisite = 'Outlook installed [READY]' },
+        @{ Key = '2'; Action = 'Office & Excel'; Description = 'Hardware acceleration, cache reset, add-ins, GDI audit.'; Prerequisite = 'Office 2013-365 [READY]' },
+        @{ Key = '3'; Action = 'Network & Printers'; Description = 'Print spooler queue, Ne ports, Point & Print policies.'; Prerequisite = 'Spooler service [READY]' },
+        @{ Key = '4'; Action = 'User Profile Backup'; Description = 'User folder sync, Chromium bookmarks, certs & manifests.'; Prerequisite = 'Local drive space [READY]' },
+        @{ Key = '5'; Action = 'Account Admin'; Description = 'Local/domain account management, SID -500, domain health.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '6'; Action = 'External Tools'; Description = 'Win11Debloat, Chris Titus WinUtil, network testing.'; Prerequisite = 'Internet access [READY]' }
+    )
 
-    function Get-OutlookContextInfoLines {
-        $lines = [System.Collections.Generic.List[string]]::new()
-
-        # 1. Outlook Process
-        $procStatus = "Stopped (Safe to migrate PST/OST)"
-        try {
-            $p = Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue
-            if ($null -ne $p) {
-                $procStatus = "Running (PID: $($p.Id)) - Must close before moving files"
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Outlook State  : $procStatus")
-
-        # 2. Default Profile
-        $profile = "Outlook (Default / Not Configured)"
-        try {
-            if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\Outlook') {
-                $val = (Get-ItemProperty 'HKCU:\Software\Microsoft\Office\16.0\Outlook' -ErrorAction SilentlyContinue).DefaultProfile
-                if (-not [string]::IsNullOrWhiteSpace($val)) {
-                    $profile = "$val (Office 16.0 / 365)"
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Default Profile: $profile")
-
-        # 3. Large PST Policy
-        $policyStatus = "Default limit (~50 GB threshold)"
-        try {
-            if (Test-Path 'HKCU:\Software\Microsoft\Office\16.0\Outlook\PST') {
-                $val = (Get-ItemProperty 'HKCU:\Software\Microsoft\Office\16.0\Outlook\PST' -ErrorAction SilentlyContinue).MaxLargeFileSize
-                if ($null -ne $val -and $val -ge 102400) {
-                    $policyStatus = "Expanded (>30GB / 100GB limit enabled)"
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("PST Policy     : $policyStatus")
-
-        # 4. Data Files Found
-        $fileInfo = "PST/OST Discovery Ready"
-        try {
-            if (Get-Command -Name 'Find-OutlookDataFiles' -ErrorAction SilentlyContinue) {
-                $found = Find-OutlookDataFiles
-                if ($null -ne $found -and $found.Count -gt 0) {
-                    $totalSize = 0
-                    foreach ($f in $found) {
-                        if ($f.SizeGB) {
-                            $totalSize += $f.SizeGB
-                        }
-                    }
-                    $roundSize = [math]::Round($totalSize, 1)
-                    $fileInfo = "$($found.Count) Data File(s) Detected | Total: ${roundSize} GB"
-                }
-                else {
-                    $fileInfo = "0 Data Files Detected (Standard Directories)"
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Data Files     : $fileInfo")
-
-        return $lines.ToArray()
-    }
-
-    function Get-OfficeContextInfoLines {
-        $lines = [System.Collections.Generic.List[string]]::new()
-
-        # 1. Office Product
-        $officeVer = "Office 16.0 (Standard Desktop / LTSC)"
-        try {
-            if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration') {
-                $c2r = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue
-                if ($null -ne $c2r) {
-                    $verNum = $c2r.VersionToReport
-                    $arch = $c2r.Platform
-                    $prod = $c2r.ProductReleaseIds
-                    $officeVer = "Microsoft Office ClickToRun v$verNum [$arch] ($prod)"
-                }
-            }
-            elseif (Test-Path 'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot') {
-                $officeVer = "Microsoft Office 16.0 Desktop (MSI / Volume LTSC)"
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Office Product : $officeVer")
-
-        # 2. Graphics Acceleration
-        $accelStatus = "Enabled [Default]"
-        try {
-            $regPath = 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics'
-            if (Test-Path $regPath) {
-                $val = (Get-ItemProperty $regPath -ErrorAction SilentlyContinue).DisableHardwareAcceleration
-                if ($val -eq 1) {
-                    $accelStatus = "Disabled [Safe against Print Preview crashes]"
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Graphics Acceleration : $accelStatus")
-
-        # 3. Excel Process
-        $excelStatus = "Stopped (Not Running)"
-        try {
-            $procs = Get-Process -Name 'EXCEL' -ErrorAction SilentlyContinue
-            if ($null -ne $procs) {
-                $pCount = $procs.Count
-                $pids = ($procs | ForEach-Object { $_.Id }) -join ', '
-                $excelStatus = "Running ($pCount instance; PID: $pids)"
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Excel Process  : $excelStatus")
-
-        # 4. Excel UI Cache
-        $cacheStatus = "Clean (No corrupt Excel16.xlb found)"
-        try {
-            if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
-                $xlb15 = Join-Path $env:APPDATA 'Microsoft\Excel\Excel15.xlb'
-                $xlb16 = Join-Path $env:APPDATA 'Microsoft\Excel\Excel16.xlb'
-                if ((Test-Path $xlb15) -or (Test-Path $xlb16)) {
-                    $cacheStatus = "Cache Present (Excel16.xlb found - Reset available)"
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Excel UI Cache : $cacheStatus")
-
-        return $lines.ToArray()
-    }
-
-    function Get-PrintersContextInfoLines {
-        $lines = [System.Collections.Generic.List[string]]::new()
-
-        # 1. Spooler Service Status
-        $spoolerStatus = "Spooler Service: Unknown"
-        try {
-            $svc = Get-Service -Name 'Spooler' -ErrorAction SilentlyContinue
-            if ($null -ne $svc) {
-                $spoolerStatus = "Spooler Service: $($svc.Status) (Startup: $($svc.StartType))"
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Spooler Status : $spoolerStatus")
-
-        # 2. Print Queue Jobs
-        $queueInfo = "0 Pending Jobs in Spool Folder (Queue Clean)"
-        try {
-            $spoolDir = "$env:SystemRoot\System32\spool\PRINTERS"
-            if (Test-Path $spoolDir) {
-                $shdFiles = Get-ChildItem -Path $spoolDir -Filter '*.SHD' -ErrorAction SilentlyContinue
-                if ($null -ne $shdFiles -and $shdFiles.Count -gt 0) {
-                    $queueInfo = "$($shdFiles.Count) Stuck Job(s) Queued in Spool Directory"
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Print Queue    : $queueInfo")
-
-        # 3. Point & Print Policy
-        $rpcPolicy = "Default / Unrestricted"
-        try {
-            $regP = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint'
-            if (Test-Path $regP) {
-                $val = (Get-ItemProperty $regP -ErrorAction SilentlyContinue).RestrictDriverInstallationToAdministrators
-                if ($val -eq 1) {
-                    $rpcPolicy = "StrictAdminOnly [PrintNightmare Mitigated]"
-                }
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("RPC Policy     : $rpcPolicy")
-
-        return $lines.ToArray()
-    }
-
-    function Get-BackupContextInfoLines {
-        $lines = [System.Collections.Generic.List[string]]::new()
-
-        # 1. Target Profile
-        $profPath = $env:USERPROFILE
-        if ([string]::IsNullOrWhiteSpace($profPath)) {
-            $profPath = [System.Environment]::GetFolderPath('UserProfile')
-        }
-        $lines.Add("Target Profile : $profPath")
-
-        # 2. Storage Free Space
-        $freeSpace = "Drive Space Available"
-        try {
-            $telemetry = Get-ToolkitTelemetryData
-            if ($null -ne $telemetry -and -not [string]::IsNullOrWhiteSpace($telemetry.StorageDisplay)) {
-                $freeSpace = $telemetry.StorageDisplay
-            }
-        }
-        catch {
-            $null = $_
-        }
-        $lines.Add("Storage Target : $freeSpace")
-
-        # 3. Backup Scope
-        $lines.Add("Backup Scope   : Desktop, Documents, Downloads, Edge/Chrome Bookmarks, Certificates")
-
-        return $lines.ToArray()
-    }
-
-    function Get-AccountsContextInfoLines {
-        $lines = [System.Collections.Generic.List[string]]::new()
-
-        # 1. Current User
-        $currUser = "$env:USERDOMAIN\$env:USERNAME"
-        $lines.Add("Current User   : $currUser")
-
-        # 2. Privilege Level
-        $adminStr = "Standard User"
-        if (Get-Command -Name 'Test-IsAdmin' -ErrorAction SilentlyContinue) {
-            try {
-                if (Test-IsAdmin) {
-                    $adminStr = "Local Administrator [Elevated]"
-                }
-            }
-            catch {
-                $null = $_
-            }
-        }
-        $lines.Add("Privilege Level: $adminStr")
-
-        # 3. Domain Status
-        $domStatus = "Workgroup Mode ($env:USERDOMAIN)"
-        if (-not [string]::IsNullOrWhiteSpace($env:USERDNSDOMAIN)) {
-            $domStatus = "Active Directory Domain ($env:USERDNSDOMAIN)"
-        }
-        $lines.Add("Domain Status  : $domStatus")
-
-        # 4. Built-in Administrator
-        $lines.Add("Built-in Administrator : Active (SID -500) Management Available")
-
-        return $lines.ToArray()
-    }
-
-    function Get-ExternalToolsContextInfoLines {
-        $lines = [System.Collections.Generic.List[string]]::new()
-
-        # 1. Internet Status
-        $netStatus = "Checking Connectivity..."
-        try {
-            if (Get-Command -Name 'Test-InternetConnectivity' -ErrorAction SilentlyContinue) {
-                $isOnline = Test-InternetConnectivity
-                if ($isOnline) {
-                    $netStatus = "ONLINE [Internet Reachability Verified]"
-                }
-                else {
-                    $netStatus = "OFFLINE [No External Connection Detected]"
-                }
-            }
-            else {
-                $netStatus = "ONLINE (TCP / DNS Available)"
-            }
-        }
-        catch {
-            $netStatus = "OFFLINE [Connection Failed]"
-        }
-        $lines.Add("Internet Check : $netStatus")
-
-        # 2. Integrated Launchers
-        $lines.Add("Tool 1         : Win11Debloat (yashg/raphi.re - Telemetry & bloatware purge)")
-        $lines.Add("Tool 2         : Chris Titus WinUtil (General Windows optimization suite)")
-
-        return $lines.ToArray()
-    }
-
-    # Helper: Wait for user acknowledge and prompt before returning
-    function Wait-UserAcknowledge {
-        try {
-            if ([Console]::IsInputRedirected) {
-                return
-            }
-        }
-        catch {
-            $null = $_
-        }
-
-        Write-Host ""
-        Write-ToolkitMenuDivider
-        Write-Host "  Press [Enter] to return to menu..." -ForegroundColor Cyan
-        try {
-            $ack = Read-Host
-            if ($null -eq $ack) {
-                return
-            }
-        }
-        catch {
-            $null = $_
-        }
-    }
-
-    # If NonInteractive flag is set without MenuOption, display main menu once and return
+    # If NonInteractive flag is set without MenuOption, display main menu Tri-Panel once and return
     if ($NonInteractive -and [string]::IsNullOrWhiteSpace($MenuOption)) {
-        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 Enterprise Support Toolkit' -NoSystemInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'Outlook & PST Data Management'
-        Show-ToolkitMenuOption -Key '2' -Label 'Office & Excel Troubleshooting & Repair'
-        Show-ToolkitMenuOption -Key '3' -Label 'Network & Print Spooler Troubleshooting'
-        Show-ToolkitMenuOption -Key '4' -Label 'User Profile Data Backup & Migration'
-        Show-ToolkitMenuOption -Key '5' -Label 'User & Domain Account Administration'
-        Show-ToolkitMenuOption -Key '6' -Label 'External Tools & Quick Launchers (Win11Debloat, WinUtil)'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
+        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $mainActions -NavActions $mainNav
+        Show-ToolkitDetailPanel -Details $mainDetails
+        $sysInfo = Get-MainSystemInfoLines
+        Show-ToolkitStatusPanel -StatusItems $sysInfo
         Write-Host ""
         Write-ToolkitStatus -Message "Menu launched in non-interactive mode. Returning." -Type 'INFO'
         return
@@ -508,6 +547,9 @@ function Start-IToolkitMenu {
     # If MenuOption is specified directly, handle single option execution
     if (-not [string]::IsNullOrWhiteSpace($MenuOption)) {
         $subParams = @{}
+        if ($ExitImmediately) {
+            $subParams['ExitImmediately'] = $true
+        }
         if ($NonInteractive) {
             $subParams['NonInteractive'] = $true
         }
@@ -535,19 +577,11 @@ function Start-IToolkitMenu {
     # Main navigation loop
     $running = $true
     while ($running) {
+        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $mainActions -NavActions $mainNav
+        Show-ToolkitDetailPanel -Details $mainDetails
         $sysInfo = Get-MainSystemInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -InfoLines $sysInfo
-
-        Show-ToolkitMenuOption -Key '1' -Label 'Outlook & PST Data Management'
-        Show-ToolkitMenuOption -Key '2' -Label 'Office & Excel Troubleshooting & Repair'
-        Show-ToolkitMenuOption -Key '3' -Label 'Network & Print Spooler Troubleshooting'
-        Show-ToolkitMenuOption -Key '4' -Label 'User Profile Data Backup & Migration'
-        Show-ToolkitMenuOption -Key '5' -Label 'User & Domain Account Administration'
-        Show-ToolkitMenuOption -Key '6' -Label 'External Tools & Quick Launchers (Win11Debloat, WinUtil)'
-        Write-ToolkitMenuDivider
-        Show-ToolkitMenuOption -Key 'R' -Label 'Refresh Screen'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
-        Write-Host ""
+        Show-ToolkitStatusPanel -StatusItems $sysInfo
 
         $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', 'R', 'Q', 'X') -Default $DefaultSelection
 
@@ -563,7 +597,6 @@ function Start-IToolkitMenu {
             '5' { Invoke-ToolkitSubmenuAccounts }
             '6' { Invoke-ToolkitSubmenuExternalTools }
             'R' {
-                # Screen clears automatically on next loop iteration
                 continue
             }
             'Q' {
@@ -584,31 +617,59 @@ function Start-IToolkitMenu {
 }
 
 # ==============================================================================
-# Category Submenus
+# Category Submenus (Tri-Panel Modular Layout)
 # ==============================================================================
 
 function Invoke-ToolkitSubmenuOutlook {
+<#
+.SYNOPSIS
+    Submenu for Outlook & PST Management with Tri-Panel UI/UX.
+#>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
         [Parameter(Mandatory = $false)]
         [switch]$NonInteractive
     )
 
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    $outlookActions = @(
+        @{ Key = '1'; Label = 'Scan Data Files' },
+        @{ Key = '2'; Label = 'Relocate PST' },
+        @{ Key = '3'; Label = 'Update Profile Path' },
+        @{ Key = '4'; Label = 'Expand Size Limit' },
+        @{ Key = '5'; Label = 'Compact Data File' },
+        @{ Key = '6'; Label = 'Backup PST' },
+        @{ Key = '7'; Label = 'Restore PST' }
+    )
+    $subnav = @(
+        @{ Key = 'B'; Label = 'Back to Main Menu' },
+        @{ Key = 'Q'; Label = 'Exit Console' }
+    )
+    $outlookDetails = @(
+        @{ Key = '1'; Action = 'Scan Data Files'; Description = 'Deep discovery across registry profiles & disk drives.'; Prerequisite = 'None [READY]' },
+        @{ Key = '2'; Action = 'Relocate PST'; Description = 'Move PST/OST with SHA-256 validation & profile repoint.'; Prerequisite = 'Outlook must be stopped [SAFE]' },
+        @{ Key = '3'; Action = 'Update Profile Path'; Description = 'Re-map MAPI binary registry paths to new file location.'; Prerequisite = 'Profile registry key [READY]' },
+        @{ Key = '4'; Action = 'Expand Size Limit'; Description = 'Set MaxLargeFileSize policy (up to 100GB limit).'; Prerequisite = 'Admin elevation [READY]' },
+        @{ Key = '5'; Action = 'Compact Data File'; Description = 'Launch MAPI profile compaction management utility.'; Prerequisite = 'Outlook installed [READY]' },
+        @{ Key = '6'; Action = 'Backup PST'; Description = 'Copy PST to backup path with SHA-256 hash check.'; Prerequisite = 'Target drive space [READY]' },
+        @{ Key = '7'; Action = 'Restore PST'; Description = 'Restore PST from backup with cryptographic verification.'; Prerequisite = 'Backup file exists [READY]' }
+    )
+
     $inSubmenu = $true
     while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        Show-ToolkitHeader -Title 'ITOOLKIT > OUTLOOK & PST MANAGEMENT' -Subtitle 'PST/OST Discovery, Relocation, Compaction & Registry Policies' -ClearScreen:$clear -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $outlookActions -NavActions $subnav
+        Show-ToolkitDetailPanel -Details $outlookDetails
         $outlookInfo = Get-OutlookContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > OUTLOOK & PST MANAGEMENT' -Subtitle 'PST/OST Discovery, Relocation, Compaction & Registry Policies' -ClearScreen -InfoLines $outlookInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'Find Outlook Data Files (.pst / .ost)'
-        Show-ToolkitMenuOption -Key '2' -Label 'Safe Relocate Outlook Data File (with SHA-256 Checksum)'
-        Show-ToolkitMenuOption -Key '3' -Label 'Update Outlook Profile Path in Registry'
-        Show-ToolkitMenuOption -Key '4' -Label 'Expand PST File Size Threshold Policy (>30GB / 100GB)'
-        Show-ToolkitMenuOption -Key '5' -Label 'Launch Outlook Compaction Guidance'
-        Show-ToolkitMenuOption -Key '6' -Label 'Backup Outlook PST Data File'
-        Show-ToolkitMenuOption -Key '7' -Label 'Restore Outlook PST Data File'
-        Write-ToolkitMenuDivider
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
-        Write-Host ""
+        Show-ToolkitStatusPanel -StatusItems $outlookInfo
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Outlook & PST Data Management'." -Type 'INFO'
@@ -621,7 +682,8 @@ function Invoke-ToolkitSubmenuOutlook {
             break
         }
         if ($sub.ToUpperInvariant() -eq 'Q') {
-            [System.Environment]::Exit(0)
+            $inSubmenu = $false
+            return
         }
 
         switch ($sub) {
@@ -683,29 +745,59 @@ function Invoke-ToolkitSubmenuOutlook {
 }
 
 function Invoke-ToolkitSubmenuOffice {
+<#
+.SYNOPSIS
+    Submenu for Office & Excel Troubleshooting with Tri-Panel UI/UX.
+#>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
         [Parameter(Mandatory = $false)]
         [switch]$NonInteractive
     )
 
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    $officeActions = @(
+        @{ Key = '1'; Label = 'Disable Acceleration' },
+        @{ Key = '2'; Label = 'Enable Acceleration' },
+        @{ Key = '3'; Label = 'Reset Excel UI Cache' },
+        @{ Key = '4'; Label = 'Clear Office Cache' },
+        @{ Key = '5'; Label = 'List COM Add-ins' },
+        @{ Key = '6'; Label = 'Reset Resiliency' },
+        @{ Key = '7'; Label = 'Audit GDI Handles' },
+        @{ Key = '8'; Label = 'Stop Leaking Excel' },
+        @{ Key = '9'; Label = 'Repair ClickToRun' }
+    )
+    $subnav = @(
+        @{ Key = 'B'; Label = 'Back to Main Menu' },
+        @{ Key = 'Q'; Label = 'Exit Console' }
+    )
+    $officeDetails = @(
+        @{ Key = '1'; Action = 'Disable Acceleration'; Description = 'Disable hardware acceleration to avoid display crashes.'; Prerequisite = 'Office registry [READY]' },
+        @{ Key = '2'; Action = 'Enable Acceleration'; Description = 'Re-enable hardware acceleration for normal performance.'; Prerequisite = 'Office registry [READY]' },
+        @{ Key = '3'; Action = 'Reset Excel UI Cache'; Description = 'Rename Excel16.xlb and purge stale XLSTART templates.'; Prerequisite = 'Excel stopped [READY]' },
+        @{ Key = '4'; Action = 'Clear Office Cache'; Description = 'Purge OfficeFileCache and temporary document buffers.'; Prerequisite = 'Office stopped [READY]' },
+        @{ Key = '5'; Action = 'List COM Add-ins'; Description = 'Enumerate installed COM add-ins and startup behavior.'; Prerequisite = 'Registry access [READY]' },
+        @{ Key = '6'; Action = 'Reset Resiliency'; Description = 'Clear disabled items list to restore blocked add-ins.'; Prerequisite = 'Registry access [READY]' },
+        @{ Key = '7'; Action = 'Audit GDI Handles'; Description = 'Audit GDI and USER handle consumption across processes.'; Prerequisite = 'Excel running or stopped [READY]' },
+        @{ Key = '8'; Action = 'Stop Leaking Excel'; Description = 'Terminate Excel instances exceeding handle thresholds.'; Prerequisite = 'Admin or user rights [READY]' },
+        @{ Key = '9'; Action = 'Repair ClickToRun'; Description = 'Trigger native Office ClickToRun repair wizard.'; Prerequisite = 'C2R installation [READY]' }
+    )
+
     $inSubmenu = $true
     while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE & EXCEL TROUBLESHOOTING' -Subtitle 'Graphics Acceleration, Cache Reset, COM Add-ins, GDI Leaks, Click-to-Run Repair' -ClearScreen:$clear -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $officeActions -NavActions $subnav
+        Show-ToolkitDetailPanel -Details $officeDetails
         $officeInfo = Get-OfficeContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE & EXCEL TROUBLESHOOTING' -Subtitle 'Graphics Acceleration, Cache Reset, COM Add-ins, GDI Leaks, Click-to-Run Repair' -ClearScreen -InfoLines $officeInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'Disable Excel Hardware Graphics Acceleration'
-        Show-ToolkitMenuOption -Key '2' -Label 'Enable Excel Hardware Graphics Acceleration'
-        Show-ToolkitMenuOption -Key '3' -Label 'Reset Excel UI & Printer Cache (Excel16.xlb & XLSTART)'
-        Show-ToolkitMenuOption -Key '4' -Label 'Clear Office Temporary & Document Caches'
-        Show-ToolkitMenuOption -Key '5' -Label 'List Installed Excel COM Add-ins'
-        Show-ToolkitMenuOption -Key '6' -Label 'Reset Excel Disabled Items Resiliency List'
-        Show-ToolkitMenuOption -Key '7' -Label 'Inspect Excel GDI Handle Usage (Leak Audit)'
-        Show-ToolkitMenuOption -Key '8' -Label 'Stop Leaking Excel Processes'
-        Show-ToolkitMenuOption -Key '9' -Label 'Launch Office ClickToRun Repair [Quick / Online]'
-        Write-ToolkitMenuDivider
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
-        Write-Host ""
+        Show-ToolkitStatusPanel -StatusItems $officeInfo
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Office & Excel Troubleshooting & Repair'." -Type 'INFO'
@@ -718,7 +810,8 @@ function Invoke-ToolkitSubmenuOffice {
             break
         }
         if ($sub.ToUpperInvariant() -eq 'Q') {
-            [System.Environment]::Exit(0)
+            $inSubmenu = $false
+            return
         }
 
         switch ($sub) {
@@ -777,28 +870,57 @@ function Invoke-ToolkitSubmenuOffice {
 }
 
 function Invoke-ToolkitSubmenuPrinters {
+<#
+.SYNOPSIS
+    Submenu for Network & Print Spooler with Tri-Panel UI/UX.
+#>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
         [Parameter(Mandatory = $false)]
         [switch]$NonInteractive
     )
 
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    $printersActions = @(
+        @{ Key = '1'; Label = 'Spooler Status' },
+        @{ Key = '2'; Label = 'Purge Spooler Queue' },
+        @{ Key = '3'; Label = 'Register Spooler DLLs' },
+        @{ Key = '4'; Label = 'Reset Ne Ports' },
+        @{ Key = '5'; Label = 'Audit Point & Print' },
+        @{ Key = '6'; Label = 'Apply PnP Remediation' },
+        @{ Key = '7'; Label = 'Test Printer Network' },
+        @{ Key = '8'; Label = 'Refresh Connections' }
+    )
+    $subnav = @(
+        @{ Key = 'B'; Label = 'Back to Main Menu' },
+        @{ Key = 'Q'; Label = 'Exit Console' }
+    )
+    $printersDetails = @(
+        @{ Key = '1'; Action = 'Spooler Status'; Description = 'Inspect Print Spooler service state, PID and queue size.'; Prerequisite = 'Spooler service [READY]' },
+        @{ Key = '2'; Action = 'Purge Spooler Queue'; Description = 'Stop spooler, purge stuck jobs, restart service.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '3'; Action = 'Register Spooler DLLs'; Description = 'Re-register spoolss.dll, winspool.drv and compile MOF.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '4'; Action = 'Reset Ne Ports'; Description = 'Purge stale NeXX: virtual port mappings in registry.'; Prerequisite = 'HKCU registry [READY]' },
+        @{ Key = '5'; Action = 'Audit Point & Print'; Description = 'Inspect Point and Print mitigation policies.'; Prerequisite = 'Registry access [READY]' },
+        @{ Key = '6'; Action = 'Apply PnP Remediation'; Description = 'Apply RestrictDriverInstallationToAdministrators policy.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '7'; Action = 'Test Printer Network'; Description = 'Probe printer network ports (SMB, RPC, TCP 9100, 515).'; Prerequisite = 'Network online [READY]' },
+        @{ Key = '8'; Action = 'Refresh Connections'; Description = 'Refresh active user network printer bindings.'; Prerequisite = 'WScript.Network [READY]' }
+    )
+
     $inSubmenu = $true
     while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        Show-ToolkitHeader -Title 'ITOOLKIT > NETWORK & PRINT SPOOLER' -Subtitle 'Spooler Diagnostics, Queue Purge, Ne Ports, Point & Print' -ClearScreen:$clear -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $printersActions -NavActions $subnav
+        Show-ToolkitDetailPanel -Details $printersDetails
         $printersInfo = Get-PrintersContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > NETWORK & PRINT SPOOLER' -Subtitle 'Spooler Diagnostics, Queue Purge, Ne Ports, Point & Print' -ClearScreen -InfoLines $printersInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'Inspect Print Spooler Status & Queue Size'
-        Show-ToolkitMenuOption -Key '2' -Label 'Reset Print Spooler Queue & Restart Service'
-        Show-ToolkitMenuOption -Key '3' -Label 'Re-register Print Spooler DLLs & Subsystems'
-        Show-ToolkitMenuOption -Key '4' -Label 'Reset Stale Ne Virtual Port Bindings'
-        Show-ToolkitMenuOption -Key '5' -Label 'Audit Point & Print (PrintNightmare) Policies'
-        Show-ToolkitMenuOption -Key '6' -Label 'Apply Point & Print Strict Administrator Remediation'
-        Show-ToolkitMenuOption -Key '7' -Label 'Test Network Printer Connectivity (SMB/RPC/9100)'
-        Show-ToolkitMenuOption -Key '8' -Label 'Refresh Active User Printer Connections'
-        Write-ToolkitMenuDivider
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
-        Write-Host ""
+        Show-ToolkitStatusPanel -StatusItems $printersInfo
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Network & Print Spooler Troubleshooting'." -Type 'INFO'
@@ -811,7 +933,8 @@ function Invoke-ToolkitSubmenuPrinters {
             break
         }
         if ($sub.ToUpperInvariant() -eq 'Q') {
-            [System.Environment]::Exit(0)
+            $inSubmenu = $false
+            return
         }
 
         switch ($sub) {
@@ -864,27 +987,55 @@ function Invoke-ToolkitSubmenuPrinters {
 }
 
 function Invoke-ToolkitSubmenuBackup {
+<#
+.SYNOPSIS
+    Submenu for User Profile Data Backup with Tri-Panel UI/UX.
+#>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
         [Parameter(Mandatory = $false)]
         [switch]$NonInteractive
     )
 
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    $backupActions = @(
+        @{ Key = '1'; Label = 'Map Profile Folders' },
+        @{ Key = '2'; Label = 'Export Bookmarks' },
+        @{ Key = '3'; Label = 'Export Certificates' },
+        @{ Key = '4'; Label = 'Backup Profile Folders' },
+        @{ Key = '5'; Label = 'Generate Manifest' },
+        @{ Key = '6'; Label = 'Verify Manifest' },
+        @{ Key = '7'; Label = 'Restore Profile Data' }
+    )
+    $subnav = @(
+        @{ Key = 'B'; Label = 'Back to Main Menu' },
+        @{ Key = 'Q'; Label = 'Exit Console' }
+    )
+    $backupDetails = @(
+        @{ Key = '1'; Action = 'Map Profile Folders'; Description = 'Map standard user folders and OneDrive redirection.'; Prerequisite = 'Profile exists [READY]' },
+        @{ Key = '2'; Action = 'Export Bookmarks'; Description = 'Extract Chrome and Edge browser bookmarks to JSON.'; Prerequisite = 'Browser app data [READY]' },
+        @{ Key = '3'; Action = 'Export Certificates'; Description = 'Export personal certificates from CurrentUser store.'; Prerequisite = 'Certificate store [READY]' },
+        @{ Key = '4'; Action = 'Backup Profile Folders'; Description = 'Robocopy multithreaded directory backup engine.'; Prerequisite = 'Target free space [READY]' },
+        @{ Key = '5'; Action = 'Generate Manifest'; Description = 'Compute SHA-256 cryptographic JSON backup manifest.'; Prerequisite = 'Directory path [READY]' },
+        @{ Key = '6'; Action = 'Verify Manifest'; Description = 'Validate files against SHA-256 backup manifest.'; Prerequisite = 'Manifest JSON [READY]' },
+        @{ Key = '7'; Action = 'Restore Profile Data'; Description = 'Restore user profile data from verified backup.'; Prerequisite = 'Backup files [READY]' }
+    )
+
     $inSubmenu = $true
     while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        Show-ToolkitHeader -Title 'ITOOLKIT > USER PROFILE DATA BACKUP' -Subtitle 'Folders, Bookmarks, Certificates, Robocopy Engine & SHA-256 Manifests' -ClearScreen:$clear -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $backupActions -NavActions $subnav
+        Show-ToolkitDetailPanel -Details $backupDetails
         $backupInfo = Get-BackupContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > USER PROFILE DATA BACKUP' -Subtitle 'Folders, Bookmarks, Certificates, Robocopy Engine & SHA-256 Manifests' -ClearScreen -InfoLines $backupInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'Display User Profile Directory Map'
-        Show-ToolkitMenuOption -Key '2' -Label 'Export Chromium Bookmarks (Chrome / Edge)'
-        Show-ToolkitMenuOption -Key '3' -Label 'Export Personal Certificate Store (.pfx / .cer)'
-        Show-ToolkitMenuOption -Key '4' -Label 'Start Profile Directory Backup (Robocopy Engine)'
-        Show-ToolkitMenuOption -Key '5' -Label 'Generate SHA-256 Backup Integrity Manifest'
-        Show-ToolkitMenuOption -Key '6' -Label 'Validate Backup Integrity Manifest'
-        Show-ToolkitMenuOption -Key '7' -Label 'Restore User Profile Data from Backup'
-        Write-ToolkitMenuDivider
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
-        Write-Host ""
+        Show-ToolkitStatusPanel -StatusItems $backupInfo
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'User Profile Data Backup & Migration'." -Type 'INFO'
@@ -897,7 +1048,8 @@ function Invoke-ToolkitSubmenuBackup {
             break
         }
         if ($sub.ToUpperInvariant() -eq 'Q') {
-            [System.Environment]::Exit(0)
+            $inSubmenu = $false
+            return
         }
 
         switch ($sub) {
@@ -961,30 +1113,61 @@ function Invoke-ToolkitSubmenuBackup {
 }
 
 function Invoke-ToolkitSubmenuAccounts {
+<#
+.SYNOPSIS
+    Submenu for User & Domain Account Administration with Tri-Panel UI/UX.
+#>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
         [Parameter(Mandatory = $false)]
         [switch]$NonInteractive
     )
 
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    $accountsActions = @(
+        @{ Key = '1'; Label = 'List Local Accounts' },
+        @{ Key = '2'; Label = 'Create Local Account' },
+        @{ Key = '3'; Label = 'Unlock Local Account' },
+        @{ Key = '4'; Label = 'Set Account Status' },
+        @{ Key = '5'; Label = 'Query Domain User' },
+        @{ Key = '6'; Label = 'Unlock Domain User' },
+        @{ Key = '7'; Label = 'Enable Admin (SID 500)' },
+        @{ Key = '8'; Label = 'Reset Admin Password' },
+        @{ Key = '9'; Label = 'Test Domain Health' },
+        @{ Key = '10'; Label = 'Disjoin Domain' }
+    )
+    $subnav = @(
+        @{ Key = 'B'; Label = 'Back to Main Menu' },
+        @{ Key = 'Q'; Label = 'Exit Console' }
+    )
+    $accountsDetails = @(
+        @{ Key = '1'; Action = 'List Local Accounts'; Description = 'Enumerate local user accounts via ADSI WinNT.'; Prerequisite = 'Local system [READY]' },
+        @{ Key = '2'; Action = 'Create Local Account'; Description = 'Create local user account with SecureString password.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '3'; Action = 'Unlock Local Account'; Description = 'Clear account lockout flag for local account.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '4'; Action = 'Set Account Status'; Description = 'Enable or disable local user account.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '5'; Action = 'Query Domain User'; Description = 'Query Active Directory user details without RSAT.'; Prerequisite = 'Domain reachability [READY]' },
+        @{ Key = '6'; Action = 'Unlock Domain User'; Description = 'Unlock domain account via .NET DirectoryEntry.'; Prerequisite = 'Domain reachability [READY]' },
+        @{ Key = '7'; Action = 'Enable Admin (SID 500)'; Description = 'Activate built-in Administrator account.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '8'; Action = 'Reset Admin Password'; Description = 'Reset built-in Administrator account password.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '9'; Action = 'Test Domain Health'; Description = 'Test DNS SRV, LDAP, Kerberos, SMB and RPC ports.'; Prerequisite = 'Network connection [READY]' },
+        @{ Key = '10'; Action = 'Disjoin Domain'; Description = 'Disjoin machine from domain with lockout defense.'; Prerequisite = 'Domain admin creds [READY]' }
+    )
+
     $inSubmenu = $true
     while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        Show-ToolkitHeader -Title 'ITOOLKIT > USER & DOMAIN ACCOUNT ADMINISTRATION' -Subtitle 'Account Operations, Administrator SID -500, Domain Join/Disjoin' -ClearScreen:$clear -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $accountsActions -NavActions $subnav
+        Show-ToolkitDetailPanel -Details $accountsDetails
         $accountsInfo = Get-AccountsContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > USER & DOMAIN ACCOUNT ADMINISTRATION' -Subtitle 'Account Operations, Administrator SID -500, Domain Join/Disjoin' -ClearScreen -InfoLines $accountsInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'List Local Windows User Accounts'
-        Show-ToolkitMenuOption -Key '2' -Label 'Create New Local User Account'
-        Show-ToolkitMenuOption -Key '3' -Label 'Unlock Local User Account (ADSI WinNT)'
-        Show-ToolkitMenuOption -Key '4' -Label 'Enable / Disable Local User Account'
-        Show-ToolkitMenuOption -Key '5' -Label 'Query Domain User Account (.NET DirectoryServices)'
-        Show-ToolkitMenuOption -Key '6' -Label 'Unlock Domain User Account'
-        Show-ToolkitMenuOption -Key '7' -Label 'Activate Built-in Administrator Account (SID -500)'
-        Show-ToolkitMenuOption -Key '8' -Label 'Reset Built-in Administrator Password'
-        Show-ToolkitMenuOption -Key '9' -Label 'Test Domain Reachability (DNS SRV & Ports)'
-        Show-ToolkitMenuOption -Key '10' -Label 'Safe Domain Disjoin (with Lockout Defense)'
-        Write-ToolkitMenuDivider
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
-        Write-Host ""
+        Show-ToolkitStatusPanel -StatusItems $accountsInfo
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'User & Domain Account Administration'." -Type 'INFO'
@@ -997,7 +1180,8 @@ function Invoke-ToolkitSubmenuAccounts {
             break
         }
         if ($sub.ToUpperInvariant() -eq 'Q') {
-            [System.Environment]::Exit(0)
+            $inSubmenu = $false
+            return
         }
 
         switch ($sub) {
@@ -1091,23 +1275,47 @@ function Invoke-ToolkitSubmenuAccounts {
 }
 
 function Invoke-ToolkitSubmenuExternalTools {
+<#
+.SYNOPSIS
+    Submenu for External Tools & Utilities with Tri-Panel UI/UX.
+#>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
         [Parameter(Mandatory = $false)]
         [switch]$NonInteractive
     )
 
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    $toolsActions = @(
+        @{ Key = '1'; Label = 'Run Win11Debloat' },
+        @{ Key = '2'; Label = 'Run ChrisTitus WinUtil' },
+        @{ Key = '3'; Label = 'Test Connectivity' }
+    )
+    $subnav = @(
+        @{ Key = 'B'; Label = 'Back to Main Menu' },
+        @{ Key = 'Q'; Label = 'Exit Console' }
+    )
+    $toolsDetails = @(
+        @{ Key = '1'; Action = 'Run Win11Debloat'; Description = 'Launch Win11Debloat script for bloatware/telemetry purge.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '2'; Action = 'Run ChrisTitus WinUtil'; Description = 'Launch Chris Titus Tech Windows Utility.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '3'; Action = 'Test Connectivity'; Description = 'Test ICMP ping, HTTP, and HTTPS endpoints.'; Prerequisite = 'Network adapter [READY]' }
+    )
+
     $inSubmenu = $true
     while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        Show-ToolkitHeader -Title 'ITOOLKIT > EXTERNAL TOOLS & UTILITIES' -Subtitle 'Pre-Flight Internet Check & External Utility Launchers' -ClearScreen:$clear -NoSystemInfo
+        Show-ToolkitActionCatalog -Actions $toolsActions -NavActions $subnav
+        Show-ToolkitDetailPanel -Details $toolsDetails
         $toolsInfo = Get-ExternalToolsContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > EXTERNAL TOOLS & UTILITIES' -Subtitle 'Pre-Flight Internet Check & External Utility Launchers' -ClearScreen -InfoLines $toolsInfo
-        Show-ToolkitMenuOption -Key '1' -Label 'Launch Windows 11 / 10 Debloat (Win11Debloat)'
-        Show-ToolkitMenuOption -Key '2' -Label 'Launch Chris Titus Tech Windows Utility (WinUtil)'
-        Show-ToolkitMenuOption -Key '3' -Label 'Test Pre-Flight Internet Reachability'
-        Write-ToolkitMenuDivider
-        Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
-        Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
-        Write-Host ""
+        Show-ToolkitStatusPanel -StatusItems $toolsInfo
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'External Tools & Quick Launchers'." -Type 'INFO'
@@ -1120,7 +1328,8 @@ function Invoke-ToolkitSubmenuExternalTools {
             break
         }
         if ($sub.ToUpperInvariant() -eq 'Q') {
-            [System.Environment]::Exit(0)
+            $inSubmenu = $false
+            return
         }
 
         switch ($sub) {
@@ -1147,5 +1356,18 @@ function Invoke-ToolkitSubmenuExternalTools {
             }
         }
         Wait-UserAcknowledge
+    }
+}
+
+foreach ($subFn in @(
+    'Invoke-ToolkitSubmenuOutlook',
+    'Invoke-ToolkitSubmenuOffice',
+    'Invoke-ToolkitSubmenuPrinters',
+    'Invoke-ToolkitSubmenuBackup',
+    'Invoke-ToolkitSubmenuAccounts',
+    'Invoke-ToolkitSubmenuExternalTools'
+)) {
+    if (Get-Command -Name $subFn -CommandType Function -ErrorAction SilentlyContinue) {
+        Set-Item -Path "function:global:$subFn" -Value (Get-Command -Name $subFn).ScriptBlock
     }
 }

@@ -3,8 +3,9 @@ function Invoke-OutlookCompaction {
 .SYNOPSIS
     Launches Outlook profile manager or guidance for PST compaction.
 .DESCRIPTION
-    Resolves Outlook executable path reliably, launches profile management UI
-    (/manageprofiles), and displays clear step-by-step guidance for data file compaction.
+    Resolves Outlook executable path reliably across Office 16.0, 15.0, C2R, and MSI,
+    launches profile management UI (/manageprofiles), and displays clear step-by-step
+    guidance for data file compaction.
 .PARAMETER FilePath
     Optional path to the specific PST/OST file to compact.
 .OUTPUTS
@@ -24,18 +25,28 @@ function Invoke-OutlookCompaction {
             Write-ToolkitLog -Message "Launching Outlook profile management dialog for compaction..." -Level 'INFO' -Component 'Outlook:Compaction'
         }
 
-        # Locate OUTLOOK.EXE reliably
+        # Locate OUTLOOK.EXE reliably across modern and legacy installations
         $outlookExe = 'outlook.exe'
         $appPathKeys = @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE',
-            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE'
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE',
+            'HKLM:\SOFTWARE\Microsoft\Office\16.0\Outlook\InstallRoot',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Outlook\InstallRoot',
+            'HKLM:\SOFTWARE\Microsoft\Office\15.0\Outlook\InstallRoot',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Outlook\InstallRoot'
         )
         foreach ($k in $appPathKeys) {
             if (Test-Path -LiteralPath $k) {
-                $regVal = (Get-ItemProperty -LiteralPath $k -ErrorAction SilentlyContinue).'(default)'
-                if (-not [string]::IsNullOrWhiteSpace($regVal) -and (Test-Path -LiteralPath $regVal)) {
-                    $outlookExe = $regVal
-                    break
+                $prop = Get-ItemProperty -LiteralPath $k -ErrorAction SilentlyContinue
+                if ($null -ne $prop) {
+                    $candidate = $null
+                    if ($prop.PSObject.Properties['(default)']) { $candidate = [string]$prop.'(default)' }
+                    elseif ($prop.PSObject.Properties['Path']) { $candidate = Join-Path -Path ([string]$prop.Path) -ChildPath 'OUTLOOK.EXE' }
+
+                    if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate)) {
+                        $outlookExe = $candidate
+                        break
+                    }
                 }
             }
         }
@@ -45,7 +56,11 @@ function Invoke-OutlookCompaction {
                 'C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE',
                 'C:\Program Files (x86)\Microsoft Office\root\Office16\OUTLOOK.EXE',
                 'C:\Program Files\Microsoft Office\Office16\OUTLOOK.EXE',
-                'C:\Program Files (x86)\Microsoft Office\Office16\OUTLOOK.EXE'
+                'C:\Program Files (x86)\Microsoft Office\Office16\OUTLOOK.EXE',
+                'C:\Program Files\Microsoft Office\root\Office15\OUTLOOK.EXE',
+                'C:\Program Files (x86)\Microsoft Office\root\Office15\OUTLOOK.EXE',
+                'C:\Program Files\Microsoft Office\Office15\OUTLOOK.EXE',
+                'C:\Program Files (x86)\Microsoft Office\Office15\OUTLOOK.EXE'
             )
             foreach ($cp in $commonPaths) {
                 if (Test-Path -LiteralPath $cp) {

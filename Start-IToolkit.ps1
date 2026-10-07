@@ -36,6 +36,9 @@ param(
     [switch]$NonInteractive,
 
     [Parameter(Mandatory = $false)]
+    [switch]$ExitImmediately,
+
+    [Parameter(Mandatory = $false)]
     [string]$MenuOption,
 
     [Parameter(Mandatory = $false)]
@@ -142,6 +145,9 @@ if ((-not $SkipElevation) -and (-not $isAdmin)) {
         $argTokens.Add('-File')
         $argTokens.Add("`"$targetScript`"")
 
+        if ($ExitImmediately) {
+            $argTokens.Add('-ExitImmediately')
+        }
         if ($NonInteractive) {
             $argTokens.Add('-NonInteractive')
         }
@@ -188,24 +194,46 @@ if (Test-Path -LiteralPath $rootManifest) {
     Write-Warning "IToolkit root manifest not found at: $rootManifest"
 }
 
-# 4. Handle non-interactive execution
-if ($NonInteractive) {
-    Write-Host '[IToolkit] Initialized in non-interactive mode.' -ForegroundColor Green
-    if (-not [string]::IsNullOrEmpty($MenuOption)) {
-        Write-Host "[IToolkit] Executing option: $MenuOption" -ForegroundColor Cyan
-        if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
-            $menuCmd = Get-Command -Name 'Start-IToolkitMenu'
-            $menuParams = @{}
+# 4. Handle non-interactive execution or immediate exit
+if ($ExitImmediately) {
+    if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
+        $menuCmd = Get-Command -Name 'Start-IToolkitMenu'
+        $menuParams = @{}
+        if ($menuCmd.Parameters.ContainsKey('ExitImmediately')) {
+            $menuParams['ExitImmediately'] = $true
+        }
+        if (-not [string]::IsNullOrEmpty($MenuOption)) {
             if ($menuCmd.Parameters.ContainsKey('MenuOption')) {
                 $menuParams['MenuOption'] = $MenuOption
             } elseif ($menuCmd.Parameters.ContainsKey('Option')) {
                 $menuParams['Option'] = $MenuOption
             }
-            if ($menuCmd.Parameters.ContainsKey('NonInteractive')) {
-                $menuParams['NonInteractive'] = $true
-            }
-            Start-IToolkitMenu @menuParams
         }
+        if ($NonInteractive -and $menuCmd.Parameters.ContainsKey('NonInteractive')) {
+            $menuParams['NonInteractive'] = $true
+        }
+        Start-IToolkitMenu @menuParams
+    }
+    exit 0
+}
+
+if ($NonInteractive) {
+    Write-Host '[IToolkit] Initialized in non-interactive mode.' -ForegroundColor Green
+    if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
+        $menuCmd = Get-Command -Name 'Start-IToolkitMenu'
+        $menuParams = @{}
+        if (-not [string]::IsNullOrEmpty($MenuOption)) {
+            Write-Host "[IToolkit] Executing option: $MenuOption" -ForegroundColor Cyan
+            if ($menuCmd.Parameters.ContainsKey('MenuOption')) {
+                $menuParams['MenuOption'] = $MenuOption
+            } elseif ($menuCmd.Parameters.ContainsKey('Option')) {
+                $menuParams['Option'] = $MenuOption
+            }
+        }
+        if ($menuCmd.Parameters.ContainsKey('NonInteractive')) {
+            $menuParams['NonInteractive'] = $true
+        }
+        Start-IToolkitMenu @menuParams
     }
     exit 0
 }
@@ -213,13 +241,18 @@ if ($NonInteractive) {
 # 5. Launch interactive TUI menu
 if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
     $menuCmd = Get-Command -Name 'Start-IToolkitMenu'
-    if ((-not [string]::IsNullOrEmpty($MenuOption)) -and $menuCmd.Parameters.ContainsKey('MenuOption')) {
-        Start-IToolkitMenu -MenuOption $MenuOption
-    } elseif ((-not [string]::IsNullOrEmpty($MenuOption)) -and $menuCmd.Parameters.ContainsKey('Option')) {
-        Start-IToolkitMenu -Option $MenuOption
-    } else {
-        Start-IToolkitMenu
+    $menuParams = @{}
+    if ($ExitImmediately -and $menuCmd.Parameters.ContainsKey('ExitImmediately')) {
+        $menuParams['ExitImmediately'] = $true
     }
+    if (-not [string]::IsNullOrEmpty($MenuOption)) {
+        if ($menuCmd.Parameters.ContainsKey('MenuOption')) {
+            $menuParams['MenuOption'] = $MenuOption
+        } elseif ($menuCmd.Parameters.ContainsKey('Option')) {
+            $menuParams['Option'] = $MenuOption
+        }
+    }
+    Start-IToolkitMenu @menuParams
 } else {
     Write-Host '[IToolkit] Core modules loaded successfully.' -ForegroundColor Green
     Write-Host '[IToolkit] Ready for administration commands.' -ForegroundColor Cyan

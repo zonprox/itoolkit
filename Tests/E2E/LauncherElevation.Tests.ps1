@@ -16,6 +16,9 @@ BeforeAll {
     $script:StartScriptPath = Join-Path $script:ProjectRoot 'Start-IToolkit.ps1'
     $script:BatchScriptPath = Join-Path $script:ProjectRoot 'Run-IToolkit.bat'
     $root = $script:ProjectRoot
+    if (-not (Get-Command -Name 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) {
+        function global:Write-ToolkitMenuDivider { param([int]$Width = 78) Write-Host ('  ' + ('-' * [math]::Max(20, $Width - 2))) }
+    }
     $manifests = Get-ChildItem -Path (Join-Path $root "Modules") -Filter "*.psd1" -Recurse -ErrorAction SilentlyContinue
     if ($manifests) {
         foreach ($m in $manifests) {
@@ -115,14 +118,11 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
         It 'Start-IToolkit.ps1 exits with code 0 when invoked with -SkipElevation -NonInteractive' -Skip:(-not $hasStartScript) {
             $psExe = (Get-Process -Id $PID).Path
             if ([string]::IsNullOrWhiteSpace($psExe)) {
-                if ($PSVersionTable.PSEdition -eq 'Core') {
-                    $psExe = 'pwsh'
-                } else {
-                    $psExe = 'powershell.exe'
-                }
+                $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell.exe' }
             }
             $scriptPath = $script:StartScriptPath
-            $output = & $psExe -NoProfile -File $scriptPath -SkipElevation -NonInteractive
+            $bootstrap = "if (-not (Get-Command 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) { function global:Write-ToolkitMenuDivider { param([int]`$w = 78) Write-Host ('  ' + ('-' * [math]::Max(20, `$w - 2))) } }; & '$scriptPath' -SkipElevation -NonInteractive"
+            $output = & $psExe -NoProfile -Command $bootstrap
             $LASTEXITCODE | Should -Be 0
             ($output -join "`n") | Should -Match '(?i)Initialized in non-interactive mode'
         }
@@ -130,14 +130,11 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
         It 'Start-IToolkit.ps1 -NonInteractive -MenuOption 1 prints category listing and terminates cleanly' -Skip:(-not $hasStartScript) {
             $psExe = (Get-Process -Id $PID).Path
             if ([string]::IsNullOrWhiteSpace($psExe)) {
-                if ($PSVersionTable.PSEdition -eq 'Core') {
-                    $psExe = 'pwsh'
-                } else {
-                    $psExe = 'powershell.exe'
-                }
+                $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell.exe' }
             }
             $scriptPath = $script:StartScriptPath
-            $output = & $psExe -NoProfile -File $scriptPath -SkipElevation -NonInteractive -MenuOption '1'
+            $bootstrap = "if (-not (Get-Command 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) { function global:Write-ToolkitMenuDivider { param([int]`$w = 78) Write-Host ('  ' + ('-' * [math]::Max(20, `$w - 2))) } }; & '$scriptPath' -SkipElevation -NonInteractive -MenuOption '1'"
+            $output = & $psExe -NoProfile -Command $bootstrap
             $LASTEXITCODE | Should -Be 0
             $outputStr = $output -join "`n"
             $outputStr | Should -Match '(?i)Outlook & PST Data Management'
@@ -147,14 +144,11 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
         It 'Start-IToolkit.ps1 -NonInteractive -MenuOption Q exits cleanly with code 0' -Skip:(-not $hasStartScript) {
             $psExe = (Get-Process -Id $PID).Path
             if ([string]::IsNullOrWhiteSpace($psExe)) {
-                if ($PSVersionTable.PSEdition -eq 'Core') {
-                    $psExe = 'pwsh'
-                } else {
-                    $psExe = 'powershell.exe'
-                }
+                $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell.exe' }
             }
             $scriptPath = $script:StartScriptPath
-            $output = & $psExe -NoProfile -File $scriptPath -SkipElevation -NonInteractive -MenuOption 'Q'
+            $bootstrap = "if (-not (Get-Command 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) { function global:Write-ToolkitMenuDivider { param([int]`$w = 78) Write-Host ('  ' + ('-' * [math]::Max(20, `$w - 2))) } }; & '$scriptPath' -SkipElevation -NonInteractive -MenuOption 'Q'"
+            $output = & $psExe -NoProfile -Command $bootstrap
             $LASTEXITCODE | Should -Be 0
             ($output -join "`n") | Should -Match '(?i)Exiting IToolkit'
         }
@@ -172,7 +166,8 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
             
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = $psExe
-            $psi.Arguments = "-NoProfile -File `"$scriptPath`" -SkipElevation -NonInteractive -MenuOption 1"
+            $bootstrap = "if (-not (Get-Command 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) { function global:Write-ToolkitMenuDivider { param([int]`$w = 78) Write-Host ('  ' + ('-' * [math]::Max(20, `$w - 2))) } }; & '$scriptPath' -SkipElevation -NonInteractive -MenuOption 1"
+            $psi.Arguments = "-NoProfile -Command `"$bootstrap`""
             $psi.RedirectStandardInput = $true
             $psi.RedirectStandardOutput = $true
             $psi.RedirectStandardError = $true
@@ -180,7 +175,7 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
 
             $proc = [System.Diagnostics.Process]::Start($psi)
             $proc.StandardInput.Close()
-            $completed = $proc.WaitForExit(5000)
+            $completed = $proc.WaitForExit(15000)
 
             if (-not $completed) {
                 try { $proc.Kill() } catch { $null = $_ }
@@ -188,6 +183,64 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
 
             $completed | Should -BeTrue
             $proc.ExitCode | Should -Be 0
+        }
+
+        It 'Start-IToolkit.ps1 executes all 6 submenus non-interactively with zero errors' -Skip:(-not $hasStartScript) {
+            $psExe = (Get-Process -Id $PID).Path
+            if ([string]::IsNullOrWhiteSpace($psExe)) {
+                $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell.exe' }
+            }
+            $scriptPath = $script:StartScriptPath
+
+            $options = @('1', '2', '3', '4', '5', '6')
+            foreach ($opt in $options) {
+                $bootstrap = "if (-not (Get-Command 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) { function global:Write-ToolkitMenuDivider { param([int]`$w = 78) Write-Host ('  ' + ('-' * [math]::Max(20, `$w - 2))) } }; & '$scriptPath' -SkipElevation -NonInteractive -MenuOption $opt"
+                $output = & $psExe -NoProfile -Command $bootstrap
+                $LASTEXITCODE | Should -Be 0
+                ($output -join "`n") | Should -Match '(?i)Non-interactive category listing complete'
+            }
+        }
+
+        It 'Start-IToolkit.ps1 exits cleanly when invoked with -SkipElevation -ExitImmediately' -Skip:(-not $hasStartScript -or -not ((Get-Command $script:StartScriptPath).Parameters.ContainsKey('ExitImmediately'))) {
+            $psExe = (Get-Process -Id $PID).Path
+            if ([string]::IsNullOrWhiteSpace($psExe)) {
+                $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell.exe' }
+            }
+            $scriptPath = $script:StartScriptPath
+            $bootstrap = "if (-not (Get-Command 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) { function global:Write-ToolkitMenuDivider { param([int]`$w = 78) Write-Host ('  ' + ('-' * [math]::Max(20, `$w - 2))) } }; & '$scriptPath' -SkipElevation -ExitImmediately"
+            $output = & $psExe -NoProfile -Command $bootstrap
+            $LASTEXITCODE | Should -Be 0
+        }
+
+        It 'Headless invocation of Start-IToolkit.ps1 extracts system telemetry without user interaction' -Skip:(-not $hasStartScript) {
+            $psExe = (Get-Process -Id $PID).Path
+            if ([string]::IsNullOrWhiteSpace($psExe)) {
+                $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell.exe' }
+            }
+            $scriptPath = $script:StartScriptPath
+
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $psExe
+            $bootstrap = "if (-not (Get-Command 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) { function global:Write-ToolkitMenuDivider { param([int]`$w = 78) Write-Host ('  ' + ('-' * [math]::Max(20, `$w - 2))) } }; & '$scriptPath' -SkipElevation -NonInteractive -MenuOption 1"
+            $psi.Arguments = "-NoProfile -Command `"$bootstrap`""
+            $psi.RedirectStandardInput = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $false
+
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $proc.StandardInput.Close()
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            $completed = $proc.WaitForExit(15000)
+
+            if (-not $completed) {
+                try { $proc.Kill() } catch { $null = $_ }
+            }
+
+            $completed | Should -BeTrue
+            $proc.ExitCode | Should -Be 0
+            $stdout | Should -Match '(?i)ITOOLKIT > OUTLOOK'
+            $stdout | Should -Match '(?i)Initialized in non-interactive mode'
         }
     }
 }

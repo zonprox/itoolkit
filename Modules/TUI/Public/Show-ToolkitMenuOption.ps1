@@ -65,7 +65,7 @@ function Show-ToolkitMenuOption {
     # Optional category badge
     if (-not [string]::IsNullOrWhiteSpace($Category)) {
         Write-Host "$Category " -ForegroundColor Cyan -NoNewline
-        Write-Host "• " -ForegroundColor DarkGray -NoNewline
+        Write-Host "* " -ForegroundColor DarkGray -NoNewline
     }
 
     Write-Host "$Label" -ForegroundColor White -NoNewline
