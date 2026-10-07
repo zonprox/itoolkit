@@ -38,7 +38,6 @@ function Read-ToolkitMenuChoice {
     if (-not [string]::IsNullOrWhiteSpace($Default)) {
         $promptString = "$promptString (Default: $Default)"
     }
-    $promptString = $promptString + ': '
 
     # Safeguard loop: maximum 5 attempts to prevent hanging in headless sessions
     $maxAttempts = 5

@@ -14,6 +14,7 @@
 
     # Scripts to run in the caller's session state upon import
     ScriptsToProcess       = @(
+        'Public/Get-ToolkitLayoutWidth.ps1',
         'Public/Show-ToolkitHeader.ps1',
         'Public/Show-ToolkitMenuOption.ps1',
         'Public/Read-ToolkitMenuChoice.ps1',
@@ -23,6 +24,8 @@
 
     # Explicit Whitelist of Public Functions
     FunctionsToExport      = @(
+        'Get-ToolkitLayoutWidth',
+        'Write-ToolkitMenuDivider',
         'Show-ToolkitHeader',
         'Show-ToolkitMenuOption',
         'Read-ToolkitMenuChoice',

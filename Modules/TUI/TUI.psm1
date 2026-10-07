@@ -51,7 +51,7 @@ if (Test-Path -LiteralPath $publicPath) {
 # 3. Export public functions explicitly
 if ($exportedFunctions.Count -gt 0) {
     $allExports = @($exportedFunctions)
-    foreach ($extraFn in @('Get-ToolkitTelemetryData', 'Get-MainSystemInfoLines')) {
+    foreach ($extraFn in @('Get-ToolkitTelemetryData', 'Get-MainSystemInfoLines', 'Get-ToolkitLayoutWidth', 'Write-ToolkitMenuDivider')) {
         if ($allExports -notcontains $extraFn -and (Get-Command -Name $extraFn -CommandType Function -ErrorAction SilentlyContinue)) {
             $allExports += $extraFn
         }

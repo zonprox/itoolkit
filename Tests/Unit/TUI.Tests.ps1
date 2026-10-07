@@ -147,13 +147,15 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
     Context 'Deep Hardware & System Telemetry Collection & UI/UX' {
         It 'Get-MainSystemInfoLines returns formatted array containing all required telemetry sections' -Skip:(-not $isTUIAvailable) {
             $lines = Get-MainSystemInfoLines
-            $lines.Count | Should -BeGreaterOrEqual 6
+            $lines.Count | Should -BeGreaterOrEqual 8
             $lines[0] | Should -Match '^OS & Build\s*:'
             $lines[1] | Should -Match '^Hardware Model\s*:'
             $lines[2] | Should -Match '^Processor & RAM\s*:'
             $lines[3] | Should -Match '^Storage Space\s*:'
             $lines[4] | Should -Match '^Network Status\s*:'
             $lines[5] | Should -Match '^Security & Env\s*:'
+            $lines[6] | Should -Match '^User & Host\s*:'
+            $lines[7] | Should -Match '^User Profile\s*:'
         }
 
         It 'Get-ToolkitTelemetryData queries CPU marketing name from Registry' -Skip:(-not $isTUIAvailable) {
@@ -261,7 +263,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $data.StorageDisplay | Should -Match 'GB Free'
         }
 
-        It 'Read-ToolkitMenuChoice renders concise "Select: " prompt without dumping valid keys array' -Skip:(-not $isTUIAvailable) {
+        It 'Read-ToolkitMenuChoice renders concise "Select" prompt without trailing colon to avoid Read-Host duplicate colon' -Skip:(-not $isTUIAvailable) {
             $script:capturedPrompt = $null
             Mock Read-Host {
                 param($Prompt)
@@ -269,7 +271,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 return '1'
             }
             $null = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3')
-            $script:capturedPrompt | Should -Be '  Select: '
+            $script:capturedPrompt | Should -Be '  Select'
             $script:capturedPrompt | Should -Not -Match '\[1,2,3\]'
         }
 
@@ -322,18 +324,22 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 return '1'
             }
             $null = Read-ToolkitMenuChoice -Prompt 'Select Category [1,2,3,4,5,6,R,Q,X]' -ValidKeys @('1', '2', '3')
-            $script:capturedPrompt | Should -Be '  Select: '
+            $script:capturedPrompt | Should -Be '  Select'
             $script:capturedPrompt | Should -Not -Match '\[1,2,3,4,5,6,R,Q,X\]'
         }
 
-        It 'IToolkit root manifest and TUI module export Get-ToolkitTelemetryData and Get-MainSystemInfoLines' -Skip:(-not $isTUIAvailable) {
+        It 'IToolkit root manifest and TUI module export telemetry and layout width cmdlets' -Skip:(-not $isTUIAvailable) {
             $tuiPsd1 = Import-PowerShellDataFile -Path $script:TUIManifest
             $tuiPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitTelemetryData'
             $tuiPsd1.FunctionsToExport | Should -Contain 'Get-MainSystemInfoLines'
+            $tuiPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitLayoutWidth'
+            $tuiPsd1.FunctionsToExport | Should -Contain 'Write-ToolkitMenuDivider'
 
             $itoolkitPsd1 = Import-PowerShellDataFile -Path (Join-Path $script:ProjectRoot 'IToolkit.psd1')
             $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitTelemetryData'
             $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-MainSystemInfoLines'
+            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitLayoutWidth'
+            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Write-ToolkitMenuDivider'
         }
 
         It 'Get-ToolkitTelemetryData sanitizes OEM dummy BIOS strings without trailing dot and falls back to BaseBoard' -Skip:(-not $isTUIAvailable) {
@@ -442,7 +448,39 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 return '1'
             }
             $null = Read-ToolkitMenuChoice -Prompt 'Select Category or Submenu [1..10]' -ValidKeys @('1', '2')
-            $script:capturedPrompt | Should -Be '  Select: '
+            $script:capturedPrompt | Should -Be '  Select'
+        }
+
+        It 'Read-ToolkitMenuChoice formats Default selection in prompt without duplicate colon' -Skip:(-not $isTUIAvailable) {
+            $script:capturedPrompt = $null
+            Mock Read-Host {
+                param($Prompt)
+                $script:capturedPrompt = $Prompt
+                return '1'
+            }
+            $null = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2') -Default '1'
+            $script:capturedPrompt | Should -Be '  Select (Default: 1)'
+        }
+
+        It 'Show-ToolkitHeader wraps multi-part lines without trimming real data' -Skip:(-not $isTUIAvailable) {
+            $longInfo = @("Processor & RAM: AMD Ryzen 7 7800X3D 8-Core Processor (16 Cores) | RAM: 31.1 GB (18.4 GB Free)")
+            { Show-ToolkitHeader -Title 'Test' -Width 78 -InfoLines $longInfo } | Should -Not -Throw
+        }
+
+        It 'Get-ToolkitLayoutWidth returns safe width bounded by Min and Max' -Skip:(-not $isTUIAvailable) {
+            $w = Get-ToolkitLayoutWidth -Default 100 -Min 60 -Max 120
+            $w | Should -BeGreaterOrEqual 60
+            $w | Should -BeLessOrEqual 120
+        }
+
+        It 'Write-ToolkitMenuDivider renders without error' -Skip:(-not $isTUIAvailable) {
+            { Write-ToolkitMenuDivider -Width 80 } | Should -Not -Throw
+            { Write-ToolkitMenuDivider } | Should -Not -Throw
+        }
+
+        It 'Show-ToolkitHeader and Show-ToolkitMenuOption auto-fit window width when Width is not specified' -Skip:(-not $isTUIAvailable) {
+            { Show-ToolkitHeader -Title 'Auto Fit Test' } | Should -Not -Throw
+            { Show-ToolkitMenuOption -Key '1' -Label 'Option with status' -Status 'OK' } | Should -Not -Throw
         }
     }
 }

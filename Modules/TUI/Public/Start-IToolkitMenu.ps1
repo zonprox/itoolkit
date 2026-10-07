@@ -1,3 +1,10 @@
+if (-not (Get-Command -Name 'Get-ToolkitLayoutWidth' -ErrorAction SilentlyContinue)) {
+    $widthScript = Join-Path $PSScriptRoot 'Get-ToolkitLayoutWidth.ps1'
+    if (Test-Path $widthScript) {
+        . $widthScript
+    }
+}
+
 if (-not (Get-Command -Name 'Get-ToolkitTelemetryData' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path $headerScript) {
@@ -49,11 +56,70 @@ function Get-MainSystemInfoLines {
     $psVer = $PSVersionTable.PSVersion.ToString()
     $lines.Add("Security & Env : $adminStr | PowerShell $psVer")
 
+    # 7. User & Host
+    $hostName = $env:COMPUTERNAME
+    if ([string]::IsNullOrWhiteSpace($hostName)) {
+        $hostName = [System.Environment]::MachineName
+    }
+    $userName = $env:USERNAME
+    if ([string]::IsNullOrWhiteSpace($userName)) {
+        $userName = [System.Environment]::UserName
+    }
+    $userDomain = $env:USERDOMAIN
+    $fullUser = $userName
+    if (-not [string]::IsNullOrWhiteSpace($userDomain) -and $userDomain -ne $hostName) {
+        $fullUser = "$userDomain\$userName"
+    }
+    $lines.Add("User & Host    : $fullUser | Host: $hostName")
+
+    # 8. User Profile
+    $profPath = $env:USERPROFILE
+    if ([string]::IsNullOrWhiteSpace($profPath)) {
+        $profPath = [System.Environment]::GetFolderPath('UserProfile')
+    }
+    if ([string]::IsNullOrWhiteSpace($profPath)) {
+        $profPath = $env:HOME
+    }
+    $profName = ''
+    if (-not [string]::IsNullOrWhiteSpace($profPath)) {
+        try {
+            $profName = Split-Path -Path $profPath -Leaf
+        }
+        catch {
+            $profName = ''
+        }
+    }
+    $profDisplay = $profPath
+    if (-not [string]::IsNullOrWhiteSpace($profName) -and $profName -ne $userName -and -not [string]::IsNullOrWhiteSpace($profPath)) {
+        $profDisplay = "$profName ($profPath)"
+    }
+    if ([string]::IsNullOrWhiteSpace($profDisplay)) {
+        $profDisplay = 'Default Profile'
+    }
+    $lines.Add("User Profile   : $profDisplay")
+
     return $lines.ToArray()
 }
 
 if (Get-Command -Name 'Get-MainSystemInfoLines' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Get-MainSystemInfoLines' -Value (Get-Command -Name 'Get-MainSystemInfoLines').ScriptBlock
+}
+
+function Write-ToolkitMenuDivider {
+    param([int]$Width = 0)
+    if ($Width -le 0) {
+        if (Get-Command -Name 'Get-ToolkitLayoutWidth' -ErrorAction SilentlyContinue) {
+            $Width = Get-ToolkitLayoutWidth
+        }
+        else {
+            $Width = 78
+        }
+    }
+    Write-Host ("  " + ('-' * [math]::Max(20, $Width - 2))) -ForegroundColor DarkGray
+}
+
+if (Get-Command -Name 'Write-ToolkitMenuDivider' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Write-ToolkitMenuDivider' -Value (Get-Command -Name 'Write-ToolkitMenuDivider').ScriptBlock
 }
 
 function Start-IToolkitMenu {
@@ -411,7 +477,7 @@ function Start-IToolkitMenu {
         }
 
         Write-Host ""
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Write-Host "  Press [Enter] to return to menu..." -ForegroundColor Cyan
         try {
             $ack = Read-Host
@@ -478,7 +544,7 @@ function Start-IToolkitMenu {
         Show-ToolkitMenuOption -Key '4' -Label 'User Profile Data Backup & Migration'
         Show-ToolkitMenuOption -Key '5' -Label 'User & Domain Account Administration'
         Show-ToolkitMenuOption -Key '6' -Label 'External Tools & Quick Launchers (Win11Debloat, WinUtil)'
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Show-ToolkitMenuOption -Key 'R' -Label 'Refresh Screen'
         Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
@@ -539,7 +605,7 @@ function Invoke-ToolkitSubmenuOutlook {
         Show-ToolkitMenuOption -Key '5' -Label 'Launch Outlook Compaction Guidance'
         Show-ToolkitMenuOption -Key '6' -Label 'Backup Outlook PST Data File'
         Show-ToolkitMenuOption -Key '7' -Label 'Restore Outlook PST Data File'
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
         Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
@@ -636,7 +702,7 @@ function Invoke-ToolkitSubmenuOffice {
         Show-ToolkitMenuOption -Key '7' -Label 'Inspect Excel GDI Handle Usage (Leak Audit)'
         Show-ToolkitMenuOption -Key '8' -Label 'Stop Leaking Excel Processes'
         Show-ToolkitMenuOption -Key '9' -Label 'Launch Office ClickToRun Repair [Quick / Online]'
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
         Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
@@ -729,7 +795,7 @@ function Invoke-ToolkitSubmenuPrinters {
         Show-ToolkitMenuOption -Key '6' -Label 'Apply Point & Print Strict Administrator Remediation'
         Show-ToolkitMenuOption -Key '7' -Label 'Test Network Printer Connectivity (SMB/RPC/9100)'
         Show-ToolkitMenuOption -Key '8' -Label 'Refresh Active User Printer Connections'
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
         Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
@@ -815,7 +881,7 @@ function Invoke-ToolkitSubmenuBackup {
         Show-ToolkitMenuOption -Key '5' -Label 'Generate SHA-256 Backup Integrity Manifest'
         Show-ToolkitMenuOption -Key '6' -Label 'Validate Backup Integrity Manifest'
         Show-ToolkitMenuOption -Key '7' -Label 'Restore User Profile Data from Backup'
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
         Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
@@ -915,7 +981,7 @@ function Invoke-ToolkitSubmenuAccounts {
         Show-ToolkitMenuOption -Key '8' -Label 'Reset Built-in Administrator Password'
         Show-ToolkitMenuOption -Key '9' -Label 'Test Domain Reachability (DNS SRV & Ports)'
         Show-ToolkitMenuOption -Key '10' -Label 'Safe Domain Disjoin (with Lockout Defense)'
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
         Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""
@@ -1038,7 +1104,7 @@ function Invoke-ToolkitSubmenuExternalTools {
         Show-ToolkitMenuOption -Key '1' -Label 'Launch Windows 11 / 10 Debloat (Win11Debloat)'
         Show-ToolkitMenuOption -Key '2' -Label 'Launch Chris Titus Tech Windows Utility (WinUtil)'
         Show-ToolkitMenuOption -Key '3' -Label 'Test Pre-Flight Internet Reachability'
-        Write-Host "  ----------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ToolkitMenuDivider
         Show-ToolkitMenuOption -Key 'B' -Label 'Back to Main Menu'
         Show-ToolkitMenuOption -Key 'Q' -Label 'Exit Console'
         Write-Host ""

@@ -107,6 +107,8 @@
         'Invoke-ChrisTitusWinUtil',
 
         # Interactive Console TUI Menu Services
+        'Get-ToolkitLayoutWidth',
+        'Write-ToolkitMenuDivider',
         'Show-ToolkitHeader',
         'Show-ToolkitMenuOption',
         'Read-ToolkitMenuChoice',

@@ -1,3 +1,10 @@
+if (-not (Get-Command -Name 'Get-ToolkitLayoutWidth' -ErrorAction SilentlyContinue)) {
+    $widthScript = Join-Path $PSScriptRoot 'Get-ToolkitLayoutWidth.ps1'
+    if (Test-Path $widthScript) {
+        . $widthScript
+    }
+}
+
 function Show-ToolkitMenuOption {
 <#
 .SYNOPSIS
@@ -12,7 +19,7 @@ function Show-ToolkitMenuOption {
 .PARAMETER Status
     Optional status indicator ('OK', 'WARN', 'FAIL', or custom string).
 .PARAMETER Width
-    Total width of the menu display for status alignment. Default is 78.
+    Total width of the menu display for status alignment. Default is 0 (auto-fit to window).
 .PARAMETER Category
     Optional category tag shown before the label.
 .EXAMPLE
@@ -30,12 +37,21 @@ function Show-ToolkitMenuOption {
         [string]$Status,
 
         [Parameter(Mandatory = $false)]
-        [ValidateRange(40, 120)]
-        [int]$Width = 78,
+        [ValidateRange(0, 300)]
+        [int]$Width = 0,
 
         [Parameter(Mandatory = $false)]
         [string]$Category
     )
+
+    if ($Width -le 0) {
+        if (Get-Command -Name 'Get-ToolkitLayoutWidth' -ErrorAction SilentlyContinue) {
+            $Width = Get-ToolkitLayoutWidth
+        }
+        else {
+            $Width = 78
+        }
+    }
 
     # Render key bracket with aligned spacing
     $keyDisplay = "  [$Key]"

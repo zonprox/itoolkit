@@ -551,6 +551,13 @@ if (Get-Command -Name 'Get-ToolkitTelemetryData' -CommandType Function -ErrorAct
     Set-Item -Path 'function:global:Get-ToolkitTelemetryData' -Value (Get-Command -Name 'Get-ToolkitTelemetryData').ScriptBlock
 }
 
+if (-not (Get-Command -Name 'Get-ToolkitLayoutWidth' -ErrorAction SilentlyContinue)) {
+    $widthScript = Join-Path $PSScriptRoot 'Get-ToolkitLayoutWidth.ps1'
+    if (Test-Path $widthScript) {
+        . $widthScript
+    }
+}
+
 function Show-ToolkitHeader {
 <#
 .SYNOPSIS
@@ -563,7 +570,7 @@ function Show-ToolkitHeader {
 .PARAMETER Subtitle
     Optional subtitle or status description.
 .PARAMETER Width
-    Width of the banner in characters. Default is 78.
+    Width of the banner in characters. Default is 0 (auto-fit to window).
 .PARAMETER ClearScreen
     Switch to clear host screen before drawing the banner.
 .PARAMETER NoSystemInfo
@@ -582,8 +589,8 @@ function Show-ToolkitHeader {
         [string]$Subtitle,
 
         [Parameter(Mandatory = $false)]
-        [ValidateRange(40, 120)]
-        [int]$Width = 78,
+        [ValidateRange(0, 300)]
+        [int]$Width = 0,
 
         [Parameter(Mandatory = $false)]
         [switch]$ClearScreen,
@@ -594,6 +601,15 @@ function Show-ToolkitHeader {
         [Parameter(Mandatory = $false)]
         [string[]]$InfoLines
     )
+
+    if ($Width -le 0) {
+        if (Get-Command -Name 'Get-ToolkitLayoutWidth' -ErrorAction SilentlyContinue) {
+            $Width = Get-ToolkitLayoutWidth
+        }
+        else {
+            $Width = 78
+        }
+    }
 
     if ($ClearScreen) {
         try {
@@ -623,24 +639,127 @@ function Show-ToolkitHeader {
             $colonIdx = $line.IndexOf(':')
             if ($colonIdx -gt 0) {
                 $keyPart = $line.Substring(0, $colonIdx + 1)
-                $valPart = $line.Substring($colonIdx + 1)
+                $valPart = $line.Substring($colonIdx + 1).Trim()
 
-                # Ensure line width does not exceed $Width to prevent wrapping
-                $maxValLen = $Width - 2 - $keyPart.Length
-                if ($maxValLen -gt 3 -and $valPart.Length -gt $maxValLen) {
-                    $valPart = $valPart.Substring(0, $maxValLen - 3) + '...'
-                }
+                $maxValLen = $Width - 2 - $keyPart.Length - 1
+                $indent = ' ' * $keyPart.Length
 
-                Write-Host "  $keyPart" -ForegroundColor DarkCyan -NoNewline
+                if ($valPart.Length -le $maxValLen) {
+                    Write-Host "  $keyPart " -ForegroundColor DarkCyan -NoNewline
 
-                $valColor = [System.ConsoleColor]::White
-                if ($valPart -match '(?i)\[Elevated|\[YES\]|\[Safe|Clean|Online|Running|Expanded') {
-                    $valColor = [System.ConsoleColor]::Green
+                    $valColor = [System.ConsoleColor]::White
+                    if ($valPart -match '(?i)\[Elevated|\[YES\]|\[Safe|Clean|Online|Running|Expanded') {
+                        $valColor = [System.ConsoleColor]::Green
+                    }
+                    elseif ($valPart -match '(?i)\[Non-Elevated|\[NO\]|\[Default|Stopped|Stuck|Offline|Low') {
+                        $valColor = [System.ConsoleColor]::Yellow
+                    }
+                    Write-Host "$valPart" -ForegroundColor $valColor
                 }
-                elseif ($valPart -match '(?i)\[Non-Elevated|\[NO\]|\[Default|Stopped|Stuck|Offline|Low') {
-                    $valColor = [System.ConsoleColor]::Yellow
+                else {
+                    # Smart wrapping: prioritize splitting on ' | ', then on whitespace
+                    $chunks = [System.Collections.Generic.List[string]]::new()
+                    if ($valPart -match ' \| ') {
+                        $segments = $valPart -split '\s*\|\s*'
+                        $current = ''
+                        foreach ($seg in $segments) {
+                            if ($seg.Length -gt $maxValLen) {
+                                if (-not [string]::IsNullOrEmpty($current)) {
+                                    $chunks.Add($current)
+                                    $current = ''
+                                }
+                                $words = $seg -split '\s+'
+                                $subCur = ''
+                                foreach ($w in $words) {
+                                    if ($w.Length -gt $maxValLen) {
+                                        if (-not [string]::IsNullOrEmpty($subCur)) {
+                                            $chunks.Add($subCur)
+                                            $subCur = ''
+                                        }
+                                        $chunks.Add($w.Substring(0, [math]::Max(0, $maxValLen - 3)) + '...')
+                                        continue
+                                    }
+                                    if ([string]::IsNullOrEmpty($subCur)) {
+                                        $subCur = $w
+                                    }
+                                    elseif (($subCur.Length + 1 + $w.Length) -le $maxValLen) {
+                                        $subCur = "$subCur $w"
+                                    }
+                                    else {
+                                        $chunks.Add($subCur)
+                                        $subCur = $w
+                                    }
+                                }
+                                if (-not [string]::IsNullOrEmpty($subCur)) {
+                                    $chunks.Add($subCur)
+                                }
+                                continue
+                            }
+
+                            if ([string]::IsNullOrEmpty($current)) {
+                                $current = $seg
+                            }
+                            elseif (($current.Length + 3 + $seg.Length) -le $maxValLen) {
+                                $current = "$current | $seg"
+                            }
+                            else {
+                                $chunks.Add($current)
+                                $current = $seg
+                            }
+                        }
+                        if (-not [string]::IsNullOrEmpty($current)) {
+                            $chunks.Add($current)
+                        }
+                    }
+                    else {
+                        $words = $valPart -split '\s+'
+                        $current = ''
+                        foreach ($w in $words) {
+                            if ($w.Length -gt $maxValLen) {
+                                if (-not [string]::IsNullOrEmpty($current)) {
+                                    $chunks.Add($current)
+                                    $current = ''
+                                }
+                                $chunks.Add($w.Substring(0, [math]::Max(0, $maxValLen - 3)) + '...')
+                                continue
+                            }
+
+                            if ([string]::IsNullOrEmpty($current)) {
+                                $current = $w
+                            }
+                            elseif (($current.Length + 1 + $w.Length) -le $maxValLen) {
+                                $current = "$current $w"
+                            }
+                            else {
+                                $chunks.Add($current)
+                                $current = $w
+                            }
+                        }
+                        if (-not [string]::IsNullOrEmpty($current)) {
+                            $chunks.Add($current)
+                        }
+                    }
+
+                    for ($cIdx = 0; $cIdx -lt $chunks.Count; $cIdx++) {
+                        $chunk = $chunks[$cIdx]
+                        $chunkColor = [System.ConsoleColor]::White
+                        if ($chunk -match '(?i)\[Elevated|\[YES\]|\[Safe|Clean|Online|Running|Expanded') {
+                            $chunkColor = [System.ConsoleColor]::Green
+                        }
+                        elseif ($chunk -match '(?i)\[Non-Elevated|\[NO\]|\[Default|Stopped|Stuck|Offline|Low') {
+                            $chunkColor = [System.ConsoleColor]::Yellow
+                        }
+
+                        if ($cIdx -eq 0) {
+                            Write-Host "  $keyPart " -ForegroundColor DarkCyan -NoNewline
+                            Write-Host "$chunk" -ForegroundColor $chunkColor
+                        }
+                        else {
+                            Write-Host "  $indent " -NoNewline
+                            Write-Host "$chunk" -ForegroundColor $chunkColor
+                        }
+                    }
                 }
-                Write-Host "$valPart" -ForegroundColor $valColor
             }
             else {
                 $trimmedLine = $line
