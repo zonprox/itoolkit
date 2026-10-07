@@ -2,7 +2,7 @@
 # ==============================================================================
 # package-and-upload.sh
 # Release packaging and multi-provider public upload helper for IToolkit.
-# Creates clean standalone IToolkit.zip and uploads to public host (onlyfiles.com / storage.to / uguu.se).
+# Creates clean standalone IToolkit.zip and uploads to public host (onlyfiles.com / storage.to).
 # ==============================================================================
 set -euo pipefail
 
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
                 PROVIDER="$2"
                 shift 2
             else
-                echo "[Error] --provider requires an argument (auto, parallel, onlyfiles, storage.to, or uguu)." >&2
+                echo "[Error] --provider requires an argument (auto, parallel, onlyfiles, or storage.to)." >&2
                 exit 1
             fi
             ;;
@@ -38,7 +38,7 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "Options:"
             echo "  --skip-upload       Create archive locally without uploading"
-            echo "  --provider=NAME     Target provider (auto, parallel, onlyfiles, storage.to, uguu)"
+            echo "  --provider=NAME     Target provider (auto, parallel, onlyfiles, storage.to)"
             echo "  -h, --help          Show this help message"
             echo ""
             echo "Positional Arguments (optional):"
@@ -169,15 +169,6 @@ else
         fi
     }
 
-    upload_uguu() {
-        local target="$1"
-        local resp
-        resp="$(curl -s -F "files[]=@$target" https://uguu.se/upload.php 2>/dev/null || true)"
-        if [ -n "$resp" ]; then
-            echo "$resp" | grep -o 'https://[^"]*' | head -n 1 || true
-        fi
-    }
-
     upload_storage_to() {
         local target="$1"
         local fname
@@ -226,13 +217,11 @@ else
     if [ "$PROVIDER" = "onlyfiles" ]; then
         ONLYFILES_URL="$(upload_onlyfiles "$ZIP_PATH")"
         UPLOAD_URL="$ONLYFILES_URL"
-    elif [ "$PROVIDER" = "uguu" ]; then
-        UPLOAD_URL="$(upload_uguu "$ZIP_PATH")"
-    elif [ "$PROVIDER" = "storage.to" ] || [ "$PROVIDER" = "storageto" ] || [ "$PROVIDER" = "catbox" ]; then
+    elif [ "$PROVIDER" = "storage.to" ] || [ "$PROVIDER" = "storageto" ]; then
         STORAGE_TO_URL="$(upload_storage_to "$ZIP_PATH")"
         UPLOAD_URL="$STORAGE_TO_URL"
     else
-        # auto or parallel mode: run onlyfiles and catbox in parallel
+        # auto or parallel mode: run onlyfiles and storage.to in parallel
         echo "  Attempting parallel upload (onlyfiles.com + storage.to)..."
         TMP_ONLY="$(mktemp)"
         TMP_STORAGE="$(mktemp)"
@@ -247,10 +236,6 @@ else
         rm -f "$TMP_ONLY" "$TMP_STORAGE"
 
         UPLOAD_URL="${ONLYFILES_URL:-$STORAGE_TO_URL}"
-        if [ -z "$UPLOAD_URL" ]; then
-            echo "  Parallel providers failed. Falling back to tertiary provider (uguu.se)..."
-            UPLOAD_URL="$(upload_uguu "$ZIP_PATH")"
-        fi
     fi
 fi
 

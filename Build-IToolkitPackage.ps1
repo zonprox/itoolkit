@@ -9,7 +9,7 @@
     and all production modules under Modules/) into an isolated temporary directory,
     validates that zero dev/test artifacts (.git, .agents, Tests, Logs, Backups, dev configs)
     are included, packages the contents into IToolkit.zip, computes SHA-256 checksums,
-    and optionally uploads to public hosting services (onlyfiles.com / storage.to / uguu.se).
+    and optionally uploads to public hosting services (onlyfiles.com / storage.to).
 
 .PARAMETER DestinationPath
     Destination file path for the output archive.
@@ -23,8 +23,8 @@
     If specified, disables upload even if -Upload was also passed.
 
 .PARAMETER Provider
-    Public upload provider to use. Valid choices: 'auto', 'parallel', 'onlyfiles', 'storage.to', 'storageto', 'uguu'.
-    Defaults to 'auto' (uploads to onlyfiles.com and storage.to in parallel with fallback to uguu.se).
+    Public upload provider to use. Valid choices: 'auto', 'parallel', 'onlyfiles', 'storage.to', 'storageto'.
+    Defaults to 'auto' (uploads to onlyfiles.com and storage.to in parallel).
 
 .PARAMETER Force
     Forces overwriting of any existing archive file at DestinationPath.
@@ -44,7 +44,7 @@ param(
     [switch]$SkipUpload,
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet('auto', 'parallel', 'onlyfiles', 'storage.to', 'storageto', 'catbox', 'uguu')]
+    [ValidateSet('auto', 'parallel', 'onlyfiles', 'storage.to', 'storageto')]
     [string]$Provider = 'auto',
 
     [Parameter(Mandatory = $false)]
@@ -290,52 +290,6 @@ try {
             return $null
         }
 
-        # Helper function for Uguu.se upload
-        $tryUguu = {
-            param([string]$FilePath)
-            try {
-                $curl = Get-Command -Name 'curl.exe' -ErrorAction SilentlyContinue
-                if ($null -eq $curl) {
-                    $curl = Get-Command -Name 'curl' -ErrorAction SilentlyContinue
-                }
-                if ($null -ne $curl) {
-                    $raw = & $curl.Source -s -F "files[]=@$FilePath" "https://uguu.se/upload.php"
-                    if ($raw) {
-                        $rawStr = ($raw -join "`n")
-                        $json = ConvertFrom-Json -InputObject $rawStr -ErrorAction SilentlyContinue
-                        if ($null -ne $json -and $json.success -and $json.files.Count -gt 0) {
-                            return [string]$json.files[0].url
-                        }
-                    }
-                }
-
-                # Fallback to System.Net.Http.HttpClient
-                Add-Type -AssemblyName 'System.Net.Http' -ErrorAction SilentlyContinue
-                $client = [System.Net.Http.HttpClient]::new()
-                try {
-                    $content = [System.Net.Http.MultipartFormDataContent]::new()
-                    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
-                    $byteContent = [System.Net.Http.ByteArrayContent]::new($bytes)
-                    $byteContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/zip')
-                    $content.Add($byteContent, 'files[]', [System.IO.Path]::GetFileName($FilePath))
-                    $response = $client.PostAsync('https://uguu.se/upload.php', $content).GetAwaiter().GetResult()
-                    if ($response.IsSuccessStatusCode) {
-                        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-                        $json = ConvertFrom-Json -InputObject $body -ErrorAction SilentlyContinue
-                        if ($null -ne $json -and $json.success -and $json.files.Count -gt 0) {
-                            return [string]$json.files[0].url
-                        }
-                    }
-                } finally {
-                    $client.Dispose()
-                }
-            } catch {
-                $null = $_
-                Write-Verbose "Uguu upload failed: $($_.Exception.Message)"
-            }
-            return $null
-        }
-
         # Helper function for Storage.to upload (https://storage.to/api/)
         $tryStorageTo = {
             param([string]$FilePath)
@@ -503,13 +457,11 @@ try {
         if ($Provider -eq 'onlyfiles') {
             $onlyFilesUrl = & $tryOnlyFiles -FilePath $zipPath
             $downloadUrl = $onlyFilesUrl
-        } elseif ($Provider -eq 'storage.to' -or $Provider -eq 'storageto' -or $Provider -eq 'catbox') {
+        } elseif ($Provider -eq 'storage.to' -or $Provider -eq 'storageto') {
             $storageToUrl = & $tryStorageTo -FilePath $zipPath
             $downloadUrl = $storageToUrl
-        } elseif ($Provider -eq 'uguu') {
-            $downloadUrl = & $tryUguu -FilePath $zipPath
         } else {
-            # 'auto' or 'parallel' mode: Upload to OnlyFiles and Catbox in parallel
+            # 'auto' or 'parallel' mode: Upload to OnlyFiles and Storage.to in parallel
             Write-Host "  Attempting parallel upload (onlyfiles.com + storage.to)..." -ForegroundColor Cyan
             $parallelResult = & $tryParallelUpload -FilePath $zipPath
             $onlyFilesUrl = $parallelResult.OnlyFiles
@@ -519,9 +471,6 @@ try {
                 $downloadUrl = $onlyFilesUrl
             } elseif (-not [string]::IsNullOrEmpty($storageToUrl)) {
                 $downloadUrl = $storageToUrl
-            } else {
-                Write-Host "  Parallel providers failed. Falling back to tertiary provider (uguu.se)..." -ForegroundColor Yellow
-                $downloadUrl = & $tryUguu -FilePath $zipPath
             }
         }
 
@@ -568,7 +517,6 @@ try {
         DownloadUrl  = $downloadUrl
         OnlyFilesUrl = $onlyFilesUrl
         StorageToUrl = $storageToUrl
-        CatboxUrl    = $storageToUrl
         Success      = $true
     }
 } finally {
