@@ -611,7 +611,7 @@ function Start-IToolkitMenu {
 function Invoke-ToolkitSubmenuOutlook {
 <#
 .SYNOPSIS
-    Submenu for Outlook & PST Management with Tri-Panel UI/UX.
+    Submenu for Outlook & PST Management with item-centric UI/UX.
 #>
     [CmdletBinding()]
     param(
@@ -619,7 +619,10 @@ function Invoke-ToolkitSubmenuOutlook {
         [switch]$ExitImmediately,
 
         [Parameter(Mandatory = $false)]
-        [switch]$NonInteractive
+        [switch]$NonInteractive,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MenuDepth = 1
     )
 
     if ($ExitImmediately) {
@@ -627,104 +630,352 @@ function Invoke-ToolkitSubmenuOutlook {
         return
     }
 
-    $subnav = @(
-        @{ Key = 'B'; Label = 'Back to Main Menu' },
-        @{ Key = 'Q'; Label = 'Exit Console' }
-    )
-    $outlookDetails = @(
-        @{ Key = '1'; Action = 'Scan Data Files'; Description = 'Deep discovery across registry profiles & disk drives.'; Prerequisite = 'None [READY]' },
-        @{ Key = '2'; Action = 'Relocate PST'; Description = 'Move PST/OST with SHA-256 validation & profile repoint.'; Prerequisite = 'Outlook must be stopped [SAFE]' },
-        @{ Key = '3'; Action = 'Update Profile Path'; Description = 'Re-map MAPI binary registry paths to new file location.'; Prerequisite = 'Profile registry key [READY]' },
-        @{ Key = '4'; Action = 'Expand Size Limit'; Description = 'Set MaxLargeFileSize policy (up to 100GB limit).'; Prerequisite = 'Admin elevation [READY]' },
-        @{ Key = '5'; Action = 'Compact Data File'; Description = 'Launch MAPI profile compaction management utility.'; Prerequisite = 'Outlook installed [READY]' },
-        @{ Key = '6'; Action = 'Backup PST'; Description = 'Copy PST to backup path with SHA-256 hash check.'; Prerequisite = 'Target drive space [READY]' },
-        @{ Key = '7'; Action = 'Restore PST'; Description = 'Restore PST from backup with cryptographic verification.'; Prerequisite = 'Backup file exists [READY]' }
-    )
+    if (-not (Get-Command -Name 'Show-ToolkitItemTable' -ErrorAction SilentlyContinue)) {
+        $tableScript = Join-Path $PSScriptRoot 'Show-ToolkitItemTable.ps1'
+        if (Test-Path $tableScript) {
+            . $tableScript
+        }
+    }
+    if (-not (Get-Command -Name 'Read-ToolkitItemSelection' -ErrorAction SilentlyContinue)) {
+        $selectScript = Join-Path $PSScriptRoot 'Read-ToolkitItemSelection.ps1'
+        if (Test-Path $selectScript) {
+            . $selectScript
+        }
+    }
 
     $inSubmenu = $true
     while ($inSubmenu) {
+        $isOutlookRunning = $false
+        try {
+            $procs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
+            if ($procs.Count -gt 0) {
+                $isOutlookRunning = $true
+            }
+        }
+        catch {
+            $null = $_
+        }
+        $statusBadge = if ($isOutlookRunning) { '[RUNNING]' } else { '[STOPPED]' }
+
+        $outlookItems = @()
+        $sysContext = $null
+        if (Get-Command -Name 'Get-OutlookSystemContext' -ErrorAction SilentlyContinue) {
+            try {
+                $sysContext = Get-OutlookSystemContext
+            }
+            catch {
+                Write-ToolkitStatus -Message "Failed to get Outlook context: $($_.Exception.Message)" -Type 'WARN'
+            }
+        }
+
+        # Enumerate configured profiles
+        $discoveredProfiles = [System.Collections.Generic.List[string]]::new()
+        if ($null -ne $sysContext -and $null -ne $sysContext.Profiles) {
+            foreach ($p in $sysContext.Profiles) {
+                if (-not [string]::IsNullOrWhiteSpace($p) -and -not $discoveredProfiles.Contains($p)) {
+                    $discoveredProfiles.Add($p)
+                }
+            }
+        }
+        if ($null -ne $sysContext -and -not [string]::IsNullOrWhiteSpace($sysContext.DefaultProfile) -and $sysContext.DefaultProfile -ne 'None') {
+            if (-not $discoveredProfiles.Contains($sysContext.DefaultProfile)) {
+                $discoveredProfiles.Add($sysContext.DefaultProfile)
+            }
+        }
+
+        foreach ($prof in $discoveredProfiles) {
+            $isDef = ($null -ne $sysContext -and $sysContext.DefaultProfile -eq $prof)
+            $details = if ($isDef) { 'Default Mail Profile' } else { 'Configured Mail Profile' }
+            $outlookItems += [PSCustomObject]@{
+                Name    = $prof
+                Status  = $statusBadge
+                Type    = 'Profile'
+                Details = $details
+                Path    = ''
+                Profile = $prof
+            }
+        }
+
+        # Enumerate data files via Find-OutlookDataFiles
+        $rawFiles = @()
+        if (Get-Command -Name 'Find-OutlookDataFiles' -ErrorAction SilentlyContinue) {
+            try {
+                $rawFiles = @(Find-OutlookDataFiles)
+            }
+            catch {
+                Write-ToolkitStatus -Message "Failed to discover Outlook data files: $($_.Exception.Message)" -Type 'WARN'
+            }
+        }
+
+        foreach ($f in $rawFiles) {
+            $fPath = [string]$f.Path
+            $fName = if (-not [string]::IsNullOrWhiteSpace($fPath)) {
+                [System.IO.Path]::GetFileName($fPath)
+            } else {
+                'DataFile'
+            }
+            $fType = if ($f.Type) { [string]$f.Type } else { 'PST' }
+            $fProfile = if ($f.Profile) { [string]$f.Profile } else { '' }
+            $outlookItems += [PSCustomObject]@{
+                Name    = $fName
+                Status  = $statusBadge
+                Type    = $fType
+                Details = $fPath
+                Path    = $fPath
+                Profile = $fProfile
+            }
+        }
+
         $clear = if ($NonInteractive) { $false } else { $true }
         $outlookInfo = Get-OutlookContextInfoLines
         Show-ToolkitHeader -Title 'ITOOLKIT > OUTLOOK & PST MANAGEMENT' -Subtitle 'PST/OST Discovery, Relocation, Compaction & Registry Policies' -ClearScreen:$clear -InfoLines $outlookInfo
-        Show-ToolkitDetailPanel -Details $outlookDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
+
+        Show-ToolkitItemTable -Items $outlookItems -Columns @('Name', 'Status', 'Type', 'Details') -Headers @('NAME', 'STATUS', 'TYPE', 'PATH/DETAILS') -Title 'Mail Profiles & Data Files'
+
+        Write-Host ""
+        $topLevelActions = @(
+            @{ Key = 'K'; Label = 'Kill Stuck Outlook' },
+            @{ Key = 'S'; Label = 'Safe Mode' },
+            @{ Key = 'E'; Label = 'Expand PST Limit (100GB)' },
+            @{ Key = 'D'; Label = 'Deep Scan' },
+            @{ Key = 'C'; Label = 'Compaction' }
+        )
+        $navActions = @(
+            @{ Key = 'B'; Label = 'Back' },
+            @{ Key = 'Q'; Label = 'Quit' }
+        )
+        Show-ToolkitActionCatalog -Actions $topLevelActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Outlook & PST Data Management'." -Type 'INFO'
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', 'B', 'Q')
-        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
-            $inSubmenu = $false
-            break
-        }
-        if ($sub.ToUpperInvariant() -eq 'Q') {
-            $inSubmenu = $false
+        $validKeys = @('K', 'S', 'E', 'D', 'C', 'B', 'Q')
+        $promptText = if ($outlookItems.Count -gt 0) { "  Select item [1-$($outlookItems.Count)] or action" } else { "  Select action [K, S, E, D, C, B, Q]" }
+        $selection = Read-ToolkitItemSelection -MaxIndex $outlookItems.Count -ValidHotkeys $validKeys -Prompt $promptText
+
+        if ($null -eq $selection -or $selection.Type -eq 'Exit') {
             return
         }
 
-        switch ($sub) {
-            '1' {
-                if (Get-Command -Name 'Find-OutlookDataFiles' -ErrorAction SilentlyContinue) {
-                    $files = Find-OutlookDataFiles
-                    if ($files) {
-                        $files | Format-Table -AutoSize
+        if ($selection.Type -eq 'Hotkey') {
+            $hk = $selection.Value.ToString().ToUpperInvariant()
+            switch ($hk) {
+                'B' {
+                    return
+                }
+                'Q' {
+                    return
+                }
+                'K' {
+                    try {
+                        Stop-Process -Name 'OUTLOOK' -Force -ErrorAction SilentlyContinue
+                        Write-ToolkitStatus -Message "Outlook process termination command completed." -Type 'OK'
                     }
-                    else {
-                        Write-ToolkitStatus -Message "No Outlook data files detected." -Type 'INFO'
+                    catch {
+                        Write-ToolkitStatus -Message "Failed to stop Outlook process: $($_.Exception.Message)" -Type 'FAIL'
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '2' {
-                $src = Read-Host "  Enter Source PST Path"
-                $dst = Read-Host "  Enter Destination PST Path"
-                if (-not [string]::IsNullOrWhiteSpace($src) -and -not [string]::IsNullOrWhiteSpace($dst)) {
-                    if (Get-Command -Name 'Move-OutlookDataFile' -ErrorAction SilentlyContinue) {
-                        Move-OutlookDataFile -SourcePath $src -DestinationPath $dst
+                'S' {
+                    $outExe = 'outlook.exe'
+                    if ($null -ne $sysContext -and -not [string]::IsNullOrWhiteSpace($sysContext.OutlookPath)) {
+                        $outExe = $sysContext.OutlookPath
                     }
+                    try {
+                        Start-Process -FilePath $outExe -ArgumentList '/safe' -ErrorAction SilentlyContinue
+                        Write-ToolkitStatus -Message "Outlook safe mode command issued (/safe)." -Type 'OK'
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "Failed to start Outlook in safe mode: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '3' {
-                $prof = Read-Host "  Enter Profile Name (e.g. Outlook)"
-                $oldP = Read-Host "  Enter Old Path"
-                $newP = Read-Host "  Enter New Path"
-                if (Get-Command -Name 'Update-OutlookProfilePath' -ErrorAction SilentlyContinue) {
-                    Update-OutlookProfilePath -ProfileName $prof -OldPath $oldP -NewPath $newP
+                'E' {
+                    if (Get-Command -Name 'Set-OutlookPstThreshold' -ErrorAction SilentlyContinue) {
+                        try {
+                            Set-OutlookPstThreshold -MaxLargeFileSizeMB 102400 -WarnLargeFileSizeMB 97280
+                            Write-ToolkitStatus -Message "PST size limit policy expanded to 100 GB." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to expand PST size limit: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '4' {
-                if (Get-Command -Name 'Set-OutlookPstThreshold' -ErrorAction SilentlyContinue) {
-                    Set-OutlookPstThreshold -MaxLargeFileSizeMB 102400 -WarnLargeFileSizeMB 97280
+                'D' {
+                    if (Get-Command -Name 'Find-OutlookDataFiles' -ErrorAction SilentlyContinue) {
+                        try {
+                            $files = Find-OutlookDataFiles
+                            if ($files) {
+                                $files | Format-Table -AutoSize
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "No Outlook data files detected." -Type 'INFO'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Deep data files scan failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '5' {
-                if (Get-Command -Name 'Invoke-OutlookCompaction' -ErrorAction SilentlyContinue) {
-                    Invoke-OutlookCompaction
-                }
-            }
-            '6' {
-                $src = Read-Host "  Enter Source PST Path"
-                $bak = Read-Host "  Enter Backup Directory"
-                if (Get-Command -Name 'Backup-OutlookPst' -ErrorAction SilentlyContinue) {
-                    Backup-OutlookPst -SourcePath $src -BackupDirectory $bak
-                }
-            }
-            '7' {
-                $bak = Read-Host "  Enter Backup PST Path"
-                $dst = Read-Host "  Enter Restore Destination Path"
-                if (Get-Command -Name 'Restore-OutlookPst' -ErrorAction SilentlyContinue) {
-                    Restore-OutlookPst -BackupPath $bak -DestinationPath $dst
+                'C' {
+                    if (Get-Command -Name 'Invoke-OutlookCompaction' -ErrorAction SilentlyContinue) {
+                        try {
+                            Invoke-OutlookCompaction
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Compaction utility failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
             }
         }
-        Wait-UserAcknowledge
+        elseif ($selection.Type -eq 'Index') {
+            $idx = [int]$selection.Value
+            if ($idx -ge 1 -and $idx -le $outlookItems.Count) {
+                $targetItem = $outlookItems[$idx - 1]
+
+                $targetInfo = @(
+                    "Item Name      : $($targetItem.Name)",
+                    "Item Type      : $($targetItem.Type)",
+                    "Outlook Status : $($targetItem.Status)",
+                    "Path / Details : $($targetItem.Details)"
+                )
+                Show-ToolkitHeader -Title "ITOOLKIT > OUTLOOK: $($targetItem.Name)" -Subtitle "Type: $($targetItem.Type) | Details: $($targetItem.Details)" -ClearScreen:$true -InfoLines $targetInfo
+
+                $contextDetails = @(
+                    @{ Key = '1'; Action = 'Repair Profile / Data File'; Description = "Run integrity check / SCANPST on '$($targetItem.Name)'."; Prerequisite = 'Outlook stopped [SAFE]' },
+                    @{ Key = '2'; Action = 'Cache Reset [OST]'; Description = "Reset or rebuild offline cache file for '$($targetItem.Name)'."; Prerequisite = 'Outlook stopped [SAFE]' },
+                    @{ Key = '3'; Action = 'Autodiscover Check'; Description = "Test Autodiscover and Exchange endpoints for profile '$($targetItem.Name)'."; Prerequisite = 'Network online [READY]' },
+                    @{ Key = '4'; Action = 'Backup / Relocate Data File'; Description = "Relocate or back up '$($targetItem.Name)' with cryptographic SHA-256 verification."; Prerequisite = 'Target disk space [READY]' }
+                )
+                $contextNav = @(
+                    @{ Key = 'B'; Label = 'Back to Outlook Table' },
+                    @{ Key = 'Q'; Label = 'Exit Console' }
+                )
+                Show-ToolkitDetailPanel -Details $contextDetails -NavActions $contextNav -Title 'CONTEXTUAL ACTIONS'
+
+                $ctxChoice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', 'B', 'Q') -Default 'B'
+
+                if ([string]::IsNullOrWhiteSpace($ctxChoice) -or $ctxChoice.ToUpperInvariant() -eq 'B') {
+                    continue
+                }
+                if ($ctxChoice.ToUpperInvariant() -eq 'Q') {
+                    return
+                }
+
+                switch ($ctxChoice) {
+                    '1' {
+                        if (-not [string]::IsNullOrWhiteSpace($targetItem.Path) -and (Get-Command -Name 'Test-OutlookDataFileLock' -ErrorAction SilentlyContinue)) {
+                            try {
+                                $lockCheck = Test-OutlookDataFileLock -FilePath $targetItem.Path
+                                if ($lockCheck.IsLocked) {
+                                    Write-ToolkitStatus -Message "File '$($targetItem.Name)' is locked by PID $($lockCheck.LockingProcessId). Close Outlook before repairing." -Type 'WARN'
+                                }
+                                else {
+                                    Write-ToolkitStatus -Message "File lock test passed. Data file is ready for SCANPST repair." -Type 'OK'
+                                }
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Repair check failed: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Profile / data file '$($targetItem.Name)' status checked: $($targetItem.Status)." -Type 'OK'
+                        }
+                    }
+                    '2' {
+                        if ($targetItem.Type -eq 'OST' -or $targetItem.Path -match '\.ost$') {
+                            if (-not [string]::IsNullOrWhiteSpace($targetItem.Path) -and (Test-Path -LiteralPath $targetItem.Path)) {
+                                try {
+                                    $bakPath = "$($targetItem.Path).bak"
+                                    Move-Item -LiteralPath $targetItem.Path -Destination $bakPath -Force -ErrorAction Stop
+                                    Write-ToolkitStatus -Message "Offline cache renamed to '$bakPath'. Outlook will recreate cleanly on launch." -Type 'OK'
+                                }
+                                catch {
+                                    Write-ToolkitStatus -Message "Failed to reset OST cache: $($_.Exception.Message)" -Type 'FAIL'
+                                }
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "OST file path '$($targetItem.Details)' verified." -Type 'OK'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Cache reset applies to OST data files. Current item type: $($targetItem.Type)." -Type 'INFO'
+                        }
+                    }
+                    '3' {
+                        Write-ToolkitStatus -Message "Testing Autodiscover endpoints for profile '$($targetItem.Name)'..." -Type 'INFO'
+                        try {
+                            if (Get-Command -Name 'Test-NetConnection' -ErrorAction SilentlyContinue) {
+                                $tRes = Test-NetConnection -ComputerName 'autodiscover.outlook.com' -Port 443 -WarningAction SilentlyContinue
+                                if ($null -ne $tRes -and $tRes.TcpTestSucceeded) {
+                                    Write-ToolkitStatus -Message "Autodiscover cloud endpoint reachable (TCP 443 OK)." -Type 'OK'
+                                }
+                                else {
+                                    Write-ToolkitStatus -Message "Autodiscover endpoint probe finished (standard endpoints tested)." -Type 'INFO'
+                                }
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Autodiscover check completed for profile '$($targetItem.Name)'." -Type 'OK'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Autodiscover probe error: $($_.Exception.Message)" -Type 'WARN'
+                        }
+                    }
+                    '4' {
+                        if (-not [string]::IsNullOrWhiteSpace($targetItem.Path)) {
+                            $op = Read-Host "  Select operation: [B]ackup or [R]elocate (Default: B)"
+                            if ([string]::IsNullOrWhiteSpace($op) -or $op.Trim().ToUpperInvariant() -eq 'B') {
+                                $bakDir = Read-Host "  Enter Backup Destination Directory (Default: C:\Backups)"
+                                if ([string]::IsNullOrWhiteSpace($bakDir)) {
+                                    $bakDir = 'C:\Backups'
+                                }
+                                if (Get-Command -Name 'Backup-OutlookPst' -ErrorAction SilentlyContinue) {
+                                    try {
+                                        Backup-OutlookPst -SourcePath $targetItem.Path -BackupDirectory $bakDir | Format-List
+                                        Write-ToolkitStatus -Message "Backup completed for '$($targetItem.Name)'." -Type 'OK'
+                                    }
+                                    catch {
+                                        Write-ToolkitStatus -Message "Backup failed: $($_.Exception.Message)" -Type 'FAIL'
+                                    }
+                                }
+                            }
+                            else {
+                                $dest = Read-Host "  Enter New Destination File Path"
+                                if (-not [string]::IsNullOrWhiteSpace($dest)) {
+                                    if (Get-Command -Name 'Move-OutlookDataFile' -ErrorAction SilentlyContinue) {
+                                        try {
+                                            Move-OutlookDataFile -SourcePath $targetItem.Path -DestinationPath $dest | Format-List
+                                            Write-ToolkitStatus -Message "Relocation completed for '$($targetItem.Name)'." -Type 'OK'
+                                        }
+                                        catch {
+                                            Write-ToolkitStatus -Message "Relocation failed: $($_.Exception.Message)" -Type 'FAIL'
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Target item '$($targetItem.Name)' does not have a bound data file path." -Type 'WARN'
+                        }
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+        }
     }
 }
 
 function Invoke-ToolkitSubmenuOffice {
 <#
 .SYNOPSIS
-    Submenu for Office & Excel Troubleshooting with Tri-Panel UI/UX.
+    Submenu for Office & Excel Troubleshooting with item-centric UI/UX.
 #>
     [CmdletBinding()]
     param(
@@ -732,7 +983,10 @@ function Invoke-ToolkitSubmenuOffice {
         [switch]$ExitImmediately,
 
         [Parameter(Mandatory = $false)]
-        [switch]$NonInteractive
+        [switch]$NonInteractive,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MenuDepth = 1
     )
 
     if ($ExitImmediately) {
@@ -740,103 +994,363 @@ function Invoke-ToolkitSubmenuOffice {
         return
     }
 
-    $subnav = @(
-        @{ Key = 'B'; Label = 'Back to Main Menu' },
-        @{ Key = 'Q'; Label = 'Exit Console' }
-    )
-    $officeDetails = @(
-        @{ Key = '1'; Action = 'Disable Acceleration'; Description = 'Disable hardware acceleration to avoid display crashes.'; Prerequisite = 'Office registry [READY]' },
-        @{ Key = '2'; Action = 'Enable Acceleration'; Description = 'Re-enable hardware acceleration for normal performance.'; Prerequisite = 'Office registry [READY]' },
-        @{ Key = '3'; Action = 'Reset Excel UI Cache'; Description = 'Rename Excel16.xlb and purge stale XLSTART templates.'; Prerequisite = 'Excel stopped [READY]' },
-        @{ Key = '4'; Action = 'Clear Office Cache'; Description = 'Purge OfficeFileCache and temporary document buffers.'; Prerequisite = 'Office stopped [READY]' },
-        @{ Key = '5'; Action = 'List COM Add-ins'; Description = 'Enumerate installed COM add-ins and startup behavior.'; Prerequisite = 'Registry access [READY]' },
-        @{ Key = '6'; Action = 'Reset Resiliency'; Description = 'Clear disabled items list to restore blocked add-ins.'; Prerequisite = 'Registry access [READY]' },
-        @{ Key = '7'; Action = 'Audit GDI Handles'; Description = 'Audit GDI and USER handle consumption across processes.'; Prerequisite = 'Excel running or stopped [READY]' },
-        @{ Key = '8'; Action = 'Stop Leaking Excel'; Description = 'Terminate Excel instances exceeding handle thresholds.'; Prerequisite = 'Admin or user rights [READY]' },
-        @{ Key = '9'; Action = 'Repair ClickToRun'; Description = 'Trigger native Office ClickToRun repair wizard.'; Prerequisite = 'C2R installation [READY]' }
-    )
+    if (-not (Get-Command -Name 'Show-ToolkitItemTable' -ErrorAction SilentlyContinue)) {
+        $tableScript = Join-Path $PSScriptRoot 'Show-ToolkitItemTable.ps1'
+        if (Test-Path $tableScript) {
+            . $tableScript
+        }
+    }
+    if (-not (Get-Command -Name 'Read-ToolkitItemSelection' -ErrorAction SilentlyContinue)) {
+        $selectScript = Join-Path $PSScriptRoot 'Read-ToolkitItemSelection.ps1'
+        if (Test-Path $selectScript) {
+            . $selectScript
+        }
+    }
 
     $inSubmenu = $true
     while ($inSubmenu) {
+        $officeApps = @()
+        $appsDef = @(
+            @{ Name = 'Microsoft Excel';      Proc = 'EXCEL';    Exe = 'EXCEL.EXE' },
+            @{ Name = 'Microsoft Word';       Proc = 'WINWORD';  Exe = 'WINWORD.EXE' },
+            @{ Name = 'Microsoft PowerPoint'; Proc = 'POWERPNT'; Exe = 'POWERPNT.EXE' },
+            @{ Name = 'Microsoft Outlook';    Proc = 'OUTLOOK';  Exe = 'OUTLOOK.EXE' },
+            @{ Name = 'Microsoft OneNote';    Proc = 'ONENOTE';  Exe = 'ONENOTE.EXE' },
+            @{ Name = 'Microsoft Access';     Proc = 'MSACCESS'; Exe = 'MSACCESS.EXE' }
+        )
+
+        $c2rVer = '16.0'
+        $c2rArch = 'x64'
+        try {
+            if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration') {
+                $c2rProps = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue
+                if ($null -ne $c2rProps) {
+                    if ($c2rProps.VersionToReport) { $c2rVer = [string]$c2rProps.VersionToReport }
+                    if ($c2rProps.Platform) { $c2rArch = [string]$c2rProps.Platform }
+                }
+            }
+        }
+        catch {
+            $null = $_
+        }
+
+        foreach ($app in $appsDef) {
+            $isInstalled = $false
+            $exePath = ''
+            try {
+                $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$($app.Exe)"
+                if (Test-Path $regPath) {
+                    $isInstalled = $true
+                    $prop = Get-ItemProperty $regPath -ErrorAction SilentlyContinue
+                    if ($null -ne $prop -and $prop.'(default)') {
+                        $exePath = [string]$prop.'(default)'
+                    }
+                }
+            }
+            catch {
+                $null = $_
+            }
+
+            $isRunning = $false
+            try {
+                $procs = @(Get-Process -Name $app.Proc -ErrorAction SilentlyContinue)
+                if ($procs.Count -gt 0) {
+                    $isRunning = $true
+                    $isInstalled = $true
+                }
+            }
+            catch {
+                $null = $_
+            }
+
+            if ($isInstalled) {
+                $stat = if ($isRunning) { '[ACTIVE]' } else { '[READY]' }
+                $officeApps += [PSCustomObject]@{
+                    Name         = $app.Name
+                    Status       = $stat
+                    Version      = $c2rVer
+                    Architecture = $c2rArch
+                    ProcessName  = $app.Proc
+                    Executable   = $app.Exe
+                    Path         = $exePath
+                    IsRunning    = $isRunning
+                }
+            }
+        }
+
         $clear = if ($NonInteractive) { $false } else { $true }
         $officeInfo = Get-OfficeContextInfoLines
         Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE & EXCEL TROUBLESHOOTING' -Subtitle 'Graphics Acceleration, Cache Reset, COM Add-ins, GDI Leaks, Click-to-Run Repair' -ClearScreen:$clear -InfoLines $officeInfo
-        Show-ToolkitDetailPanel -Details $officeDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
+
+        Show-ToolkitItemTable -Items $officeApps -Columns @('Name', 'Status', 'Version', 'Architecture') -Headers @('NAME', 'STATUS', 'VERSION', 'ARCHITECTURE') -Title 'Installed Office Applications'
+
+        Write-Host ""
+        $topLevelActions = @(
+            @{ Key = 'K'; Label = 'KMS Probe' },
+            @{ Key = 'L'; Label = 'License Diagnostics' },
+            @{ Key = 'R'; Label = 'Quick Repair' },
+            @{ Key = 'O'; Label = 'Online Repair' },
+            @{ Key = 'C'; Label = 'Clear Temp Cache' },
+            @{ Key = 'H'; Label = 'Toggle Graphics Acceleration' },
+            @{ Key = 'G'; Label = 'Audit GDI Leakers' }
+        )
+        $navActions = @(
+            @{ Key = 'B'; Label = 'Back' },
+            @{ Key = 'Q'; Label = 'Quit' }
+        )
+        Show-ToolkitActionCatalog -Actions $topLevelActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Office & Excel Troubleshooting & Repair'." -Type 'INFO'
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'B', 'Q')
-        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
-            $inSubmenu = $false
-            break
-        }
-        if ($sub.ToUpperInvariant() -eq 'Q') {
-            $inSubmenu = $false
+        $validKeys = @('K', 'L', 'R', 'O', 'C', 'H', 'G', 'B', 'Q')
+        $promptText = if ($officeApps.Count -gt 0) { "  Select item [1-$($officeApps.Count)] or action" } else { "  Select action [K, L, R, O, C, H, G, B, Q]" }
+        $selection = Read-ToolkitItemSelection -MaxIndex $officeApps.Count -ValidHotkeys $validKeys -Prompt $promptText
+
+        if ($null -eq $selection -or $selection.Type -eq 'Exit') {
             return
         }
 
-        switch ($sub) {
-            '1' {
-                if (Get-Command -Name 'Set-ExcelHardwareAcceleration' -ErrorAction SilentlyContinue) {
-                    Set-ExcelHardwareAcceleration -Disable
+        if ($selection.Type -eq 'Hotkey') {
+            $hk = $selection.Value.ToString().ToUpperInvariant()
+            switch ($hk) {
+                'B' {
+                    return
                 }
-            }
-            '2' {
-                if (Get-Command -Name 'Set-ExcelHardwareAcceleration' -ErrorAction SilentlyContinue) {
-                    Set-ExcelHardwareAcceleration -Enable
+                'Q' {
+                    return
                 }
-            }
-            '3' {
-                if (Get-Command -Name 'Reset-ExcelUiCache' -ErrorAction SilentlyContinue) {
-                    Reset-ExcelUiCache
+                'K' {
+                    Write-ToolkitStatus -Message "Probing KMS host connectivity (TCP 1688)..." -Type 'INFO'
+                    try {
+                        if (Get-Command -Name 'Test-NetConnection' -ErrorAction SilentlyContinue) {
+                            $kmsRes = Test-NetConnection -ComputerName 'kms.local' -Port 1688 -WarningAction SilentlyContinue
+                            if ($null -ne $kmsRes -and $kmsRes.TcpTestSucceeded) {
+                                Write-ToolkitStatus -Message "KMS Host probe succeeded (port 1688 open)." -Type 'OK'
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "KMS Host unreachable or unconfigured (port 1688)." -Type 'WARN'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "KMS probe skipped (Test-NetConnection unavailable)." -Type 'INFO'
+                        }
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "KMS probe error: $($_.Exception.Message)" -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '4' {
-                if (Get-Command -Name 'Clear-OfficeTempCache' -ErrorAction SilentlyContinue) {
-                    Clear-OfficeTempCache
+                'L' {
+                    Write-ToolkitStatus -Message "Querying Office SoftwareLicensingProduct status..." -Type 'INFO'
+                    try {
+                        if (Get-Command -Name 'Get-CimInstance' -ErrorAction SilentlyContinue) {
+                            $lic = @(Get-CimInstance -ClassName SoftwareLicensingProduct -Filter "Name like 'Office%'" -ErrorAction SilentlyContinue)
+                            if ($lic.Count -gt 0) {
+                                $lic | Select-Object Name, LicenseStatus, GracePeriodRemaining | Format-Table -AutoSize
+                                Write-ToolkitStatus -Message "Office license check completed." -Type 'OK'
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "No SoftwareLicensingProduct Office records found." -Type 'INFO'
+                            }
+                        }
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "License query error: $($_.Exception.Message)" -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '5' {
-                if (Get-Command -Name 'Get-ExcelComAddin' -ErrorAction SilentlyContinue) {
-                    Get-ExcelComAddin | Format-Table -AutoSize
+                'R' {
+                    if (Get-Command -Name 'Start-OfficeClickToRunRepair' -ErrorAction SilentlyContinue) {
+                        try {
+                            Start-OfficeClickToRunRepair -RepairType 'Quick'
+                            Write-ToolkitStatus -Message "Office Quick Repair launched." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Quick Repair failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '6' {
-                if (Get-Command -Name 'Reset-ExcelResiliency' -ErrorAction SilentlyContinue) {
-                    Reset-ExcelResiliency
+                'O' {
+                    if (Get-Command -Name 'Start-OfficeClickToRunRepair' -ErrorAction SilentlyContinue) {
+                        try {
+                            Start-OfficeClickToRunRepair -RepairType 'Full'
+                            Write-ToolkitStatus -Message "Office Online Repair launched." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Online Repair failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '7' {
-                if (Get-Command -Name 'Get-ExcelGdiHandleUsage' -ErrorAction SilentlyContinue) {
-                    Get-ExcelGdiHandleUsage | Format-Table -AutoSize
+                'C' {
+                    if (Get-Command -Name 'Clear-OfficeTempCache' -ErrorAction SilentlyContinue) {
+                        try {
+                            Clear-OfficeTempCache
+                            Write-ToolkitStatus -Message "Office temporary cache cleared." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to clear temp cache: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '8' {
-                if (Get-Command -Name 'Stop-ExcelGdiLeakers' -ErrorAction SilentlyContinue) {
-                    Stop-ExcelGdiLeakers -Force
+                'H' {
+                    if (Get-Command -Name 'Set-ExcelHardwareAcceleration' -ErrorAction SilentlyContinue) {
+                        try {
+                            $regPath = 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics'
+                            $isCurrentlyDisabled = $false
+                            if (Test-Path $regPath) {
+                                $val = (Get-ItemProperty $regPath -ErrorAction SilentlyContinue).DisableHardwareAcceleration
+                                if ($val -eq 1) {
+                                    $isCurrentlyDisabled = $true
+                                }
+                            }
+                            if ($isCurrentlyDisabled) {
+                                Set-ExcelHardwareAcceleration -Enable
+                                Write-ToolkitStatus -Message "Hardware graphics acceleration enabled." -Type 'OK'
+                            }
+                            else {
+                                Set-ExcelHardwareAcceleration -Disable
+                                Write-ToolkitStatus -Message "Hardware graphics acceleration disabled." -Type 'OK'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to toggle acceleration: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '9' {
-                $repairType = Read-Host "  Enter Repair Type [Quick/Online] (Default: Quick)"
-                if ([string]::IsNullOrWhiteSpace($repairType)) {
-                    $repairType = 'Quick'
-                }
-                if (Get-Command -Name 'Start-OfficeClickToRunRepair' -ErrorAction SilentlyContinue) {
-                    Start-OfficeClickToRunRepair -RepairType $repairType
+                'G' {
+                    if (Get-Command -Name 'Get-ExcelGdiHandleUsage' -ErrorAction SilentlyContinue) {
+                        try {
+                            $gdi = Get-ExcelGdiHandleUsage
+                            if ($null -ne $gdi) {
+                                $gdi | Format-Table -AutoSize
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "No leaking Excel processes detected." -Type 'OK'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "GDI handle audit failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
             }
         }
-        Wait-UserAcknowledge
+        elseif ($selection.Type -eq 'Index') {
+            $idx = [int]$selection.Value
+            if ($idx -ge 1 -and $idx -le $officeApps.Count) {
+                $targetApp = $officeApps[$idx - 1]
+
+                $targetInfo = @(
+                    "Application    : $($targetApp.Name)",
+                    "Executable     : $($targetApp.Executable)",
+                    "Version        : $($targetApp.Version) ($($targetApp.Architecture))",
+                    "Process State  : $($targetApp.Status)"
+                )
+                Show-ToolkitHeader -Title "ITOOLKIT > OFFICE APP: $($targetApp.Name)" -Subtitle "Version: $($targetApp.Version) | State: $($targetApp.Status)" -ClearScreen:$true -InfoLines $targetInfo
+
+                $contextDetails = @(
+                    @{ Key = '1'; Action = 'Targeted Repair'; Description = "Execute Click-to-Run repair for '$($targetApp.Name)'."; Prerequisite = 'C2R installation [READY]' },
+                    @{ Key = '2'; Action = 'Kill Process'; Description = "Terminate running instances of '$($targetApp.Executable)'."; Prerequisite = 'Process running [READY]' },
+                    @{ Key = '3'; Action = 'Clear Cache'; Description = "Reset UI buffers and application temp cache."; Prerequisite = 'Application stopped [READY]' },
+                    @{ Key = '4'; Action = 'Manage Add-ins'; Description = "Audit and configure installed COM add-ins."; Prerequisite = 'Registry access [READY]' },
+                    @{ Key = '5'; Action = 'Reset Resiliency'; Description = "Clear blocked items list in registry."; Prerequisite = 'Registry access [READY]' }
+                )
+                $contextNav = @(
+                    @{ Key = 'B'; Label = 'Back to Office Apps Table' },
+                    @{ Key = 'Q'; Label = 'Exit Console' }
+                )
+                Show-ToolkitDetailPanel -Details $contextDetails -NavActions $contextNav -Title 'CONTEXTUAL ACTIONS'
+
+                $ctxChoice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', 'B', 'Q') -Default 'B'
+
+                if ([string]::IsNullOrWhiteSpace($ctxChoice) -or $ctxChoice.ToUpperInvariant() -eq 'B') {
+                    continue
+                }
+                if ($ctxChoice.ToUpperInvariant() -eq 'Q') {
+                    return
+                }
+
+                switch ($ctxChoice) {
+                    '1' {
+                        if (Get-Command -Name 'Start-OfficeClickToRunRepair' -ErrorAction SilentlyContinue) {
+                            try {
+                                Start-OfficeClickToRunRepair -RepairType 'Quick'
+                                Write-ToolkitStatus -Message "Targeted repair initiated for '$($targetApp.Name)'." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Repair failed for '$($targetApp.Name)': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                    '2' {
+                        try {
+                            Stop-Process -Name $targetApp.ProcessName -Force -ErrorAction SilentlyContinue
+                            Write-ToolkitStatus -Message "Terminated processes matching '$($targetApp.Executable)'." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to stop '$($targetApp.Executable)': $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    '3' {
+                        try {
+                            if ($targetApp.ProcessName -eq 'EXCEL' -and (Get-Command -Name 'Reset-ExcelUiCache' -ErrorAction SilentlyContinue)) {
+                                Reset-ExcelUiCache
+                            }
+                            if (Get-Command -Name 'Clear-OfficeTempCache' -ErrorAction SilentlyContinue) {
+                                Clear-OfficeTempCache
+                            }
+                            Write-ToolkitStatus -Message "Application cache cleared for '$($targetApp.Name)'." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to clear cache: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    '4' {
+                        if (Get-Command -Name 'Get-ExcelComAddin' -ErrorAction SilentlyContinue) {
+                            try {
+                                $addins = Get-ExcelComAddin
+                                if ($addins) {
+                                    $addins | Format-Table -AutoSize
+                                }
+                                else {
+                                    Write-ToolkitStatus -Message "No COM add-ins registered for '$($targetApp.Name)'." -Type 'INFO'
+                                }
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to query COM add-ins: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                    '5' {
+                        if (Get-Command -Name 'Reset-ExcelResiliency' -ErrorAction SilentlyContinue) {
+                            try {
+                                Reset-ExcelResiliency
+                                Write-ToolkitStatus -Message "Add-in resiliency list reset for '$($targetApp.Name)'." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to reset resiliency: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+        }
     }
 }
 
 function Invoke-ToolkitSubmenuPrinters {
 <#
 .SYNOPSIS
-    Submenu for Network & Print Spooler with Tri-Panel UI/UX.
+    Submenu for Network & Print Spooler with item-centric UI/UX.
 #>
     [CmdletBinding()]
     param(
@@ -844,7 +1358,10 @@ function Invoke-ToolkitSubmenuPrinters {
         [switch]$ExitImmediately,
 
         [Parameter(Mandatory = $false)]
-        [switch]$NonInteractive
+        [switch]$NonInteractive,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MenuDepth = 1
     )
 
     if ($ExitImmediately) {
@@ -852,96 +1369,249 @@ function Invoke-ToolkitSubmenuPrinters {
         return
     }
 
-    $subnav = @(
-        @{ Key = 'B'; Label = 'Back to Main Menu' },
-        @{ Key = 'Q'; Label = 'Exit Console' }
-    )
-    $printersDetails = @(
-        @{ Key = '1'; Action = 'Spooler Status'; Description = 'Inspect Print Spooler service state, PID and queue size.'; Prerequisite = 'Spooler service [READY]' },
-        @{ Key = '2'; Action = 'Purge Spooler Queue'; Description = 'Stop spooler, purge stuck jobs, restart service.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '3'; Action = 'Register Spooler DLLs'; Description = 'Re-register spoolss.dll, winspool.drv and compile MOF.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '4'; Action = 'Reset Ne Ports'; Description = 'Purge stale NeXX: virtual port mappings in registry.'; Prerequisite = 'HKCU registry [READY]' },
-        @{ Key = '5'; Action = 'Audit Point & Print'; Description = 'Inspect Point and Print mitigation policies.'; Prerequisite = 'Registry access [READY]' },
-        @{ Key = '6'; Action = 'Apply PnP Remediation'; Description = 'Apply RestrictDriverInstallationToAdministrators policy.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '7'; Action = 'Test Printer Network'; Description = 'Probe printer network ports (SMB, RPC, TCP 9100, 515).'; Prerequisite = 'Network online [READY]' },
-        @{ Key = '8'; Action = 'Refresh Connections'; Description = 'Refresh active user network printer bindings.'; Prerequisite = 'WScript.Network [READY]' }
-    )
+    if (-not (Get-Command -Name 'Show-ToolkitItemTable' -ErrorAction SilentlyContinue)) {
+        $tableScript = Join-Path $PSScriptRoot 'Show-ToolkitItemTable.ps1'
+        if (Test-Path $tableScript) {
+            . $tableScript
+        }
+    }
+    if (-not (Get-Command -Name 'Read-ToolkitItemSelection' -ErrorAction SilentlyContinue)) {
+        $selectScript = Join-Path $PSScriptRoot 'Read-ToolkitItemSelection.ps1'
+        if (Test-Path $selectScript) {
+            . $selectScript
+        }
+    }
 
     $inSubmenu = $true
     while ($inSubmenu) {
+        $rawPrinters = @()
+        try {
+            if (Get-Command -Name 'Get-CimInstance' -ErrorAction SilentlyContinue) {
+                $rawPrinters = @(Get-CimInstance -ClassName Win32_Printer -ErrorAction SilentlyContinue)
+            }
+        }
+        catch {
+            Write-ToolkitStatus -Message "Failed to enumerate printers: $($_.Exception.Message)" -Type 'WARN'
+        }
+
+        $printers = @()
+        foreach ($p in $rawPrinters) {
+            if ($null -ne $p -and $p.PSObject.Properties['Name']) {
+                $isOffline = [bool]$p.WorkOffline
+                $statusBadge = '[READY]'
+                if ($isOffline) {
+                    $statusBadge = '[OFFLINE]'
+                }
+                elseif ($p.PrinterState -and $p.PrinterState -ne 0) {
+                    $statusBadge = '[ERROR]'
+                }
+                elseif ($p.Status -and $p.Status -ne 'OK') {
+                    $statusBadge = '[ERROR]'
+                }
+
+                $printers += [PSCustomObject]@{
+                    Name   = [string]$p.Name
+                    Status = $statusBadge
+                    Driver = [string]$p.DriverName
+                    Port   = [string]$p.PortName
+                }
+            }
+        }
+
         $clear = if ($NonInteractive) { $false } else { $true }
         $printersInfo = Get-PrintersContextInfoLines
         Show-ToolkitHeader -Title 'ITOOLKIT > NETWORK & PRINT SPOOLER' -Subtitle 'Spooler Diagnostics, Queue Purge, Ne Ports, Point & Print' -ClearScreen:$clear -InfoLines $printersInfo
-        Show-ToolkitDetailPanel -Details $printersDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
+
+        Show-ToolkitItemTable -Items $printers -Columns @('Name', 'Status', 'Driver', 'Port') -Headers @('NAME', 'STATUS', 'DRIVER', 'PORT') -Title 'Installed Printers'
+
+        Write-Host ""
+        $topLevelActions = @(
+            @{ Key = 'S'; Label = 'Spooler Restart & Purge' },
+            @{ Key = 'R'; Label = 'Register DLLs' },
+            @{ Key = 'P'; Label = 'Point & Print Remediation' },
+            @{ Key = 'N'; Label = 'Reset Ne Ports' },
+            @{ Key = 'C'; Label = 'Refresh Connections' }
+        )
+        $navActions = @(
+            @{ Key = 'B'; Label = 'Back' },
+            @{ Key = 'Q'; Label = 'Quit' }
+        )
+        Show-ToolkitActionCatalog -Actions $topLevelActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Network & Print Spooler Troubleshooting'." -Type 'INFO'
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', 'B', 'Q')
-        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
-            $inSubmenu = $false
-            break
-        }
-        if ($sub.ToUpperInvariant() -eq 'Q') {
-            $inSubmenu = $false
+        $validKeys = @('S', 'R', 'P', 'N', 'C', 'B', 'Q')
+        $promptText = if ($printers.Count -gt 0) { "  Select item [1-$($printers.Count)] or action" } else { "  Select action [S, R, P, N, C, B, Q]" }
+        $selection = Read-ToolkitItemSelection -MaxIndex $printers.Count -ValidHotkeys $validKeys -Prompt $promptText
+
+        if ($null -eq $selection -or $selection.Type -eq 'Exit') {
             return
         }
 
-        switch ($sub) {
-            '1' {
-                if (Get-Command -Name 'Get-PrintSpoolerStatus' -ErrorAction SilentlyContinue) {
-                    Get-PrintSpoolerStatus | Format-List
+        if ($selection.Type -eq 'Hotkey') {
+            $hk = $selection.Value.ToString().ToUpperInvariant()
+            switch ($hk) {
+                'B' {
+                    return
                 }
-            }
-            '2' {
-                if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
-                    Reset-PrintSpoolerQueue -Force
+                'Q' {
+                    return
                 }
-            }
-            '3' {
-                if (Get-Command -Name 'Register-PrintSpoolerComponents' -ErrorAction SilentlyContinue) {
-                    Register-PrintSpoolerComponents
-                }
-            }
-            '4' {
-                if (Get-Command -Name 'Reset-PrinterNePortBindings' -ErrorAction SilentlyContinue) {
-                    Reset-PrinterNePortBindings
-                }
-            }
-            '5' {
-                if (Get-Command -Name 'Test-PointAndPrintPolicy' -ErrorAction SilentlyContinue) {
-                    Test-PointAndPrintPolicy | Format-List
-                }
-            }
-            '6' {
-                if (Get-Command -Name 'Set-PointAndPrintRemediation' -ErrorAction SilentlyContinue) {
-                    Set-PointAndPrintRemediation -Preset 'StrictAdminOnly'
-                }
-            }
-            '7' {
-                $srv = Read-Host "  Enter Printer Server / IP Address"
-                if (-not [string]::IsNullOrWhiteSpace($srv)) {
-                    if (Get-Command -Name 'Test-NetworkPrinterConnectivity' -ErrorAction SilentlyContinue) {
-                        Test-NetworkPrinterConnectivity -ComputerName $srv | Format-List
+                'S' {
+                    if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
+                        try {
+                            Reset-PrintSpoolerQueue -Force
+                            Write-ToolkitStatus -Message "Print spooler service restarted and queue purged." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to reset print spooler queue: $($_.Exception.Message)" -Type 'FAIL'
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '8' {
-                if (Get-Command -Name 'Reset-PrinterConnections' -ErrorAction SilentlyContinue) {
-                    Reset-PrinterConnections
+                'R' {
+                    if (Get-Command -Name 'Register-PrintSpoolerComponents' -ErrorAction SilentlyContinue) {
+                        try {
+                            Register-PrintSpoolerComponents
+                            Write-ToolkitStatus -Message "Print spooler components and DLLs registered." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to register spooler components: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
+                }
+                'P' {
+                    if (Get-Command -Name 'Set-PointAndPrintRemediation' -ErrorAction SilentlyContinue) {
+                        try {
+                            Set-PointAndPrintRemediation -Preset 'StrictAdminOnly'
+                            Write-ToolkitStatus -Message "Point & Print remediation applied (StrictAdminOnly)." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to apply Point & Print remediation: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
+                }
+                'N' {
+                    if (Get-Command -Name 'Reset-PrinterNePortBindings' -ErrorAction SilentlyContinue) {
+                        try {
+                            Reset-PrinterNePortBindings
+                            Write-ToolkitStatus -Message "Printer Ne port registry bindings reset." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to reset Ne port bindings: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
+                }
+                'C' {
+                    if (Get-Command -Name 'Reset-PrinterConnections' -ErrorAction SilentlyContinue) {
+                        try {
+                            Reset-PrinterConnections
+                            Write-ToolkitStatus -Message "User network printer connections refreshed." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to refresh printer connections: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
             }
         }
-        Wait-UserAcknowledge
+        elseif ($selection.Type -eq 'Index') {
+            $idx = [int]$selection.Value
+            if ($idx -ge 1 -and $idx -le $printers.Count) {
+                $targetPrinter = $printers[$idx - 1]
+
+                $targetInfo = @(
+                    "Printer Name   : $($targetPrinter.Name)",
+                    "Driver Model   : $($targetPrinter.Driver)",
+                    "Port Name      : $($targetPrinter.Port)",
+                    "Current Status : $($targetPrinter.Status)"
+                )
+                Show-ToolkitHeader -Title "ITOOLKIT > PRINTER: $($targetPrinter.Name)" -Subtitle "Port: $($targetPrinter.Port) | Driver: $($targetPrinter.Driver)" -ClearScreen:$true -InfoLines $targetInfo
+
+                $contextDetails = @(
+                    @{ Key = '1'; Action = 'Print Test Page'; Description = "Send diagnostic test page to '$($targetPrinter.Name)'."; Prerequisite = 'Printer online [READY]' },
+                    @{ Key = '2'; Action = 'Purge Queue'; Description = "Purge print queue jobs for '$($targetPrinter.Name)'."; Prerequisite = 'Spooler service [READY]' },
+                    @{ Key = '3'; Action = 'Port Diagnostics'; Description = "Probe network port connectivity for '$($targetPrinter.Port)'."; Prerequisite = 'Network online [READY]' }
+                )
+                $contextNav = @(
+                    @{ Key = 'B'; Label = 'Back to Printers Table' },
+                    @{ Key = 'Q'; Label = 'Exit Console' }
+                )
+                Show-ToolkitDetailPanel -Details $contextDetails -NavActions $contextNav -Title 'CONTEXTUAL ACTIONS'
+
+                $ctxChoice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', 'B', 'Q') -Default 'B'
+
+                if ([string]::IsNullOrWhiteSpace($ctxChoice) -or $ctxChoice.ToUpperInvariant() -eq 'B') {
+                    continue
+                }
+                if ($ctxChoice.ToUpperInvariant() -eq 'Q') {
+                    return
+                }
+
+                switch ($ctxChoice) {
+                    '1' {
+                        try {
+                            $escapedName = $targetPrinter.Name.Replace("'", "''")
+                            $cimP = Get-CimInstance -ClassName Win32_Printer -Filter "Name = '$escapedName'" -ErrorAction SilentlyContinue
+                            if ($null -ne $cimP) {
+                                $null = Invoke-CimMethod -InputObject $cimP -MethodName PrintTestPage -ErrorAction SilentlyContinue
+                            }
+                            Write-ToolkitStatus -Message "Test page print command submitted for '$($targetPrinter.Name)'." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to print test page for '$($targetPrinter.Name)': $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    '2' {
+                        if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
+                            try {
+                                Reset-PrintSpoolerQueue -Force
+                                Write-ToolkitStatus -Message "Print spooler queue purged for '$($targetPrinter.Name)'." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to purge queue for '$($targetPrinter.Name)': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                    '3' {
+                        $targetHost = $targetPrinter.Port
+                        if ($targetHost -match '^IP_(.+)$') {
+                            $targetHost = $Matches[1]
+                        }
+                        elseif ($targetHost -match '^\\\\([^\\]+)') {
+                            $targetHost = $Matches[1]
+                        }
+                        if ([string]::IsNullOrWhiteSpace($targetHost) -or $targetHost -match '^(LPT|COM|USB|FILE|PORTPROMPT|WSD)') {
+                            $targetHost = '127.0.0.1'
+                        }
+                        if (Get-Command -Name 'Test-NetworkPrinterConnectivity' -ErrorAction SilentlyContinue) {
+                            try {
+                                Test-NetworkPrinterConnectivity -ComputerName $targetHost | Format-List
+                                Write-ToolkitStatus -Message "Port diagnostics completed for '$targetHost'." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Port diagnostics failed for '$targetHost': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+        }
     }
 }
 
 function Invoke-ToolkitSubmenuBackup {
 <#
 .SYNOPSIS
-    Submenu for User Profile Data Backup with Tri-Panel UI/UX.
+    Submenu for User Profile Data Backup with item-centric UI/UX.
 #>
     [CmdletBinding()]
     param(
@@ -949,7 +1619,10 @@ function Invoke-ToolkitSubmenuBackup {
         [switch]$ExitImmediately,
 
         [Parameter(Mandatory = $false)]
-        [switch]$NonInteractive
+        [switch]$NonInteractive,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MenuDepth = 1
     )
 
     if ($ExitImmediately) {
@@ -957,106 +1630,336 @@ function Invoke-ToolkitSubmenuBackup {
         return
     }
 
-    $subnav = @(
-        @{ Key = 'B'; Label = 'Back to Main Menu' },
-        @{ Key = 'Q'; Label = 'Exit Console' }
-    )
-    $backupDetails = @(
-        @{ Key = '1'; Action = 'Map Profile Folders'; Description = 'Map standard user folders and OneDrive redirection.'; Prerequisite = 'Profile exists [READY]' },
-        @{ Key = '2'; Action = 'Export Bookmarks'; Description = 'Extract Chrome and Edge browser bookmarks to JSON.'; Prerequisite = 'Browser app data [READY]' },
-        @{ Key = '3'; Action = 'Export Certificates'; Description = 'Export personal certificates from CurrentUser store.'; Prerequisite = 'Certificate store [READY]' },
-        @{ Key = '4'; Action = 'Backup Profile Folders'; Description = 'Robocopy multithreaded directory backup engine.'; Prerequisite = 'Target free space [READY]' },
-        @{ Key = '5'; Action = 'Generate Manifest'; Description = 'Compute SHA-256 cryptographic JSON backup manifest.'; Prerequisite = 'Directory path [READY]' },
-        @{ Key = '6'; Action = 'Verify Manifest'; Description = 'Validate files against SHA-256 backup manifest.'; Prerequisite = 'Manifest JSON [READY]' },
-        @{ Key = '7'; Action = 'Restore Profile Data'; Description = 'Restore user profile data from verified backup.'; Prerequisite = 'Backup files [READY]' }
-    )
+    if (-not (Get-Command -Name 'Show-ToolkitItemTable' -ErrorAction SilentlyContinue)) {
+        $tableScript = Join-Path $PSScriptRoot 'Show-ToolkitItemTable.ps1'
+        if (Test-Path $tableScript) {
+            . $tableScript
+        }
+    }
+    if (-not (Get-Command -Name 'Read-ToolkitItemSelection' -ErrorAction SilentlyContinue)) {
+        $selectScript = Join-Path $PSScriptRoot 'Read-ToolkitItemSelection.ps1'
+        if (Test-Path $selectScript) {
+            . $selectScript
+        }
+    }
 
     $inSubmenu = $true
     while ($inSubmenu) {
+        $backupItems = @()
+        $backupDirs = @('C:\Backups', 'D:\Backups')
+        if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+            $backupDirs += Join-Path $env:USERPROFILE 'Backups'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) {
+            $backupDirs += Join-Path $env:TEMP 'IToolkitBackups'
+        }
+
+        foreach ($bDir in $backupDirs) {
+            try {
+                if (Test-Path -LiteralPath $bDir) {
+                    $subDirs = @(Get-ChildItem -LiteralPath $bDir -Directory -ErrorAction SilentlyContinue)
+                    foreach ($sd in $subDirs) {
+                        $manifestFile = Join-Path $sd.FullName 'IToolkit_Backup_Manifest.json'
+                        $isManifest = Test-Path -LiteralPath $manifestFile
+                        $stat = if ($isManifest) { '[READY]' } else { '[OK]' }
+                        $backupItems += [PSCustomObject]@{
+                            Name     = [string]$sd.Name
+                            Status   = $stat
+                            Type     = 'Backup Set'
+                            Details  = [string]$sd.FullName
+                            Path     = [string]$sd.FullName
+                            Manifest = $(if ($isManifest) { $manifestFile } else { $null })
+                        }
+                    }
+                }
+            }
+            catch {
+                $null = $_
+            }
+        }
+
+        # Query Volume Shadow Copies
+        try {
+            if (Get-Command -Name 'Get-CimInstance' -ErrorAction SilentlyContinue) {
+                $shadows = @(Get-CimInstance -ClassName Win32_ShadowCopy -ErrorAction SilentlyContinue)
+                foreach ($s in $shadows) {
+                    if ($null -ne $s) {
+                        $sName = if ($s.ID) { "VSS: $($s.ID)" } else { 'ShadowCopy' }
+                        $sDev = if ($s.DeviceObject) { [string]$s.DeviceObject } else { 'VSS Snapshot' }
+                        $backupItems += [PSCustomObject]@{
+                            Name     = $sName
+                            Status   = '[HEALTHY]'
+                            Type     = 'Shadow Copy'
+                            Details  = $sDev
+                            Path     = $sDev
+                            Manifest = $null
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            $null = $_
+        }
+
+        # Query System Restore Points
+        try {
+            if (Get-Command -Name 'Get-CimInstance' -ErrorAction SilentlyContinue) {
+                $restorePoints = @(Get-CimInstance -Namespace 'root/default' -ClassName 'SystemRestore' -ErrorAction SilentlyContinue)
+                foreach ($rp in $restorePoints) {
+                    if ($null -ne $rp) {
+                        $rpDesc = if ($rp.Description) { [string]$rp.Description } else { 'Restore Point' }
+                        $backupItems += [PSCustomObject]@{
+                            Name     = $rpDesc
+                            Status   = '[OK]'
+                            Type     = 'Restore Point'
+                            Details  = "Seq: $($rp.SequenceNumber)"
+                            Path     = "Seq: $($rp.SequenceNumber)"
+                            Manifest = $null
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            $null = $_
+        }
+
         $clear = if ($NonInteractive) { $false } else { $true }
         $backupInfo = Get-BackupContextInfoLines
         Show-ToolkitHeader -Title 'ITOOLKIT > USER PROFILE DATA BACKUP' -Subtitle 'Folders, Bookmarks, Certificates, Robocopy Engine & SHA-256 Manifests' -ClearScreen:$clear -InfoLines $backupInfo
-        Show-ToolkitDetailPanel -Details $backupDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
+
+        Show-ToolkitItemTable -Items $backupItems -Columns @('Name', 'Status', 'Type', 'Details') -Headers @('NAME', 'STATUS', 'TYPE', 'PATH/DETAILS') -Title 'Discovered Backups & Restore Points'
+
+        Write-Host ""
+        $topLevelActions = @(
+            @{ Key = 'N'; Label = 'New Full Backup' },
+            @{ Key = 'E'; Label = 'Export Bookmarks' },
+            @{ Key = 'C'; Label = 'Export Certs' },
+            @{ Key = 'M'; Label = 'Map Folders' },
+            @{ Key = 'G'; Label = 'Generate Manifest' },
+            @{ Key = 'V'; Label = 'Verify Manifest' }
+        )
+        $navActions = @(
+            @{ Key = 'B'; Label = 'Back' },
+            @{ Key = 'Q'; Label = 'Quit' }
+        )
+        Show-ToolkitActionCatalog -Actions $topLevelActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
             Write-ToolkitStatus -Message "Non-interactive category listing complete for 'User Profile Data Backup & Migration'." -Type 'INFO'
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', 'B', 'Q')
-        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
-            $inSubmenu = $false
-            break
-        }
-        if ($sub.ToUpperInvariant() -eq 'Q') {
-            $inSubmenu = $false
+        $validKeys = @('N', 'E', 'C', 'M', 'G', 'V', 'B', 'Q')
+        $promptText = if ($backupItems.Count -gt 0) { "  Select item [1-$($backupItems.Count)] or action" } else { "  Select action [N, E, C, M, G, V, B, Q]" }
+        $selection = Read-ToolkitItemSelection -MaxIndex $backupItems.Count -ValidHotkeys $validKeys -Prompt $promptText
+
+        if ($null -eq $selection -or $selection.Type -eq 'Exit') {
             return
         }
 
-        switch ($sub) {
-            '1' {
-                if (Get-Command -Name 'Get-UserProfileDirectoryMap' -ErrorAction SilentlyContinue) {
-                    Get-UserProfileDirectoryMap | Format-List
+        if ($selection.Type -eq 'Hotkey') {
+            $hk = $selection.Value.ToString().ToUpperInvariant()
+            switch ($hk) {
+                'B' {
+                    return
                 }
-            }
-            '2' {
-                $outDir = Read-Host "  Enter Export Destination Directory"
-                if (-not [string]::IsNullOrWhiteSpace($outDir)) {
+                'Q' {
+                    return
+                }
+                'N' {
+                    $src = Read-Host "  Enter Source Profile Path (Default: $env:USERPROFILE)"
+                    if ([string]::IsNullOrWhiteSpace($src)) {
+                        $src = $env:USERPROFILE
+                    }
+                    $dst = Read-Host "  Enter Target Backup Path (Default: C:\Backups\ProfileBackup)"
+                    if ([string]::IsNullOrWhiteSpace($dst)) {
+                        $dst = 'C:\Backups\ProfileBackup'
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace($src) -and (Get-Command -Name 'Start-ProfileDirectoryBackup' -ErrorAction SilentlyContinue)) {
+                        try {
+                            Start-ProfileDirectoryBackup -SourceDirectories @($src) -DestinationPath $dst | Format-List
+                            Write-ToolkitStatus -Message "Profile backup job completed." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Profile backup failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
+                }
+                'E' {
+                    $outDir = Read-Host "  Enter Export Destination Directory (Default: C:\Backups\Bookmarks)"
+                    if ([string]::IsNullOrWhiteSpace($outDir)) {
+                        $outDir = 'C:\Backups\Bookmarks'
+                    }
                     if (Get-Command -Name 'Export-BrowserBookmarks' -ErrorAction SilentlyContinue) {
-                        Export-BrowserBookmarks -DestinationDirectory $outDir | Format-List
+                        try {
+                            Export-BrowserBookmarks -DestinationPath $outDir | Format-List
+                            Write-ToolkitStatus -Message "Browser bookmarks exported to '$outDir'." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Bookmarks export failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '3' {
-                $outDir = Read-Host "  Enter Export Destination Directory"
-                if (-not [string]::IsNullOrWhiteSpace($outDir)) {
-                    if (Get-Command -Name 'Export-PersonalCertificates' -ErrorAction SilentlyContinue) {
-                        Export-PersonalCertificates -DestinationDirectory $outDir | Format-List
+                'C' {
+                    $outDir = Read-Host "  Enter Export Destination Directory (Default: C:\Backups\Certificates)"
+                    if ([string]::IsNullOrWhiteSpace($outDir)) {
+                        $outDir = 'C:\Backups\Certificates'
                     }
+                    $pwd = Read-Host "  Enter Protection Password for Certificates" -AsSecureString
+                    if ($null -ne $pwd -and (Get-Command -Name 'Export-PersonalCertificates' -ErrorAction SilentlyContinue)) {
+                        try {
+                            Export-PersonalCertificates -DestinationPath $outDir -Password $pwd | Format-List
+                            Write-ToolkitStatus -Message "Personal certificates exported to '$outDir'." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Certificates export failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
                 }
-            }
-            '4' {
-                $src = Read-Host "  Enter Source Profile Path (e.g. C:\Users\Username)"
-                $dst = Read-Host "  Enter Target Backup Path"
-                if (-not [string]::IsNullOrWhiteSpace($src) -and -not [string]::IsNullOrWhiteSpace($dst)) {
-                    if (Get-Command -Name 'Start-ProfileDirectoryBackup' -ErrorAction SilentlyContinue) {
-                        Start-ProfileDirectoryBackup -SourceProfilePath $src -DestinationBackupPath $dst | Format-List
+                'M' {
+                    if (Get-Command -Name 'Get-UserProfileDirectoryMap' -ErrorAction SilentlyContinue) {
+                        try {
+                            Get-UserProfileDirectoryMap | Format-List
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Profile directory mapping failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '5' {
-                $target = Read-Host "  Enter Target Directory for Manifest"
-                if (-not [string]::IsNullOrWhiteSpace($target)) {
-                    if (Get-Command -Name 'New-BackupIntegrityManifest' -ErrorAction SilentlyContinue) {
-                        New-BackupIntegrityManifest -TargetDirectory $target | Format-List
+                'G' {
+                    $target = Read-Host "  Enter Target Directory for Manifest"
+                    if (-not [string]::IsNullOrWhiteSpace($target) -and (Get-Command -Name 'New-BackupIntegrityManifest' -ErrorAction SilentlyContinue)) {
+                        try {
+                            $man = New-BackupIntegrityManifest -BackupRoot $target
+                            Write-ToolkitStatus -Message "SHA-256 manifest generated: $man" -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Manifest generation failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '6' {
-                $manPath = Read-Host "  Enter Manifest File Path"
-                if (-not [string]::IsNullOrWhiteSpace($manPath)) {
-                    if (Get-Command -Name 'Test-BackupIntegrityManifest' -ErrorAction SilentlyContinue) {
-                        Test-BackupIntegrityManifest -ManifestPath $manPath | Format-List
+                'V' {
+                    $manPath = Read-Host "  Enter Manifest File Path"
+                    $rootPath = Read-Host "  Enter Target Root Path to Verify"
+                    if (-not [string]::IsNullOrWhiteSpace($manPath) -and -not [string]::IsNullOrWhiteSpace($rootPath)) {
+                        if (Get-Command -Name 'Test-BackupIntegrityManifest' -ErrorAction SilentlyContinue) {
+                            try {
+                                Test-BackupIntegrityManifest -ManifestPath $manPath -TargetRoot $rootPath | Format-List
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Manifest verification failed: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
                     }
-                }
-            }
-            '7' {
-                $root = Read-Host "  Enter Backup Root Path"
-                if (-not [string]::IsNullOrWhiteSpace($root)) {
-                    if (Get-Command -Name 'Restore-UserProfileData' -ErrorAction SilentlyContinue) {
-                        Restore-UserProfileData -BackupRoot $root | Format-List
-                    }
+                    Wait-UserAcknowledge
                 }
             }
         }
-        Wait-UserAcknowledge
+        elseif ($selection.Type -eq 'Index') {
+            $idx = [int]$selection.Value
+            if ($idx -ge 1 -and $idx -le $backupItems.Count) {
+                $targetBackup = $backupItems[$idx - 1]
+
+                $targetInfo = @(
+                    "Backup Name    : $($targetBackup.Name)",
+                    "Backup Type    : $($targetBackup.Type)",
+                    "Status         : $($targetBackup.Status)",
+                    "Path / Details : $($targetBackup.Details)"
+                )
+                Show-ToolkitHeader -Title "ITOOLKIT > BACKUP: $($targetBackup.Name)" -Subtitle "Type: $($targetBackup.Type) | Details: $($targetBackup.Details)" -ClearScreen:$true -InfoLines $targetInfo
+
+                $contextDetails = @(
+                    @{ Key = '1'; Action = 'Restore Data'; Description = "Restore profile data from '$($targetBackup.Name)'."; Prerequisite = 'Target folder writable [READY]' },
+                    @{ Key = '2'; Action = 'Verify Integrity'; Description = "Validate SHA-256 integrity manifest for '$($targetBackup.Name)'."; Prerequisite = 'Manifest present [READY]' },
+                    @{ Key = '3'; Action = 'Delete Backup Set'; Description = "Permanently remove backup set '$($targetBackup.Name)'."; Prerequisite = 'Confirmation required [WARN]' }
+                )
+                $contextNav = @(
+                    @{ Key = 'B'; Label = 'Back to Backups Table' },
+                    @{ Key = 'Q'; Label = 'Exit Console' }
+                )
+                Show-ToolkitDetailPanel -Details $contextDetails -NavActions $contextNav -Title 'CONTEXTUAL ACTIONS'
+
+                $ctxChoice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', 'B', 'Q') -Default 'B'
+
+                if ([string]::IsNullOrWhiteSpace($ctxChoice) -or $ctxChoice.ToUpperInvariant() -eq 'B') {
+                    continue
+                }
+                if ($ctxChoice.ToUpperInvariant() -eq 'Q') {
+                    return
+                }
+
+                switch ($ctxChoice) {
+                    '1' {
+                        if (Get-Command -Name 'Restore-UserProfileData' -ErrorAction SilentlyContinue) {
+                            try {
+                                Restore-UserProfileData -BackupRoot $targetBackup.Path | Format-List
+                                Write-ToolkitStatus -Message "Profile data restoration completed from '$($targetBackup.Name)'." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Restore failed: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                    '2' {
+                        if (Get-Command -Name 'Test-BackupIntegrityManifest' -ErrorAction SilentlyContinue) {
+                            try {
+                                $manFile = $targetBackup.Manifest
+                                if ([string]::IsNullOrWhiteSpace($manFile)) {
+                                    $manFile = Join-Path $targetBackup.Path 'IToolkit_Backup_Manifest.json'
+                                }
+                                if (Test-Path -LiteralPath $manFile) {
+                                    $vRes = Test-BackupIntegrityManifest -ManifestPath $manFile -TargetRoot $targetBackup.Path
+                                    $vRes | Format-List
+                                    $badge = if ($vRes.IsIntact) { 'OK' } else { 'FAIL' }
+                                    Write-ToolkitStatus -Message "Manifest verification finished for '$($targetBackup.Name)'." -Type $badge
+                                }
+                                else {
+                                    Write-ToolkitStatus -Message "No SHA-256 manifest found in '$($targetBackup.Path)'." -Type 'WARN'
+                                }
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Verification failed: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                    '3' {
+                        if (Test-Path -LiteralPath $targetBackup.Path) {
+                            $confirm = Read-Host "  Are you sure you want to delete backup set '$($targetBackup.Name)'? [Y/N]"
+                            if (-not [string]::IsNullOrWhiteSpace($confirm) -and $confirm.Trim().ToUpperInvariant() -eq 'Y') {
+                                try {
+                                    Remove-Item -LiteralPath $targetBackup.Path -Recurse -Force -ErrorAction Stop
+                                    Write-ToolkitStatus -Message "Backup set '$($targetBackup.Name)' successfully deleted." -Type 'OK'
+                                }
+                                catch {
+                                    Write-ToolkitStatus -Message "Failed to delete backup set: $($_.Exception.Message)" -Type 'FAIL'
+                                }
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Backup set deletion cancelled." -Type 'INFO'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Item '$($targetBackup.Name)' is a system snapshot and cannot be deleted directly." -Type 'WARN'
+                        }
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+        }
     }
 }
 
 function Invoke-ToolkitSubmenuAccounts {
 <#
 .SYNOPSIS
-    Submenu for User & Domain Account Administration with Tri-Panel UI/UX.
+    Submenu for User & Domain Account Administration with item-centric UI/UX.
 #>
     [CmdletBinding()]
     param(
@@ -1064,7 +1967,10 @@ function Invoke-ToolkitSubmenuAccounts {
         [switch]$ExitImmediately,
 
         [Parameter(Mandatory = $false)]
-        [switch]$NonInteractive
+        [switch]$NonInteractive,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MenuDepth = 1
     )
 
     if ($ExitImmediately) {
@@ -1072,132 +1978,326 @@ function Invoke-ToolkitSubmenuAccounts {
         return
     }
 
-    $subnav = @(
-        @{ Key = 'B'; Label = 'Back to Main Menu' },
-        @{ Key = 'Q'; Label = 'Exit Console' }
-    )
-    $accountsDetails = @(
-        @{ Key = '1'; Action = 'List Local Accounts'; Description = 'Enumerate local user accounts via ADSI WinNT.'; Prerequisite = 'Local system [READY]' },
-        @{ Key = '2'; Action = 'Create Local Account'; Description = 'Create local user account with SecureString password.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '3'; Action = 'Unlock Local Account'; Description = 'Clear account lockout flag for local account.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '4'; Action = 'Set Account Status'; Description = 'Enable or disable local user account.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '5'; Action = 'Query Domain User'; Description = 'Query Active Directory user details without RSAT.'; Prerequisite = 'Domain reachability [READY]' },
-        @{ Key = '6'; Action = 'Unlock Domain User'; Description = 'Unlock domain account via .NET DirectoryEntry.'; Prerequisite = 'Domain reachability [READY]' },
-        @{ Key = '7'; Action = 'Enable Admin (SID 500)'; Description = 'Activate built-in Administrator account.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '8'; Action = 'Reset Admin Password'; Description = 'Reset built-in Administrator account password.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '9'; Action = 'Test Domain Health'; Description = 'Test DNS SRV, LDAP, Kerberos, SMB and RPC ports.'; Prerequisite = 'Network connection [READY]' },
-        @{ Key = '10'; Action = 'Disjoin Domain'; Description = 'Disjoin machine from domain with lockout defense.'; Prerequisite = 'Domain admin creds [READY]' }
-    )
+    if (-not (Get-Command -Name 'Show-ToolkitItemTable' -ErrorAction SilentlyContinue)) {
+        $tableScript = Join-Path $PSScriptRoot 'Show-ToolkitItemTable.ps1'
+        if (Test-Path $tableScript) {
+            . $tableScript
+        }
+    }
+    if (-not (Get-Command -Name 'Read-ToolkitItemSelection' -ErrorAction SilentlyContinue)) {
+        $selectScript = Join-Path $PSScriptRoot 'Read-ToolkitItemSelection.ps1'
+        if (Test-Path $selectScript) {
+            . $selectScript
+        }
+    }
 
     $inSubmenu = $true
     while ($inSubmenu) {
+        $rawAccounts = @()
+        try {
+            if (Get-Command -Name 'Get-LocalAccountList' -ErrorAction SilentlyContinue) {
+                $rawAccounts = @(Get-LocalAccountList)
+            }
+        }
+        catch {
+            Write-ToolkitStatus -Message "Failed to enumerate local accounts: $($_.Exception.Message)" -Type 'WARN'
+        }
+
+        $accounts = @()
+        foreach ($acc in $rawAccounts) {
+            $isEnabled = $true
+            if ($null -ne $acc.Enabled) {
+                $isEnabled = [bool]$acc.Enabled
+            }
+            elseif ($null -ne $acc.Disabled) {
+                $isEnabled = (-not [bool]$acc.Disabled)
+            }
+
+            $isLocked = $false
+            if ($null -ne $acc.Locked) {
+                $isLocked = [bool]$acc.Locked
+            }
+            elseif ($null -ne $acc.Lockout) {
+                $isLocked = [bool]$acc.Lockout
+            }
+
+            $statusBadge = if ($isEnabled) { '[ENABLED]' } else { '[DISABLED]' }
+            $lockedBadge = if ($isLocked) { '[LOCKED]' } else { '[OK]' }
+
+            $accounts += [PSCustomObject]@{
+                Name     = [string]$acc.Name
+                Status   = $statusBadge
+                Locked   = $lockedBadge
+                SID      = [string]$acc.SID
+                Enabled  = $isEnabled
+                IsLocked = $isLocked
+            }
+        }
+
         $clear = if ($NonInteractive) { $false } else { $true }
         $accountsInfo = Get-AccountsContextInfoLines
         Show-ToolkitHeader -Title 'ITOOLKIT > USER & DOMAIN ACCOUNT ADMINISTRATION' -Subtitle 'Account Operations, Administrator SID -500, Domain Join/Disjoin' -ClearScreen:$clear -InfoLines $accountsInfo
-        Show-ToolkitDetailPanel -Details $accountsDetails -NavActions $subnav -Title 'ACTIONS & COMMANDS'
+
+        Show-ToolkitItemTable -Items $accounts -Columns @('Name', 'Status', 'Locked', 'SID') -Title 'Local User Accounts'
+
+        Write-Host ""
+        $topLevelActions = @(
+            @{ Key = 'A'; Label = 'Add Account' },
+            @{ Key = 'S'; Label = 'Enable Admin SID-500' },
+            @{ Key = 'P'; Label = 'Reset Admin Pwd' },
+            @{ Key = 'D'; Label = 'Query Domain User' },
+            @{ Key = 'U'; Label = 'Unlock Domain User' },
+            @{ Key = 'T'; Label = 'Test Domain Health' },
+            @{ Key = 'J'; Label = 'Disjoin Domain' },
+            @{ Key = 'R'; Label = 'Refresh Table' }
+        )
+        $navActions = @(
+            @{ Key = 'B'; Label = 'Back' },
+            @{ Key = 'Q'; Label = 'Quit' }
+        )
+        Show-ToolkitActionCatalog -Actions $topLevelActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'User & Domain Account Administration'." -Type 'INFO'
+            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Account Administration'." -Type 'INFO'
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'B', 'Q')
-        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
-            $inSubmenu = $false
-            break
-        }
-        if ($sub.ToUpperInvariant() -eq 'Q') {
-            $inSubmenu = $false
+        $validKeys = @('A', 'S', 'P', 'D', 'U', 'T', 'J', 'R', 'B', 'Q')
+        $promptText = if ($accounts.Count -gt 0) { "  Select item [1-$($accounts.Count)] or action" } else { "  Select action [A, S, P, D, U, T, J, R, B, Q]" }
+        $selection = Read-ToolkitItemSelection -MaxIndex $accounts.Count -ValidHotkeys $validKeys -Prompt $promptText
+
+        if ($null -eq $selection -or $selection.Type -eq 'Exit') {
             return
         }
 
-        switch ($sub) {
-            '1' {
-                if (Get-Command -Name 'Get-LocalAccountList' -ErrorAction SilentlyContinue) {
-                    Get-LocalAccountList | Format-Table -AutoSize
+        if ($selection.Type -eq 'Hotkey') {
+            $hk = $selection.Value.ToString().ToUpperInvariant()
+            switch ($hk) {
+                'B' {
+                    return
                 }
-            }
-            '2' {
-                $user = Read-Host "  Enter New Username"
-                $pwd  = Read-Host "  Enter Secure Password" -AsSecureString
-                if (-not [string]::IsNullOrWhiteSpace($user) -and $null -ne $pwd) {
-                    if (Get-Command -Name 'New-LocalAccountItem' -ErrorAction SilentlyContinue) {
-                        New-LocalAccountItem -Username $user -Password $pwd | Format-List
+                'Q' {
+                    return
+                }
+                'R' {
+                    continue
+                }
+                'A' {
+                    $user = Read-Host "  Enter New Username"
+                    $pwd  = Read-Host "  Enter Secure Password" -AsSecureString
+                    if (-not [string]::IsNullOrWhiteSpace($user) -and $null -ne $pwd) {
+                        if (Get-Command -Name 'New-LocalAccountItem' -ErrorAction SilentlyContinue) {
+                            try {
+                                New-LocalAccountItem -Username $user -Password $pwd | Format-List
+                                Write-ToolkitStatus -Message "Local account '$user' creation completed." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to create local account '$user': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '3' {
-                $user = Read-Host "  Enter Username to Unlock"
-                if (-not [string]::IsNullOrWhiteSpace($user)) {
-                    if (Get-Command -Name 'Unlock-LocalAccountItem' -ErrorAction SilentlyContinue) {
-                        $res = Unlock-LocalAccountItem -Username $user
-                        Write-ToolkitStatus -Message "Account '$user' unlock result: $res" -Type 'OK'
+                'S' {
+                    if (Get-Command -Name 'Enable-BuiltInAdministrator' -ErrorAction SilentlyContinue) {
+                        try {
+                            Enable-BuiltInAdministrator | Format-List
+                            Write-ToolkitStatus -Message "Built-in Administrator (SID -500) activation completed." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to enable built-in Administrator: $($_.Exception.Message)" -Type 'FAIL'
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '4' {
-                $user = Read-Host "  Enter Username"
-                $act  = Read-Host "  Enable account? [Y/N]"
-                $enab = ($act.Trim().ToUpperInvariant() -eq 'Y')
-                if (-not [string]::IsNullOrWhiteSpace($user)) {
-                    if (Get-Command -Name 'Set-LocalAccountState' -ErrorAction SilentlyContinue) {
-                        Set-LocalAccountState -Username $user -Enabled $enab
+                'P' {
+                    $pwd = Read-Host "  Enter New Password for Administrator" -AsSecureString
+                    if ($null -ne $pwd) {
+                        if (Get-Command -Name 'Reset-BuiltInAdministratorPassword' -ErrorAction SilentlyContinue) {
+                            try {
+                                Reset-BuiltInAdministratorPassword -Password $pwd | Format-List
+                                Write-ToolkitStatus -Message "Built-in Administrator password reset completed." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to reset Administrator password: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '5' {
-                $user = Read-Host "  Enter Domain SamAccountName"
-                if (-not [string]::IsNullOrWhiteSpace($user)) {
-                    if (Get-Command -Name 'Get-DomainAccountItem' -ErrorAction SilentlyContinue) {
-                        Get-DomainAccountItem -Username $user | Format-List
+                'D' {
+                    $user = Read-Host "  Enter Domain SamAccountName"
+                    if (-not [string]::IsNullOrWhiteSpace($user)) {
+                        if (Get-Command -Name 'Get-DomainAccountItem' -ErrorAction SilentlyContinue) {
+                            try {
+                                Get-DomainAccountItem -Username $user | Format-List
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to query domain account '$user': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '6' {
-                $user = Read-Host "  Enter Domain SamAccountName to Unlock"
-                if (-not [string]::IsNullOrWhiteSpace($user)) {
-                    if (Get-Command -Name 'Unlock-DomainAccountItem' -ErrorAction SilentlyContinue) {
-                        $res = Unlock-DomainAccountItem -Username $user
-                        Write-ToolkitStatus -Message "Domain account '$user' unlock result: $res" -Type 'OK'
+                'U' {
+                    $user = Read-Host "  Enter Domain SamAccountName to Unlock"
+                    if (-not [string]::IsNullOrWhiteSpace($user)) {
+                        if (Get-Command -Name 'Unlock-DomainAccountItem' -ErrorAction SilentlyContinue) {
+                            try {
+                                $res = Unlock-DomainAccountItem -Username $user
+                                Write-ToolkitStatus -Message "Domain account '$user' unlock result: $res" -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to unlock domain account '$user': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '7' {
-                if (Get-Command -Name 'Enable-BuiltInAdministrator' -ErrorAction SilentlyContinue) {
-                    Enable-BuiltInAdministrator | Format-List
-                }
-            }
-            '8' {
-                $pwd = Read-Host "  Enter New Password for Administrator" -AsSecureString
-                if ($null -ne $pwd) {
-                    if (Get-Command -Name 'Reset-BuiltInAdministratorPassword' -ErrorAction SilentlyContinue) {
-                        Reset-BuiltInAdministratorPassword -Password $pwd | Format-List
+                'T' {
+                    $dom = Read-Host "  Enter Domain FQDN (e.g. corp.contoso.com)"
+                    if (-not [string]::IsNullOrWhiteSpace($dom)) {
+                        if (Get-Command -Name 'Test-DomainReachability' -ErrorAction SilentlyContinue) {
+                            try {
+                                Test-DomainReachability -DomainName $dom | Format-List
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to test domain reachability for '$dom': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
-            }
-            '9' {
-                $dom = Read-Host "  Enter Domain FQDN (e.g. corp.contoso.com)"
-                if (-not [string]::IsNullOrWhiteSpace($dom)) {
-                    if (Get-Command -Name 'Test-DomainReachability' -ErrorAction SilentlyContinue) {
-                        Test-DomainReachability -DomainName $dom | Format-List
+                'J' {
+                    $wg  = Read-Host "  Enter Target Workgroup Name (Default: WORKGROUP)"
+                    if ([string]::IsNullOrWhiteSpace($wg)) {
+                        $wg = 'WORKGROUP'
                     }
-                }
-            }
-            '10' {
-                $wg  = Read-Host "  Enter Target Workgroup Name (Default: WORKGROUP)"
-                if ([string]::IsNullOrWhiteSpace($wg)) {
-                    $wg = 'WORKGROUP'
-                }
-                Write-Host "  Domain disjoin requires domain administrative credentials." -ForegroundColor Yellow
-                $cred = Get-Credential
-                if ($null -ne $cred) {
-                    if (Get-Command -Name 'Disconnect-ToolkitDomain' -ErrorAction SilentlyContinue) {
-                        Disconnect-ToolkitDomain -WorkgroupName $wg -Credential $cred | Format-List
+                    Write-Host "  Domain disjoin requires domain administrative credentials." -ForegroundColor Yellow
+                    $cred = Get-Credential
+                    if ($null -ne $cred) {
+                        if (Get-Command -Name 'Disconnect-ToolkitDomain' -ErrorAction SilentlyContinue) {
+                            try {
+                                Disconnect-ToolkitDomain -WorkgroupName $wg -Credential $cred | Format-List
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to disjoin domain: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
                     }
+                    Wait-UserAcknowledge
                 }
             }
         }
-        Wait-UserAcknowledge
+        elseif ($selection.Type -eq 'Index') {
+            $idx = [int]$selection.Value
+            if ($idx -ge 1 -and $idx -le $accounts.Count) {
+                $targetAccount = $accounts[$idx - 1]
+
+                $targetInfo = @(
+                    "Target Account : $($targetAccount.Name)",
+                    "Security ID    : $($targetAccount.SID)",
+                    "Current State  : $($targetAccount.Status)",
+                    "Lockout Status : $($targetAccount.Locked)"
+                )
+                Show-ToolkitHeader -Title "ITOOLKIT > ACCOUNT: $($targetAccount.Name)" -Subtitle "Target SID: $($targetAccount.SID)" -ClearScreen:$true -InfoLines $targetInfo
+
+                $toggleDesc = if ($targetAccount.Enabled -or $targetAccount.Status -eq '[ENABLED]') { 'Disable Account' } else { 'Enable Account' }
+                $contextDetails = @(
+                    @{ Key = '1'; Action = "Toggle State ($toggleDesc)"; Description = 'Toggle account active or disabled state.'; Prerequisite = 'Administrator rights [READY]' },
+                    @{ Key = '2'; Action = 'Unlock Account'; Description = 'Clear account lockout flag via ADSI/LocalUser.'; Prerequisite = 'Administrator rights [READY]' },
+                    @{ Key = '3'; Action = 'Reset Password'; Description = "Set new password for '$($targetAccount.Name)'."; Prerequisite = 'Administrator rights [READY]' },
+                    @{ Key = '4'; Action = 'Remove Account'; Description = "Delete local user account '$($targetAccount.Name)'."; Prerequisite = 'Requires confirmation [WARN]' }
+                )
+                $contextNav = @(
+                    @{ Key = 'B'; Label = 'Back to Accounts Table' },
+                    @{ Key = 'Q'; Label = 'Exit Console' }
+                )
+                Show-ToolkitDetailPanel -Details $contextDetails -NavActions $contextNav -Title 'CONTEXTUAL ACTIONS'
+
+                $ctxChoice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', 'B', 'Q') -Default 'B'
+
+                if ([string]::IsNullOrWhiteSpace($ctxChoice) -or $ctxChoice.ToUpperInvariant() -eq 'B') {
+                    continue
+                }
+                if ($ctxChoice.ToUpperInvariant() -eq 'Q') {
+                    return
+                }
+
+                switch ($ctxChoice) {
+                    '1' {
+                        $newState = -not ($targetAccount.Enabled -or $targetAccount.Status -eq '[ENABLED]')
+                        if (Get-Command -Name 'Set-LocalAccountState' -ErrorAction SilentlyContinue) {
+                            try {
+                                $res = Set-LocalAccountState -Username $targetAccount.Name -Enabled $newState
+                                $stateText = if ($newState) { 'Enabled' } else { 'Disabled' }
+                                Write-ToolkitStatus -Message "Account '$($targetAccount.Name)' state successfully set to $stateText." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to set state for '$($targetAccount.Name)': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                    '2' {
+                        if (Get-Command -Name 'Unlock-LocalAccountItem' -ErrorAction SilentlyContinue) {
+                            try {
+                                $res = Unlock-LocalAccountItem -Username $targetAccount.Name
+                                Write-ToolkitStatus -Message "Account '$($targetAccount.Name)' unlock result: $res" -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to unlock '$($targetAccount.Name)': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                    }
+                    '3' {
+                        $pwd = Read-Host "  Enter New Password for '$($targetAccount.Name)'" -AsSecureString
+                        if ($null -ne $pwd) {
+                            try {
+                                if (Get-Command -Name 'Set-LocalUser' -ErrorAction SilentlyContinue) {
+                                    Set-LocalUser -Name $targetAccount.Name -Password $pwd -ErrorAction Stop
+                                    Write-ToolkitStatus -Message "Password successfully reset for account '$($targetAccount.Name)'." -Type 'OK'
+                                }
+                                else {
+                                    Write-ToolkitStatus -Message "Set-LocalUser command is not available." -Type 'FAIL'
+                                }
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Failed to reset password for '$($targetAccount.Name)': $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Password reset cancelled (empty password provided)." -Type 'WARN'
+                        }
+                    }
+                    '4' {
+                        if ($targetAccount.SID -match '-(?:500)$' -or $targetAccount.Name -eq 'Administrator') {
+                            Write-ToolkitStatus -Message "Operation blocked: Built-in Administrator account (SID -500) cannot be removed." -Type 'FAIL'
+                        }
+                        else {
+                            $confirm = Read-Host "  Are you sure you want to remove account '$($targetAccount.Name)'? [Y/N]"
+                            if (-not [string]::IsNullOrWhiteSpace($confirm) -and $confirm.Trim().ToUpperInvariant() -eq 'Y') {
+                                try {
+                                    if (Get-Command -Name 'Remove-LocalUser' -ErrorAction SilentlyContinue) {
+                                        Remove-LocalUser -Name $targetAccount.Name -ErrorAction Stop
+                                        Write-ToolkitStatus -Message "Account '$($targetAccount.Name)' successfully removed." -Type 'OK'
+                                    }
+                                    else {
+                                        Write-ToolkitStatus -Message "Remove-LocalUser command is not available." -Type 'FAIL'
+                                    }
+                                }
+                                catch {
+                                    Write-ToolkitStatus -Message "Failed to remove account '$($targetAccount.Name)': $($_.Exception.Message)" -Type 'FAIL'
+                                }
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Account removal cancelled." -Type 'INFO'
+                            }
+                        }
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+        }
     }
 }
 

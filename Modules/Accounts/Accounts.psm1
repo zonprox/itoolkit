@@ -20,6 +20,7 @@ $windowsCmdlets = @(
     'Enable-LocalUser',
     'Disable-LocalUser',
     'Set-LocalUser',
+    'Remove-LocalUser',
     'Resolve-DnsName',
     'Test-NetConnection',
     'Get-ADUser',

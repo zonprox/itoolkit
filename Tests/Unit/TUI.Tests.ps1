@@ -551,4 +551,424 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Show-ToolkitMenuOption -Key '1' -Label 'Option with status' -Status 'OK' } | Should -Not -Throw
         }
     }
+
+    Context 'Show-ToolkitItemTable Tabular Display Engine' {
+        It 'Renders clean [No items found] box when $Items is empty collection' -Skip:(-not $isTUIAvailable) {
+            { Show-ToolkitItemTable -Items @() -Columns @('Name', 'Status') } | Should -Not -Throw
+            { Show-ToolkitItemTable -Items @() -Columns @('Name', 'Status') -Title 'EMPTY LIST' -Width 60 } | Should -Not -Throw
+        }
+
+        It 'Renders clean [No items found] box when $Items is $null' -Skip:(-not $isTUIAvailable) {
+            { Show-ToolkitItemTable -Items $null -Columns @('Name', 'Status') } | Should -Not -Throw
+        }
+
+        It 'Renders table with auto-calculated width when Width is omitted' -Skip:(-not $isTUIAvailable) {
+            $testItems = @(
+                [PSCustomObject]@{ Name = 'Administrator'; Status = '[ENABLED]'; Role = 'Domain Admin' },
+                [PSCustomObject]@{ Name = 'Guest'; Status = '[DISABLED]'; Role = 'Guest User' }
+            )
+            { Show-ToolkitItemTable -Items $testItems -Columns @('Name', 'Status', 'Role') -Title 'LOCAL ACCOUNTS' } | Should -Not -Throw
+        }
+
+        It 'Respects explicit Width parameter and clamps minimum layout width' -Skip:(-not $isTUIAvailable) {
+            $testItems = @(
+                [PSCustomObject]@{ Item = 'Primary Printer'; Port = '192.168.1.50'; Status = '[READY]' },
+                [PSCustomObject]@{ Item = 'Secondary Spooler'; Port = 'USB001'; Status = '[STOPPED]' }
+            )
+            { Show-ToolkitItemTable -Items $testItems -Columns @('Item', 'Port', 'Status') -Width 80 } | Should -Not -Throw
+            { Show-ToolkitItemTable -Items $testItems -Columns @('Item', 'Port', 'Status') -Width 40 } | Should -Not -Throw
+            { Show-ToolkitItemTable -Items $testItems -Columns @('Item', 'Port', 'Status') -Width 120 } | Should -Not -Throw
+        }
+
+        It 'Formats row indices [1], [2], ... and supports custom Headers mapping' -Skip:(-not $isTUIAvailable) {
+            $items = @(
+                [PSCustomObject]@{ Name = 'App1'; State = 'Running' },
+                [PSCustomObject]@{ Name = 'App2'; State = 'Stopped' },
+                [PSCustomObject]@{ Name = 'App3'; State = 'Ready' }
+            )
+            { Show-ToolkitItemTable -Items $items -Columns @('Name', 'State') -Headers @('APPLICATION', 'CURRENT STATE') } | Should -Not -Throw
+        }
+
+        It 'Handles all standardized status badges ([ENABLED], [DISABLED], [LOCKED], [RUNNING], [STOPPED], [READY], [OK], [WARN], [FAIL])' -Skip:(-not $isTUIAvailable) {
+            $badgeItems = @(
+                [PSCustomObject]@{ Id = '1'; Badge = '[ENABLED]' },
+                [PSCustomObject]@{ Id = '2'; Badge = '[DISABLED]' },
+                [PSCustomObject]@{ Id = '3'; Badge = '[LOCKED]' },
+                [PSCustomObject]@{ Id = '4'; Badge = '[RUNNING]' },
+                [PSCustomObject]@{ Id = '5'; Badge = '[STOPPED]' },
+                [PSCustomObject]@{ Id = '6'; Badge = '[READY]' },
+                [PSCustomObject]@{ Id = '7'; Badge = '[OK]' },
+                [PSCustomObject]@{ Id = '8'; Badge = '[WARN]' },
+                [PSCustomObject]@{ Id = '9'; Badge = '[FAIL]' },
+                [PSCustomObject]@{ Id = '10'; Badge = '[ACTIVE]' },
+                [PSCustomObject]@{ Id = '11'; Badge = '[ERROR]' }
+            )
+            { Show-ToolkitItemTable -Items $badgeItems -Columns @('Id', 'Badge') -Title 'STATUS BADGE MATRIX' } | Should -Not -Throw
+        }
+
+        It 'Uses pure ASCII borders (+, -, |) with zero Unicode box characters' -Skip:(-not $isTUIAvailable) {
+            $sampleItems = @(
+                [PSCustomObject]@{ Component = 'Spooler'; Status = '[READY]' },
+                [PSCustomObject]@{ Component = 'RPC'; Status = '[RUNNING]' }
+            )
+            $tableLines = @(Show-ToolkitItemTable -Items $sampleItems -Columns @('Component', 'Status') -Title 'ASCII TEST' -Width 78 6>&1)
+
+            $tableLines.Count | Should -BeGreaterThan 0
+            foreach ($entry in $tableLines) {
+                $line = [string]$entry
+                $charCodes = [int[]][char[]]$line
+                foreach ($c in $charCodes) {
+                    $c | Should -BeLessOrEqual 127
+                }
+                $line | Should -Not -Match '[\u2500-\u257F]'
+            }
+        }
+
+        It 'Renders items provided as Hashtables as well as PSCustomObjects' -Skip:(-not $isTUIAvailable) {
+            $hashItems = @(
+                @{ Name = 'Profile1'; DataFile = 'C:\Users\test\mail.ost'; Status = '[READY]' },
+                @{ Name = 'Profile2'; DataFile = 'C:\Users\test\archive.pst'; Status = '[DISABLED]' }
+            )
+            { Show-ToolkitItemTable -Items $hashItems -Columns @('Name', 'DataFile', 'Status') -Title 'HASH ITEMS' } | Should -Not -Throw
+        }
+    }
+
+    Context 'Read-ToolkitItemSelection Input Parsing & Safeguards' {
+        It 'Correctly parses valid numeric integer indices (1..MaxIndex) returning Type Index' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '1' }
+            $res1 = Read-ToolkitItemSelection -MaxIndex 5
+            $res1.Type | Should -Be 'Index'
+            $res1.Value | Should -Be 1
+
+            Mock Read-Host { return '5' }
+            $res5 = Read-ToolkitItemSelection -MaxIndex 5
+            $res5.Type | Should -Be 'Index'
+            $res5.Value | Should -Be 5
+        }
+
+        It 'Correctly parses bracketed numeric selection (e.g. [2]) returning Type Index' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '[2]' }
+            $res = Read-ToolkitItemSelection -MaxIndex 10
+            $res.Type | Should -Be 'Index'
+            $res.Value | Should -Be 2
+        }
+
+        It 'Correctly parses valid action hotkeys (case-insensitive) returning Type Hotkey' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return 'b' }
+            $resB = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('B', 'R', 'A')
+            $resB.Type | Should -Be 'Hotkey'
+            $resB.Value | Should -Be 'B'
+
+            Mock Read-Host { return 'R' }
+            $resR = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('B', 'R', 'A')
+            $resR.Type | Should -Be 'Hotkey'
+            $resR.Value | Should -Be 'R'
+
+            Mock Read-Host { return 'a' }
+            $resA = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('B', 'R', 'A')
+            $resA.Type | Should -Be 'Hotkey'
+            $resA.Value | Should -Be 'A'
+        }
+
+        It 'Correctly parses standard exit commands (Q, QUIT, EXIT) returning Type Exit' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return 'q' }
+            $resQ = Read-ToolkitItemSelection -MaxIndex 5
+            $resQ.Type | Should -Be 'Exit'
+            $resQ.Value | Should -Be 'Q'
+
+            Mock Read-Host { return 'quit' }
+            $resQuit = Read-ToolkitItemSelection -MaxIndex 5
+            $resQuit.Type | Should -Be 'Exit'
+            $resQuit.Value | Should -Be 'Q'
+
+            Mock Read-Host { return 'EXIT' }
+            $resExit = Read-ToolkitItemSelection -MaxIndex 5
+            $resExit.Type | Should -Be 'Exit'
+            $resExit.Value | Should -Be 'Q'
+        }
+
+        It 'Re-prompts on invalid input and returns subsequent valid choice' -Skip:(-not $isTUIAvailable) {
+            $script:attemptNum = 0
+            Mock Read-Host {
+                $script:attemptNum++
+                if ($script:attemptNum -eq 1) { return 'invalid_option' }
+                if ($script:attemptNum -eq 2) { return '99' }
+                return '3'
+            }
+            $res = Read-ToolkitItemSelection -MaxIndex 5
+            $res.Type | Should -Be 'Index'
+            $res.Value | Should -Be 3
+            $script:attemptNum | Should -Be 3
+        }
+
+        It 'Applies 5-attempt headless safeguard on repeated invalid input and exits safely' -Skip:(-not $isTUIAvailable) {
+            $script:loopCount = 0
+            Mock Read-Host {
+                $script:loopCount++
+                return 'invalid_headless_input'
+            }
+            $res = Read-ToolkitItemSelection -MaxIndex 5
+            $res.Type | Should -Be 'Exit'
+            $res.Value | Should -Be 'Q'
+            $script:loopCount | Should -Be 5
+        }
+
+        It 'Clean exit on $null / closed stdin (EOF) immediately without hanging' -Skip:(-not $isTUIAvailable) {
+            $script:eofCalls = 0
+            Mock Read-Host {
+                $script:eofCalls++
+                return $null
+            }
+            $res = Read-ToolkitItemSelection -MaxIndex 10 -ValidHotkeys @('B', 'Q')
+            $res.Type | Should -Be 'Exit'
+            $res.Value | Should -Be 'Q'
+            $script:eofCalls | Should -Be 1
+        }
+    }
+
+    Context 'Item-Centric Submenu Matrix Non-Interactive & Immediate Exit Verification' {
+        $submenus = @(
+            @{ Name = 'Accounts'; Command = 'Invoke-ToolkitSubmenuAccounts' },
+            @{ Name = 'Printers'; Command = 'Invoke-ToolkitSubmenuPrinters' },
+            @{ Name = 'Outlook';  Command = 'Invoke-ToolkitSubmenuOutlook' },
+            @{ Name = 'Office';   Command = 'Invoke-ToolkitSubmenuOffice' },
+            @{ Name = 'Backup';   Command = 'Invoke-ToolkitSubmenuBackup' }
+        )
+
+        It '<Name>: Terminates immediately without processing when -ExitImmediately is passed' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command)
+            { & $Command -ExitImmediately } | Should -Not -Throw
+        }
+
+        It '<Name>: Renders non-interactively and NEVER calls Read-Host' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command)
+            Mock Read-Host { throw "CRITICAL: Read-Host must not be called in non-interactive mode for $Name!" }
+            Mock Read-ToolkitMenuChoice { throw "CRITICAL: Read-ToolkitMenuChoice must not be called in non-interactive mode for $Name!" }
+            Mock Read-ToolkitItemSelection { throw "CRITICAL: Read-ToolkitItemSelection must not be called in non-interactive mode for $Name!" }
+
+            { & $Command -NonInteractive } | Should -Not -Throw
+        }
+    }
+
+    Context 'Milestone M3: Submenus Item-Centric Workflow & Routing' {
+        It 'Invoke-ToolkitSubmenuPrinters auto-enumerates printers and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
+            Mock Get-CimInstance {
+                return @(
+                    [PSCustomObject]@{
+                        Name         = 'HP-LaserJet-Finance'
+                        WorkOffline  = $false
+                        PrinterState = 0
+                        Status       = 'OK'
+                        DriverName   = 'HP Universal Printing PCL 6'
+                        PortName     = '192.168.1.100'
+                    }
+                )
+            } -ParameterFilter { $ClassName -eq 'Win32_Printer' }
+
+            $script:selectionCalled = $false
+            $script:choiceCalled = $false
+            $script:pSelCount = 0
+
+            Mock Read-ToolkitItemSelection {
+                $script:pSelCount++
+                if ($script:pSelCount -eq 1) {
+                    $script:selectionCalled = $true
+                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Read-ToolkitMenuChoice {
+                $script:choiceCalled = $true
+                return 'B'
+            }
+
+            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
+            $script:selectionCalled | Should -BeTrue
+            $script:choiceCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuPrinters handles top-level action hotkey S (Spooler Restart)' -Skip:(-not $isTUIAvailable) {
+            $script:spoolerResetCalled = $false
+            Mock Reset-PrintSpoolerQueue {
+                $script:spoolerResetCalled = $true
+            }
+            $script:itemSelCount = 0
+            Mock Read-ToolkitItemSelection {
+                $script:itemSelCount++
+                if ($script:itemSelCount -eq 1) {
+                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'S' }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Wait-UserAcknowledge { }
+
+            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
+            $script:spoolerResetCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOutlook auto-enumerates items and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
+            Mock Get-OutlookSystemContext {
+                return [PSCustomObject]@{
+                    IsRunning      = $false
+                    ProcessId      = $null
+                    OfficeVersion  = '16.0'
+                    DefaultProfile = 'ContosoProfile'
+                    Profiles       = @('ContosoProfile')
+                    DataFiles      = @()
+                }
+            }
+            Mock Find-OutlookDataFiles {
+                return @(
+                    [PSCustomObject]@{
+                        Path    = 'C:\Mail\archive.pst'
+                        Type    = 'PST'
+                        Profile = 'ContosoProfile'
+                    }
+                )
+            }
+
+            $script:outlookCtxCalled = $false
+            $script:outlookMenuCalled = $false
+            $script:oSelCount = 0
+
+            Mock Read-ToolkitItemSelection {
+                $script:oSelCount++
+                if ($script:oSelCount -eq 1) {
+                    $script:outlookCtxCalled = $true
+                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Read-ToolkitMenuChoice {
+                $script:outlookMenuCalled = $true
+                return 'B'
+            }
+
+            { Invoke-ToolkitSubmenuOutlook } | Should -Not -Throw
+            $script:outlookCtxCalled | Should -BeTrue
+            $script:outlookMenuCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOutlook handles top-level action hotkey E (Expand PST limit)' -Skip:(-not $isTUIAvailable) {
+            $script:threshCalled = $false
+            Mock Set-OutlookPstThreshold {
+                $script:threshCalled = $true
+            }
+            $script:outSelCount = 0
+            Mock Read-ToolkitItemSelection {
+                $script:outSelCount++
+                if ($script:outSelCount -eq 1) {
+                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'E' }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Wait-UserAcknowledge { }
+
+            { Invoke-ToolkitSubmenuOutlook } | Should -Not -Throw
+            $script:threshCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOffice auto-enumerates installed apps and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
+            Mock Get-Process {
+                return @(
+                    [PSCustomObject]@{
+                        Id   = 4004
+                        Name = 'EXCEL'
+                    }
+                )
+            } -ParameterFilter { $Name -eq 'EXCEL' }
+
+            $script:officeSelCalled = $false
+            $script:officeCtxCalled = $false
+            $script:ofSelCount = 0
+
+            Mock Read-ToolkitItemSelection {
+                $script:ofSelCount++
+                if ($script:ofSelCount -eq 1) {
+                    $script:officeSelCalled = $true
+                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Read-ToolkitMenuChoice {
+                $script:officeCtxCalled = $true
+                return 'B'
+            }
+
+            { Invoke-ToolkitSubmenuOffice } | Should -Not -Throw
+            $script:officeSelCalled | Should -BeTrue
+            $script:officeCtxCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOffice handles top-level action hotkey C (Clear Temp Cache)' -Skip:(-not $isTUIAvailable) {
+            $script:cacheClearCalled = $false
+            Mock Clear-OfficeTempCache {
+                $script:cacheClearCalled = $true
+            }
+            $script:offSelCount = 0
+            Mock Read-ToolkitItemSelection {
+                $script:offSelCount++
+                if ($script:offSelCount -eq 1) {
+                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'C' }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Wait-UserAcknowledge { }
+
+            { Invoke-ToolkitSubmenuOffice } | Should -Not -Throw
+            $script:cacheClearCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuBackup auto-enumerates backup items and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
+            Mock Get-CimInstance {
+                return @(
+                    [PSCustomObject]@{
+                        ID           = 'VSS-TEST-GUID-001'
+                        DeviceObject = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
+                    }
+                )
+            } -ParameterFilter { $ClassName -eq 'Win32_ShadowCopy' }
+
+            $script:backupSelCalled = $false
+            $script:backupCtxCalled = $false
+            $script:bSelCount = 0
+
+            Mock Read-ToolkitItemSelection {
+                $script:bSelCount++
+                if ($script:bSelCount -eq 1) {
+                    $script:backupSelCalled = $true
+                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Read-ToolkitMenuChoice {
+                $script:backupCtxCalled = $true
+                return 'B'
+            }
+
+            { Invoke-ToolkitSubmenuBackup } | Should -Not -Throw
+            $script:backupSelCalled | Should -BeTrue
+            $script:backupCtxCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuBackup handles top-level action hotkey M (Map Folders)' -Skip:(-not $isTUIAvailable) {
+            $script:mapFoldersCalled = $false
+            Mock Get-UserProfileDirectoryMap {
+                $script:mapFoldersCalled = $true
+                return [PSCustomObject]@{ Documents = 'C:\Users\test\Documents' }
+            }
+            $script:bakSelCount = 0
+            Mock Read-ToolkitItemSelection {
+                $script:bakSelCount++
+                if ($script:bakSelCount -eq 1) {
+                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'M' }
+                }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+            }
+            Mock Wait-UserAcknowledge { }
+
+            { Invoke-ToolkitSubmenuBackup } | Should -Not -Throw
+            $script:mapFoldersCalled | Should -BeTrue
+        }
+    }
 }

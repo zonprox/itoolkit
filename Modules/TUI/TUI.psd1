@@ -20,7 +20,9 @@
         'Public/Show-ToolkitActionCatalog.ps1',
         'Public/Show-ToolkitDetailPanel.ps1',
         'Public/Show-ToolkitStatusPanel.ps1',
+        'Public/Show-ToolkitItemTable.ps1',
         'Public/Read-ToolkitMenuChoice.ps1',
+        'Public/Read-ToolkitItemSelection.ps1',
         'Public/Write-ToolkitStatus.ps1',
         'Public/Start-IToolkitMenu.ps1'
     )
@@ -34,7 +36,9 @@
         'Show-ToolkitActionCatalog',
         'Show-ToolkitDetailPanel',
         'Show-ToolkitStatusPanel',
+        'Show-ToolkitItemTable',
         'Read-ToolkitMenuChoice',
+        'Read-ToolkitItemSelection',
         'Write-ToolkitStatus',
         'Start-IToolkitMenu',
         'Get-ToolkitTelemetryData',
