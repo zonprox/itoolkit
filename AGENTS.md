@@ -83,6 +83,7 @@ Never simplify away or cut corners on:
 4. **Security & Privilege Integrity**: Enforce least privilege, SecureString/credential safety, and elevation checks.
 5. **Runnable Verification**: Every non-trivial logic change leaves behind **one runnable check** (an assert self-check or unit test). Trivial one-liners need no test; YAGNI applies to tests too.
 6. **Explicit User Requests**: If the user insists on a full implementation after being presented with simpler options, build it without arguing.
+7. **Strictly English Artifacts**: Maintain 100% English across all scripts, TUI outputs, console logs, documentation, comments, and commit logs.
 
 ---
 
@@ -97,3 +98,11 @@ Never simplify away or cut corners on:
   • Done: [minimal change]
   • Skipped: [speculative feature/abstraction], add when [concrete requirement arises].
   ```
+
+---
+
+## 6. Language & Localization Standard (Strictly English)
+
+- **100% English Codebase**: All source code, scripts, module functions, comments, UI text, logs, console messages, commit messages, and documentation must be written strictly in English.
+- **Zero Foreign Language Residue**: Do not introduce non-English strings into code, manifests, launchers, or output streams unless specifically required for localized test fixtures.
+

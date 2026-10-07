@@ -16,14 +16,14 @@ param(
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 } catch {
-    # Ignore on PowerShell Core / Linux where TLS 1.2+ is already standard
+    # Ignore on PowerShell Core / Linux where TLS 1.2+ is standard
 }
 
 # 1. Administrator Privilege Check & Self-Elevation (Windows only)
 if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if (-not $isAdmin -and -not $SkipElevation) {
-        Write-Host "[!] Dang yeu cau quyen Administrator (UAC)..." -ForegroundColor Yellow
+        Write-Host "[!] Requesting Administrator privileges (UAC)..." -ForegroundColor Yellow
         $scriptUrl = "https://raw.githubusercontent.com/zonprox/itoolkit/main/boot.ps1"
         Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"irm $scriptUrl | iex`""
         return
@@ -38,16 +38,16 @@ $tempBase  = Join-Path ([System.IO.Path]::GetTempPath()) "IToolkit_$(Get-Random)
 $zipPath   = Join-Path ([System.IO.Path]::GetTempPath()) "IToolkit_Live_$(Get-Random).zip"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "       IToolkit - Khoi chay truc tiep tu Cloud            " -ForegroundColor Cyan
+Write-Host "         IToolkit - Direct Cloud Launcher                 " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 try {
-    Write-Host "[-] Dang tai phien ban moi nhat tu GitHub..." -ForegroundColor Gray
+    Write-Host "[-] Downloading latest release from GitHub..." -ForegroundColor Gray
     $webClient = New-Object System.Net.WebClient
     $webClient.Headers.Add("User-Agent", "IToolkit-WebBootstrapper/1.0")
     $webClient.DownloadFile($zipUrl, $zipPath)
 
-    Write-Host "[-] Dang giai nen vao thu muc tam..." -ForegroundColor Gray
+    Write-Host "[-] Extracting archive to temporary workspace..." -ForegroundColor Gray
     if (Test-Path -LiteralPath $tempBase) {
         Remove-Item -LiteralPath $tempBase -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -64,10 +64,10 @@ try {
 
     $launcher = Join-Path $projectRoot.FullName "Start-IToolkit.ps1"
     if (-not (Test-Path -LiteralPath $launcher)) {
-        throw "Khong tim thay Start-IToolkit.ps1 trong goi ma nguon."
+        throw "Start-IToolkit.ps1 not found in downloaded package."
     }
 
-    Write-Host "[+] Khoi dong IToolkit..." -ForegroundColor Green
+    Write-Host "[+] Launching IToolkit..." -ForegroundColor Green
 
     $runParams = @{}
     if ($SkipElevation) { $runParams['SkipElevation'] = $true }
@@ -77,7 +77,7 @@ try {
     & $launcher @runParams
 }
 catch {
-    Write-Error "Loi trong qua trinh tai hoac khoi chay IToolkit: $_"
+    Write-Error "Failed to download or launch IToolkit: $_"
 }
 finally {
     if (Test-Path -LiteralPath $zipPath) {
