@@ -1,7 +1,7 @@
 # ==============================================================================
 # ExternalTools.Tests.ps1
 # Unit test suite for Modules/ExternalTools (Features 49, 50, 51)
-# Covers: Test-InternetConnectivity, Invoke-Win11Debloat, Invoke-ChrisTitusWinUtil.
+# Covers: Test-InternetConnectivity, Invoke-BrowserDebloat, Invoke-Win11Debloat.
 # ==============================================================================
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -72,25 +72,26 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
 
             $res = Invoke-Win11Debloat
             $res.ToolName | Should -Be 'Win11Debloat'
+            $res.ScriptUrl | Should -Be 'https://debloat.raphi.re/'
             $res.Launched | Should -BeTrue
         }
     }
 
-    Context 'Chris Titus WinUtil Launcher' {
-        It 'Invoke-ChrisTitusWinUtil checks internet and prompts confirmation before launch' -Skip:(-not $isExtToolsAvailable) {
+    Context 'Browser Debloat Launcher' {
+        It 'Invoke-BrowserDebloat checks internet and prompts confirmation before launch' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Show-ToolkitConfirmation { return $true }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
-            $res = Invoke-ChrisTitusWinUtil
-            $res.ToolName | Should -Be 'ChrisTitusWinUtil'
-            $res.ScriptUrl | Should -Match 'christitus\.com'
+            $res = Invoke-BrowserDebloat
+            $res.ToolName | Should -Be 'BrowserDebloat'
+            $res.ScriptUrl | Should -Be 'https://debloat.yashg.dev/install.ps1'
             $res.Launched | Should -BeTrue
         }
 
-        It 'Invoke-ChrisTitusWinUtil supports WhatIf' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat supports WhatIf' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            $res = Invoke-ChrisTitusWinUtil -WhatIf
+            $res = Invoke-BrowserDebloat -WhatIf
             $res.Launched | Should -BeFalse
         }
     }

@@ -457,8 +457,8 @@ function Get-ExternalToolsContextInfoLines {
     $lines.Add("Internet Check : $netStatus")
 
     # 2. Integrated Launchers
-    $lines.Add("Tool 1         : Win11Debloat (Telemetry & bloatware purge) [READY]")
-    $lines.Add("Tool 2         : Chris Titus WinUtil (General Windows optimization suite) [READY]")
+    $lines.Add("Tool 1         : Browser Debloat (Chrome & Chromium cleanup & debloat) [READY]")
+    $lines.Add("Tool 2         : Win11Debloat (Windows 11 bloatware & telemetry purge) [READY]")
 
     return $lines.ToArray()
 }
@@ -521,7 +521,7 @@ function Start-IToolkitMenu {
         @{ Key = '3'; Action = 'Network & Printers'; Description = 'Print spooler queue, Ne ports, Point & Print policies.'; Prerequisite = 'Spooler service [READY]' },
         @{ Key = '4'; Action = 'User Profile Backup'; Description = 'User folder sync, Chromium bookmarks, certs & manifests.'; Prerequisite = 'Local drive space [READY]' },
         @{ Key = '5'; Action = 'Account Admin'; Description = 'Local/domain account management, SID -500, domain health.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '6'; Action = 'External Tools'; Description = 'Win11Debloat, Chris Titus WinUtil, network testing.'; Prerequisite = 'Internet access [READY]' }
+        @{ Key = '6'; Action = 'External Tools'; Description = 'Browser Debloat, Win11Debloat, network testing.'; Prerequisite = 'Internet access [READY]' }
     )
 
     # If NonInteractive flag is set without MenuOption, display main menu once and return
@@ -2325,8 +2325,8 @@ function Invoke-ToolkitSubmenuExternalTools {
         @{ Key = 'Q'; Label = 'Exit Console' }
     )
     $toolsDetails = @(
-        @{ Key = '1'; Action = 'Run Win11Debloat'; Description = 'Launch Win11Debloat script for bloatware/telemetry purge.'; Prerequisite = 'Internet access [READY]' },
-        @{ Key = '2'; Action = 'Run ChrisTitus WinUtil'; Description = 'Launch Chris Titus Tech Windows Utility.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '1'; Action = 'Run Browser Debloat'; Description = 'Launch Chrome/Browser debloat utility.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '2'; Action = 'Run Win11Debloat'; Description = 'Launch Win11Debloat script for bloatware/telemetry purge.'; Prerequisite = 'Internet access [READY]' },
         @{ Key = '3'; Action = 'Test Connectivity'; Description = 'Test ICMP ping, HTTP, and HTTPS endpoints.'; Prerequisite = 'Network adapter [READY]' }
     )
 
@@ -2354,13 +2354,13 @@ function Invoke-ToolkitSubmenuExternalTools {
 
         switch ($sub) {
             '1' {
-                if (Get-Command -Name 'Invoke-Win11Debloat' -ErrorAction SilentlyContinue) {
-                    Invoke-Win11Debloat | Format-List
+                if (Get-Command -Name 'Invoke-BrowserDebloat' -ErrorAction SilentlyContinue) {
+                    Invoke-BrowserDebloat | Format-List
                 }
             }
             '2' {
-                if (Get-Command -Name 'Invoke-ChrisTitusWinUtil' -ErrorAction SilentlyContinue) {
-                    Invoke-ChrisTitusWinUtil | Format-List
+                if (Get-Command -Name 'Invoke-Win11Debloat' -ErrorAction SilentlyContinue) {
+                    Invoke-Win11Debloat | Format-List
                 }
             }
             '3' {

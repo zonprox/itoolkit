@@ -4,10 +4,10 @@ function Invoke-Win11Debloat {
     Pre-flight checks internet connectivity, prompts user confirmation, and launches Win11Debloat.
 .DESCRIPTION
     Performs outbound internet validation, prompts the user with Show-ToolkitConfirmation,
-    and launches the selected Win11Debloat script variant via an elevated external PowerShell process.
+    and launches the canonical Win11Debloat script (https://debloat.raphi.re/) via an elevated external PowerShell process.
     Complies with SecurityIntegrity rules by avoiding Invoke-Expression.
 .PARAMETER Variant
-    Target script variant: 'Default', 'Raphire', or 'Yashg'. Default is 'Default'.
+    Target script variant: 'Default' or 'Raphire'. Default is 'Default'.
 .OUTPUTS
     [PSCustomObject] containing ToolName, ScriptUrl, Launched, ExitCode.
 #>
@@ -15,7 +15,7 @@ function Invoke-Win11Debloat {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory = $false, Position = 0)]
-        [ValidateSet('Default', 'Raphire', 'Yashg')]
+        [ValidateSet('Default', 'Raphire')]
         [string]$Variant = 'Default'
     )
 
@@ -26,11 +26,8 @@ function Invoke-Win11Debloat {
             throw "Pre-flight check failed: Internet connectivity is required to download and execute Win11Debloat."
         }
 
-        # 2. Resolve Script URL
-        $scriptUrl = 'https://debloat.yashg.dev/install.ps1'
-        if ($Variant -eq 'Raphire') {
-            $scriptUrl = 'https://debloat.raphi.re/'
-        }
+        # 2. Resolve Canonical Script URL (Raphire Win11Debloat)
+        $scriptUrl = 'https://debloat.raphi.re/'
 
         # 3. WhatIf / ShouldProcess Evaluation
         if (-not $PSCmdlet.ShouldProcess("Win11Debloat ($scriptUrl)", "Download and execute external debloat utility")) {

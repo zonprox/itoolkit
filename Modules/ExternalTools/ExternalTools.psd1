@@ -15,15 +15,15 @@
     # Scripts to run in the caller's session state upon import
     ScriptsToProcess       = @(
         'Public/Test-InternetConnectivity.ps1',
-        'Public/Invoke-Win11Debloat.ps1',
-        'Public/Invoke-ChrisTitusWinUtil.ps1'
+        'Public/Invoke-BrowserDebloat.ps1',
+        'Public/Invoke-Win11Debloat.ps1'
     )
 
     # Explicit Whitelist of Public Functions
     FunctionsToExport      = @(
         'Test-InternetConnectivity',
-        'Invoke-Win11Debloat',
-        'Invoke-ChrisTitusWinUtil'
+        'Invoke-BrowserDebloat',
+        'Invoke-Win11Debloat'
     )
 
     CmdletsToExport        = @()
@@ -32,7 +32,7 @@
 
     PrivateData            = @{
         PSData = @{
-            Tags = @('IToolkit', 'ExternalTools', 'Win11Debloat', 'WinUtil', 'Launchers')
+            Tags = @('IToolkit', 'ExternalTools', 'BrowserDebloat', 'Win11Debloat', 'Launchers')
         }
     }
 }

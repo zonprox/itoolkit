@@ -106,8 +106,8 @@
 
         # External Tools & Quick Launchers
         'Test-InternetConnectivity',
+        'Invoke-BrowserDebloat',
         'Invoke-Win11Debloat',
-        'Invoke-ChrisTitusWinUtil',
 
         # Interactive Console TUI Menu Services
         'Get-ToolkitLayoutWidth',

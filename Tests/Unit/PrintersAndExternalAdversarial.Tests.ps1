@@ -72,12 +72,12 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             { Invoke-Win11Debloat } | Should -Throw -ExpectedMessage '*Internet connectivity is required*'
         }
 
-        It 'Invoke-ChrisTitusWinUtil throws pre-flight error when offline without prompting or launching' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat throws pre-flight error when offline without prompting or launching' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $false }
             Mock Show-ToolkitConfirmation { throw "Should NOT prompt when offline" }
             Mock Start-Process { throw "Should NOT launch process when offline" }
 
-            { Invoke-ChrisTitusWinUtil } | Should -Throw -ExpectedMessage '*Internet connectivity is required*'
+            { Invoke-BrowserDebloat } | Should -Throw -ExpectedMessage '*Internet connectivity is required*'
         }
 
         It 'Test-NetworkPrinterConnectivity handles completely offline host without throwing' -Skip:(-not $isPrintersAvailable) {
@@ -264,41 +264,38 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             $res.ToolName | Should -Be 'Win11Debloat'
         }
 
-        It 'Invoke-ChrisTitusWinUtil respects user cancellation and halts launch' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat respects user cancellation and halts launch' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Show-ToolkitConfirmation { return $false } # User rejects
             Mock Start-Process { throw "Process must not launch when user cancels" }
 
-            $res = Invoke-ChrisTitusWinUtil
+            $res = Invoke-BrowserDebloat
             $res.Launched | Should -BeFalse
             $res.ExitCode | Should -BeNullOrEmpty
-            $res.ToolName | Should -Be 'ChrisTitusWinUtil'
+            $res.ToolName | Should -Be 'BrowserDebloat'
         }
 
-        It 'Invoke-Win11Debloat targets correct script URLs based on Variant' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-Win11Debloat targets canonical script URL' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Show-ToolkitConfirmation { return $false }
 
             $resRaphire = Invoke-Win11Debloat -Variant 'Raphire'
             $resRaphire.ScriptUrl | Should -Be 'https://debloat.raphi.re/'
 
-            $resYashg = Invoke-Win11Debloat -Variant 'Yashg'
-            $resYashg.ScriptUrl | Should -Be 'https://debloat.yashg.dev/install.ps1'
-
             $resDefault = Invoke-Win11Debloat -Variant 'Default'
-            $resDefault.ScriptUrl | Should -Be 'https://debloat.yashg.dev/install.ps1'
+            $resDefault.ScriptUrl | Should -Be 'https://debloat.raphi.re/'
         }
 
         It 'Invoke-Win11Debloat rejects invalid Variant parameter' -Skip:(-not $isExtToolsAvailable) {
             { Invoke-Win11Debloat -Variant 'MaliciousOrInvalidVariant' } | Should -Throw
         }
 
-        It 'Invoke-ChrisTitusWinUtil targets canonical URL' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat targets canonical URL' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Show-ToolkitConfirmation { return $false }
 
-            $res = Invoke-ChrisTitusWinUtil
-            $res.ScriptUrl | Should -Be 'https://christitus.com/win'
+            $res = Invoke-BrowserDebloat
+            $res.ScriptUrl | Should -Be 'https://debloat.yashg.dev/install.ps1'
         }
     }
 
@@ -357,12 +354,12 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             $res.ExitCode | Should -BeNullOrEmpty
         }
 
-        It 'Invoke-ChrisTitusWinUtil -WhatIf validates internet but skips confirmation and execution' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat -WhatIf validates internet but skips confirmation and execution' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Show-ToolkitConfirmation { throw "Confirmation should not be shown under WhatIf" }
             Mock Start-Process { throw "Process should not be launched under WhatIf" }
 
-            $res = Invoke-ChrisTitusWinUtil -WhatIf
+            $res = Invoke-BrowserDebloat -WhatIf
             $res.Launched | Should -BeFalse
             $res.ExitCode | Should -BeNullOrEmpty
         }
@@ -720,7 +717,7 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             }
         }
 
-        It 'Invoke-ChrisTitusWinUtil safely aborts and avoids remote code execution when Show-ToolkitConfirmation is absent and host rejects' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat safely aborts and avoids remote code execution when Show-ToolkitConfirmation is absent and host rejects' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Start-Process { throw "FATAL: Start-Process must NEVER be called when confirmation fails" }
 
@@ -730,7 +727,7 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             try {
                 $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { param($c, $m, $ch, $d) return 1 } -Force
 
-                $res = Invoke-ChrisTitusWinUtil
+                $res = Invoke-BrowserDebloat
                 $res.Launched | Should -BeFalse
                 $res.ExitCode | Should -BeNullOrEmpty
             } finally {
@@ -744,7 +741,7 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             }
         }
 
-        It 'Invoke-ChrisTitusWinUtil safely aborts when Show-ToolkitConfirmation is absent and host PromptForChoice throws' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat safely aborts when Show-ToolkitConfirmation is absent and host PromptForChoice throws' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Start-Process { throw "FATAL: Start-Process must NEVER be called when confirmation fails" }
 
@@ -754,7 +751,7 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             try {
                 $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { throw "Non-interactive host" } -Force
 
-                $res = Invoke-ChrisTitusWinUtil
+                $res = Invoke-BrowserDebloat
                 $res.Launched | Should -BeFalse
                 $res.ExitCode | Should -BeNullOrEmpty
             } finally {

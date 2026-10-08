@@ -91,8 +91,8 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
 ### 6. External Tools & Quick Launchers (`Modules/ExternalTools`)
 - Pre-flight internet connectivity validation before contacting external hosts.
+- Quick launcher for **Browser Debloat** (`BrowserDebloat`).
 - Quick launcher for **Windows 11 / 10 Debloat** (`Win11Debloat`).
-- Quick launcher for **Chris Titus Tech Windows Utility** (`WinUtil`).
 - Mandatory user confirmation prompts and `-WhatIf` dry-run support.
 
 ---
