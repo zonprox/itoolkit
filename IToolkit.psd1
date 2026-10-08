@@ -130,6 +130,8 @@
         'New-ToolkitDesktopShortcut',
         'Set-ToolkitDefaultApplication',
         'Install-ToolkitApplication',
+        'Set-ToolkitChromeExtensionPolicy',
+        'Resolve-ToolkitApplicationDownloadUrl',
 
         # Interactive Console TUI Menu Services
         'Get-ToolkitLayoutWidth',

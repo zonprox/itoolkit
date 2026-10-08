@@ -24,8 +24,8 @@ function Get-ToolkitInstalledApplication {
             if (Test-Path -LiteralPath $privLog) { . $privLog }
         }
 
-        if (-not (Get-PSDrive -Name 'C' -ErrorAction SilentlyContinue)) {
-            New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
+        if (-not (Get-PSDrive -Name 'C' -Scope Global -ErrorAction SilentlyContinue)) {
+            New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -Scope Global -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
         }
         $progFiles = if ($env:ProgramFiles) { $env:ProgramFiles } else { 'C:\Program Files' }
         $progFilesX86 = if (${env:ProgramFiles(x86)}) { ${env:ProgramFiles(x86)} } else { 'C:\Program Files (x86)' }
@@ -134,7 +134,7 @@ function Get-ToolkitInstalledApplication {
             }
 
             # Check registry if executable not found (or for VCRedistAIO)
-            if (-not $installed -and (Test-Path -LiteralPath 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue)) {
+            if (-not $installed) {
                 $regPaths = @(
                     'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
                     'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -149,7 +149,18 @@ function Get-ToolkitInstalledApplication {
                             if ($match) {
                                 $installed = $true
                                 if ($match.DisplayVersion) { $version = $match.DisplayVersion }
-                                if ($match.InstallLocation -and -not $foundPath) { $foundPath = $match.InstallLocation }
+                                if ($match.InstallLocation -and -not $foundPath) {
+                                    $locDir = $match.InstallLocation
+                                    $resolvedExe = $null
+                                    if ($def.ExeCandidates -and $def.ExeCandidates.Count -gt 0) {
+                                        $leafName = Split-Path -Leaf $def.ExeCandidates[0]
+                                        $candFile = Join-Path $locDir $leafName
+                                        if (Test-Path -LiteralPath $candFile -ErrorAction SilentlyContinue) {
+                                            $resolvedExe = $candFile
+                                        }
+                                    }
+                                    $foundPath = if ($resolvedExe) { $resolvedExe } else { $locDir }
+                                }
                                 Write-AppInstallerLog -Message "Found $($def.DisplayName) in uninstall registry: $($match.DisplayName) (Version: $version)." -Level 'DEBUG' -Component 'Get-ToolkitInstalledApplication'
                                 break
                             }

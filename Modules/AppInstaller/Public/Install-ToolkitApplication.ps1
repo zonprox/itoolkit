@@ -51,6 +51,17 @@ function Install-ToolkitApplication {
             $privLog = Join-Path (Split-Path -Parent $PSScriptRoot) 'Private/Write-AppInstallerLog.ps1'
             if (Test-Path -LiteralPath $privLog) { . $privLog }
         }
+        if (-not (Get-Command -Name 'Resolve-ToolkitApplicationDownloadUrl' -ErrorAction SilentlyContinue)) {
+            $pubResolve = Join-Path $PSScriptRoot 'Resolve-ToolkitApplicationDownloadUrl.ps1'
+            if (Test-Path -LiteralPath $pubResolve) { . $pubResolve }
+        }
+
+        if (-not (Get-PSDrive -Name 'C' -Scope Global -ErrorAction SilentlyContinue)) {
+            New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -Scope Global -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
+        }
+        $progFiles = if ($env:ProgramFiles) { $env:ProgramFiles } else { 'C:\Program Files' }
+        $userProf = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { [System.IO.Path]::GetTempPath() }
+        $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $userProf 'AppData\Local' }
 
         # 1. Pre-Flight Internet Connectivity Check
         Write-AppInstallerLog -Message "Validating pre-flight network connectivity..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
@@ -76,13 +87,18 @@ function Install-ToolkitApplication {
                 ProcessNames    = @()
             }
             'UniKey' = @{
-                DisplayName     = 'UniKey Vietnamese Input Method'
-                WingetId        = 'PhamKimLong.UniKey'
-                FallbackUrl     = 'https://www.unikey.org/'
-                SilentArgs      = '/VERYSILENT /NORESTART'
-                ShortcutName    = 'UniKey.lnk'
-                CanSetDefault   = $false
-                ProcessNames    = @('UniKeyNT', 'UniKey')
+                DisplayName          = 'UniKey Vietnamese Input Method'
+                WingetId             = 'PhamKimLong.UniKey'
+                FallbackUrl          = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win64.zip'
+                AlternateFallbackUrl = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win32.zip'
+                Arm64FallbackUrl     = 'https://www.unikey.org/assets/release/unikey46RC2-250531-arm64.zip'
+                InstallType          = 'Archive'
+                TargetDir            = 'UniKey'
+                TargetExe            = 'UniKeyNT.exe'
+                SilentArgs           = '/VERYSILENT /NORESTART'
+                ShortcutName         = 'UniKey.lnk'
+                CanSetDefault        = $false
+                ProcessNames         = @('UniKeyNT', 'UniKey')
             }
             'UltraVNC' = @{
                 DisplayName     = 'UltraVNC Remote Support'
@@ -126,6 +142,7 @@ function Install-ToolkitApplication {
                 AlternateWingetId    = 'VNGCorp.Zalo'
                 FallbackUrl          = 'https://res-download-pc.zadn.vn/win/ZaloSetup-26.10.10.exe'
                 AlternateFallbackUrl = 'https://res-zaloapp-aka-jpt.zdn.vn/win/ZaloSetup-26.10.10.exe'
+                GenericFallbackUrl   = 'https://zalo.me/download/zalo-pc'
                 SilentArgs           = '/VERYSILENT /NORESTART /S'
                 ShortcutName         = 'Zalo.lnk'
                 CanSetDefault        = $false
@@ -243,31 +260,64 @@ function Install-ToolkitApplication {
                 }
             }
 
-            # Method B: Direct URL download and execute if winget was unavailable or unsuccessful
+            # Method B: Direct URL download and execute/extract if winget was unavailable or unsuccessful
             $fallbackUrls = [System.Collections.Generic.List[string]]::new()
-            if (-not [string]::IsNullOrWhiteSpace($meta.FallbackUrl) -and $meta.FallbackUrl.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
-                $fallbackUrls.Add($meta.FallbackUrl)
+
+            if (Get-Command -Name 'Resolve-ToolkitApplicationDownloadUrl' -ErrorAction SilentlyContinue) {
+                try {
+                    $dynInfo = Resolve-ToolkitApplicationDownloadUrl -AppName $target -ErrorAction SilentlyContinue
+                    if ($dynInfo -and -not [string]::IsNullOrWhiteSpace($dynInfo.PrimaryUrl)) {
+                        if ($dynInfo.PrimaryUrl -match '\.(exe|zip|msi)(\?.*)?$') {
+                            $fallbackUrls.Add($dynInfo.PrimaryUrl)
+                        }
+                        if ($dynInfo.ResolvedDynamically) {
+                            Write-AppInstallerLog -Message "Dynamically resolved latest download endpoint for $($meta.DisplayName): $($dynInfo.PrimaryUrl)" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                        }
+                    }
+                    if ($dynInfo -and $dynInfo.FallbackUrls) {
+                        foreach ($fb in $dynInfo.FallbackUrls) {
+                            if ($fb -match '\.(exe|zip|msi)(\?.*)?$' -and -not $fallbackUrls.Contains($fb)) {
+                                $fallbackUrls.Add($fb)
+                            }
+                        }
+                    }
+                } catch {
+                    $null = $_
+                }
             }
-            if (-not [string]::IsNullOrWhiteSpace($meta.AlternateFallbackUrl) -and $meta.AlternateFallbackUrl.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
-                $fallbackUrls.Add($meta.AlternateFallbackUrl)
+
+            foreach ($uKey in @('FallbackUrl', 'AlternateFallbackUrl', 'Arm64FallbackUrl')) {
+                if ($meta.ContainsKey($uKey)) {
+                    $uVal = $meta[$uKey]
+                    if (-not [string]::IsNullOrWhiteSpace($uVal) -and ($uVal -match '\.(exe|zip|msi)(\?.*)?$') -and -not $fallbackUrls.Contains($uVal)) {
+                        $fallbackUrls.Add($uVal)
+                    }
+                }
             }
 
             if (-not $installedSuccess -and $fallbackUrls.Count -gt 0) {
                 $tempDir = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { [System.IO.Path]::GetTempPath() }
-                $tempInstaller = Join-Path $tempDir "$target-installer.exe"
                 $downloadSuccess = $false
                 $maxRetries = 2
+                $downloadedFile = $null
+                $isArchive = $false
 
                 foreach ($currentUrl in $fallbackUrls) {
                     Write-AppInstallerLog -Message "Attempting direct download fallback for $($meta.DisplayName) from $currentUrl..." -Level 'INFO' -Component 'Install-ToolkitApplication'
+                    $isArchive = ($currentUrl.EndsWith('.zip', [System.StringComparison]::OrdinalIgnoreCase) -or ($meta.InstallType -eq 'Archive'))
+                    $tempExt = if ($isArchive) { '.zip' } else { '.exe' }
+                    $tempInstaller = Join-Path $tempDir "$target-installer$tempExt"
 
                     for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
                         try {
-                            Write-AppInstallerLog -Message "Downloading $($meta.DisplayName) installer (attempt $attempt of $maxRetries)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                            Write-AppInstallerLog -Message "Downloading $($meta.DisplayName) package (attempt $attempt of $maxRetries)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
                             Invoke-WebRequest -Uri $currentUrl -OutFile $tempInstaller -UseBasicParsing -ErrorAction Stop
-                            $downloadSuccess = $true
-                            Write-AppInstallerLog -Message "Successfully downloaded $($meta.DisplayName) installer." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
-                            break
+                            if (Test-Path -LiteralPath $tempInstaller) {
+                                $downloadSuccess = $true
+                                $downloadedFile = $tempInstaller
+                                Write-AppInstallerLog -Message "Successfully downloaded $($meta.DisplayName) package." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                                break
+                            }
                         } catch {
                             Write-AppInstallerLog -Message "Download attempt $attempt failed for $($meta.DisplayName): $($_.Exception.Message)" -Level 'WARN' -Component 'Install-ToolkitApplication'
                             if ($attempt -lt $maxRetries) {
@@ -279,19 +329,67 @@ function Install-ToolkitApplication {
                     if ($downloadSuccess) { break }
                 }
 
-                if ($downloadSuccess) {
-                    try {
-                        Write-AppInstallerLog -Message "Launching silent installer: $tempInstaller $($meta.SilentArgs)" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
-                        $proc = Start-Process -FilePath $tempInstaller -ArgumentList $meta.SilentArgs -Wait -PassThru -ErrorAction Stop
-                        $exitCode = if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
-                        Write-AppInstallerLog -Message "Silent installer exited with code $exitCode." -Level $(if ($exitCode -eq 0) { 'DEBUG' } else { 'WARN' }) -Component 'Install-ToolkitApplication'
-                        if ($exitCode -eq 0) {
-                            $installedSuccess = $true
+                if ($downloadSuccess -and $downloadedFile) {
+                    if ($isArchive) {
+                        try {
+                            Write-AppInstallerLog -Message "Extracting archive package for $($meta.DisplayName)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                            $subDir = if ($meta.TargetDir) { $meta.TargetDir } else { $target }
+                            $candidateDirs = [System.Collections.Generic.List[string]]::new()
+                            $candidateDirs.Add((Join-Path $progFiles $subDir))
+                            $candidateDirs.Add((Join-Path $localAppData "Programs\$subDir"))
+
+                            $extracted = $false
+                            foreach ($candDir in $candidateDirs) {
+                                try {
+                                    $destDir = $candDir
+                                    if ($candDir -match '^[a-zA-Z]:[/\\]') {
+                                        $dName = $candDir.Substring(0, 1)
+                                        $psd = Get-PSDrive -Name $dName -ErrorAction SilentlyContinue
+                                        if ($psd -and $psd.Root -and $psd.Root -ne "$dName`:\") {
+                                            $rel = $candDir.Substring(3).TrimStart('\', '/')
+                                            $destDir = Join-Path $psd.Root $rel
+                                        }
+                                    }
+
+                                    if (-not (Test-Path -LiteralPath $destDir)) {
+                                        New-Item -ItemType Directory -Path $destDir -Force -ErrorAction Stop | Out-Null
+                                    }
+
+                                    Expand-Archive -LiteralPath $downloadedFile -DestinationPath $destDir -Force -ErrorAction Stop
+                                    $expectedExe = if ($meta.TargetExe) { Join-Path $destDir $meta.TargetExe } else { $null }
+                                    if (-not $expectedExe -or (Test-Path -LiteralPath $expectedExe -ErrorAction SilentlyContinue)) {
+                                        $installedSuccess = $true
+                                        $extracted = $true
+                                        Write-AppInstallerLog -Message "Successfully extracted $($meta.DisplayName) archive to '$destDir'." -Level 'INFO' -Component 'Install-ToolkitApplication'
+                                        break
+                                    }
+                                } catch {
+                                    Write-AppInstallerLog -Message "Archive extraction to '$candDir' unsuccessful: $($_.Exception.Message)" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                                }
+                            }
+
+                            if (-not $extracted) {
+                                Write-AppInstallerLog -Message "Archive extraction failed for $($meta.DisplayName) across all target locations." -Level 'ERROR' -Component 'Install-ToolkitApplication'
+                            }
+                        } catch {
+                            Write-AppInstallerLog -Message "Archive extraction exception for $($meta.DisplayName): $($_.Exception.Message)" -Level 'ERROR' -Component 'Install-ToolkitApplication'
+                        } finally {
+                            Remove-Item -LiteralPath $downloadedFile -Force -ErrorAction SilentlyContinue
                         }
-                    } catch {
-                        Write-AppInstallerLog -Message "Silent installer execution failed for $($meta.DisplayName): $($_.Exception.Message)" -Level 'ERROR' -Component 'Install-ToolkitApplication'
-                    } finally {
-                        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
+                    } else {
+                        try {
+                            Write-AppInstallerLog -Message "Launching silent installer: $downloadedFile $($meta.SilentArgs)" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                            $proc = Start-Process -FilePath $downloadedFile -ArgumentList $meta.SilentArgs -Wait -PassThru -ErrorAction Stop
+                            $exitCode = if ($null -ne $proc -and $null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
+                            Write-AppInstallerLog -Message "Silent installer exited with code $exitCode." -Level $(if ($exitCode -eq 0) { 'DEBUG' } else { 'WARN' }) -Component 'Install-ToolkitApplication'
+                            if ($exitCode -eq 0) {
+                                $installedSuccess = $true
+                            }
+                        } catch {
+                            Write-AppInstallerLog -Message "Silent installer execution failed for $($meta.DisplayName): $($_.Exception.Message)" -Level 'ERROR' -Component 'Install-ToolkitApplication'
+                        } finally {
+                            Remove-Item -LiteralPath $downloadedFile -Force -ErrorAction SilentlyContinue
+                        }
                     }
                 } else {
                     Write-AppInstallerLog -Message "Direct download failed for $($meta.DisplayName) after $maxRetries attempts across available endpoints." -Level 'ERROR' -Component 'Install-ToolkitApplication'

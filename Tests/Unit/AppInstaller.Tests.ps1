@@ -547,7 +547,7 @@ Describe 'Unit: AppInstaller Module' {
                     DisplayName    = 'UniKey Vietnamese Input Method'
                     Installed      = $true
                     ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
-                    Version        = '4.3'
+                    Version        = '4.6.0.0'
                 }
             }
             Mock New-ToolkitDesktopShortcut {
@@ -620,5 +620,151 @@ Describe 'Unit: AppInstaller Module' {
             $appNames | Should -Contain 'FoxitReader'
             $appNames | Should -Contain 'Zalo'
         }
+
+        It 'Falls back to official zip archive download and extraction for UniKey when winget fails' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command -ParameterFilter { $Name -eq 'winget' } { return [PSCustomObject]@{ Name = 'winget' } }
+            Mock Resolve-ToolkitApplicationDownloadUrl {
+                return [PSCustomObject]@{
+                    AppName              = 'UniKey'
+                    PrimaryUrl           = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win64.zip'
+                    FallbackUrls         = @()
+                    ResolvedDynamically  = $false
+                    DetectedArchitecture = 'win64'
+                }
+            }
+            # Winget fails
+            Mock Start-Process {
+                param($FilePath)
+                if ($FilePath -eq 'winget') { return [PSCustomObject]@{ ExitCode = 1 } }
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+            # Web request writes a valid temporary test zip containing UniKeyNT.exe
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $tempScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_UniKeyTest_" + [System.Guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Path $tempScratch -Force | Out-Null
+                $mockExe = Join-Path $tempScratch 'UniKeyNT.exe'
+                Set-Content -LiteralPath $mockExe -Value 'MOCK_UNIKEY_BINARY' -Encoding UTF8
+                Compress-Archive -Path $mockExe -DestinationPath $OutFile -Force
+                Remove-Item -LiteralPath $tempScratch -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            $script:installedCounter = 0
+            Mock Get-ToolkitInstalledApplication {
+                param($AppName)
+                $script:installedCounter++
+                if ($script:installedCounter -eq 1) {
+                    return [PSCustomObject]@{ AppName = $AppName; DisplayName = 'UniKey Vietnamese Input Method'; Installed = $false; ExecutablePath = $null }
+                }
+                return [PSCustomObject]@{
+                    AppName        = $AppName
+                    DisplayName    = 'UniKey Vietnamese Input Method'
+                    Installed      = $true
+                    ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
+                    Version        = '4.6.0.0'
+                }
+            }
+            Mock New-ToolkitDesktopShortcut {
+                param($TargetExecutable, $ShortcutName)
+                return [PSCustomObject]@{ Created = $true; ShortcutPath = "C:\Users\User\Desktop\$ShortcutName" }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'UniKey' -CreateShortcut -Force
+            $res | Should -Not -BeNullOrEmpty
+            $res.AppName | Should -Be 'UniKey'
+            $res.Installed | Should -BeTrue
+            $res.ShortcutCreated | Should -BeTrue
+            $res.DefaultConfigured | Should -BeFalse
+            $res.Status | Should -Be 'OK'
+        }
+
+        It 'Never configures default applications or Chrome policies when installing UniKey' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command -ParameterFilter { $Name -eq 'winget' } { return [PSCustomObject]@{ Name = 'winget' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+            Mock Get-ToolkitInstalledApplication {
+                return [PSCustomObject]@{
+                    AppName        = 'UniKey'
+                    DisplayName    = 'UniKey Vietnamese Input Method'
+                    Installed      = $true
+                    ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
+                    Version        = '4.6.0.0'
+                }
+            }
+            Mock New-ToolkitDesktopShortcut {
+                param($TargetExecutable, $ShortcutName)
+                return [PSCustomObject]@{ Created = $true; ShortcutPath = "C:\Users\User\Desktop\$ShortcutName" }
+            }
+            Mock Set-ToolkitDefaultApplication { }
+            Mock Set-ToolkitChromeExtensionPolicy { }
+
+            $res = Install-ToolkitApplication -AppName 'UniKey' -Force
+
+            $res | Should -Not -BeNullOrEmpty
+            $res.AppName | Should -Be 'UniKey'
+            $res.Installed | Should -BeTrue
+            $res.DefaultConfigured | Should -BeFalse
+            Assert-MockCalled -CommandName 'Set-ToolkitDefaultApplication' -Times 0
+            Assert-MockCalled -CommandName 'Set-ToolkitChromeExtensionPolicy' -Times 0
+        }
+
+        It 'Resolve-ToolkitApplicationDownloadUrl resolves UniKey with architecture matching and fallback' -Skip:(-not $isAppInstallerAvailable) {
+            $x64Res = Resolve-ToolkitApplicationDownloadUrl -AppName 'UniKey' -Architecture 'win64'
+            $x64Res | Should -Not -BeNullOrEmpty
+            $x64Res.AppName | Should -Be 'UniKey'
+            $x64Res.PrimaryUrl | Should -Match 'unikey.*-win64\.zip$'
+            $x64Res.DetectedArchitecture | Should -Be 'win64'
+
+            $armRes = Resolve-ToolkitApplicationDownloadUrl -AppName 'UniKey' -Architecture 'arm64'
+            $armRes.PrimaryUrl | Should -Match 'unikey.*-arm64\.zip$'
+            $armRes.DetectedArchitecture | Should -Be 'arm64'
+
+            $x86Res = Resolve-ToolkitApplicationDownloadUrl -AppName 'UniKey' -Architecture 'win32'
+            $x86Res.PrimaryUrl | Should -Match 'unikey.*-win32\.zip$'
+            $x86Res.DetectedArchitecture | Should -Be 'win32'
+        }
+
+        It 'Resolve-ToolkitApplicationDownloadUrl provides resilient fallback endpoints for Zalo' -Skip:(-not $isAppInstallerAvailable) {
+            $zaloUrls = Resolve-ToolkitApplicationDownloadUrl -AppName 'Zalo'
+            $zaloUrls | Should -Not -BeNullOrEmpty
+            $zaloUrls.AppName | Should -Be 'Zalo'
+            $zaloUrls.PrimaryUrl | Should -Match 'ZaloSetup.*\.exe$'
+            $zaloUrls.FallbackUrls | Should -Contain 'https://res-zaloapp-aka-jpt.zdn.vn/win/ZaloSetup-26.10.10.exe'
+        }
+
+        It 'Resolve-ToolkitApplicationDownloadUrl returns null PrimaryUrl and empty fallbacks for UltraVNC and KLiteCodec' -Skip:(-not $isAppInstallerAvailable) {
+            $uvnc = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC'
+            $uvnc.PrimaryUrl | Should -BeNullOrEmpty
+            $uvnc.FallbackUrls.Count | Should -Be 0
+
+            $klite = 'KLiteCodec' | Resolve-ToolkitApplicationDownloadUrl
+            $klite.PrimaryUrl | Should -BeNullOrEmpty
+            $klite.FallbackUrls.Count | Should -Be 0
+        }
+
+        It 'Install-ToolkitApplication safely skips direct download fallback for applications without binary URLs when winget is unavailable' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command {
+                param($Name)
+                if ($Name -eq 'winget') { return $null }
+                return $null
+            }
+            Mock Get-ToolkitInstalledApplication {
+                param($AppName)
+                return [PSCustomObject]@{
+                    AppName        = $AppName
+                    DisplayName    = 'UltraVNC Remote Support'
+                    Installed      = $false
+                    ExecutablePath = $null
+                }
+            }
+            $res = Install-ToolkitApplication -AppName 'UltraVNC' -Force
+            $res | Should -Not -BeNullOrEmpty
+            $res.AppName | Should -Be 'UltraVNC'
+            $res.Installed | Should -BeFalse
+            $res.Status | Should -Be 'WARN'
+        }
     }
 }
+
+

@@ -175,7 +175,9 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
 
             $proc = [System.Diagnostics.Process]::Start($psi)
             $proc.StandardInput.Close()
-            $completed = $proc.WaitForExit(15000)
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            $stderr = $proc.StandardError.ReadToEnd()
+            $completed = $proc.WaitForExit(30000)
 
             if (-not $completed) {
                 try { $proc.Kill() } catch { $null = $_ }

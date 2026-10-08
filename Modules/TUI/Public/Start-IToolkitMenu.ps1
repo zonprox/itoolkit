@@ -606,7 +606,7 @@ function Start-IToolkitMenu {
         @{ Key = '5'; Action = 'Account Admin'; Description = 'Local/domain account management, SID -500, domain health.'; Prerequisite = 'Administrator rights [READY]' },
         @{ Key = '6'; Action = 'External Tools'; Description = 'Browser Debloat, Win11Debloat, network testing.'; Prerequisite = 'Internet access [READY]' },
         @{ Key = '7'; Action = 'Windows Repair'; Description = 'SFC scan, DISM RestoreHealth, Windows Update & network reset.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
-        @{ Key = '8'; Action = 'Quick App Installer'; Description = 'Silent install UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit.'; Prerequisite = 'Internet access [READY]' }
+        @{ Key = '8'; Action = 'Quick App Installer'; Description = 'Silent install UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit, Zalo.'; Prerequisite = 'Internet access [READY]' }
     )
 
     # If NonInteractive flag is set without MenuOption, display main menu once and return
@@ -3050,13 +3050,13 @@ function Invoke-ToolkitSubmenuAppInstaller {
 
         if ($appsList.Count -eq 0) {
             $appsList = @(
-                [PSCustomObject]@{ Application = 'Google Chrome Browser'; Status = '[READY]'; Executable = 'chrome.exe'; Version = 'Latest' },
-                [PSCustomObject]@{ Application = 'Foxit PDF Reader'; Status = '[READY]'; Executable = 'FoxitPDFReader.exe'; Version = 'Latest' },
-                [PSCustomObject]@{ Application = 'UniKey Vietnamese Input'; Status = '[READY]'; Executable = 'UniKeyNT.exe'; Version = '4.3 RC5' },
-                [PSCustomObject]@{ Application = 'UltraVNC Remote Support'; Status = '[READY]'; Executable = 'vncviewer.exe'; Version = 'Latest' },
+                [PSCustomObject]@{ Application = 'Google Chrome Browser'; Status = '[READY]'; Executable = 'chrome.exe'; Version = 'Latest (Auto-detected)' },
+                [PSCustomObject]@{ Application = 'Foxit PDF Reader'; Status = '[READY]'; Executable = 'FoxitPDFReader.exe'; Version = 'Latest (Auto-detected)' },
+                [PSCustomObject]@{ Application = 'UniKey Vietnamese Input'; Status = '[READY]'; Executable = 'UniKeyNT.exe'; Version = '4.6 RC2' },
+                [PSCustomObject]@{ Application = 'UltraVNC Remote Support'; Status = '[READY]'; Executable = 'vncviewer.exe'; Version = 'Latest (Auto-detected)' },
                 [PSCustomObject]@{ Application = 'K-Lite Codec Pack'; Status = '[READY]'; Executable = 'mpc-hc64.exe'; Version = 'Standard' },
-                [PSCustomObject]@{ Application = 'Visual C++ Redistributable AIO'; Status = '[READY]'; Executable = 'System Runtimes'; Version = '2005-2022' },
-                [PSCustomObject]@{ Application = 'Zalo PC Messenger'; Status = '[READY]'; Executable = 'Zalo.exe'; Version = 'Latest' }
+                [PSCustomObject]@{ Application = 'Visual C++ Redistributable AIO'; Status = '[READY]'; Executable = 'System Runtimes'; Version = 'v0.105.0+' },
+                [PSCustomObject]@{ Application = 'Zalo PC Messenger'; Status = '[READY]'; Executable = 'Zalo.exe'; Version = 'Latest (Auto-detected)' }
             )
         }
 

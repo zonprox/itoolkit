@@ -72,12 +72,14 @@ function Test-DiskSpaceAvailable {
             foreach ($d in $drives) {
                 $matched = $false
                 if ($d.PSObject.Properties['Root'] -and -not [string]::IsNullOrEmpty($d.Root)) {
-                    if ($resolvedPath.StartsWith($d.Root, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    if ($resolvedPath.StartsWith($d.Root, [System.StringComparison]::OrdinalIgnoreCase) -or
+                        $Path.StartsWith($d.Root, [System.StringComparison]::OrdinalIgnoreCase)) {
                         $matched = $true
                     }
                 }
                 if (-not $matched -and $d.PSObject.Properties['Name'] -and -not [string]::IsNullOrEmpty($d.Name)) {
-                    if ($resolvedPath.StartsWith("$($d.Name):", [System.StringComparison]::OrdinalIgnoreCase)) {
+                    if ($resolvedPath.StartsWith("$($d.Name):", [System.StringComparison]::OrdinalIgnoreCase) -or
+                        $Path.StartsWith("$($d.Name):", [System.StringComparison]::OrdinalIgnoreCase)) {
                         $matched = $true
                     }
                 }
