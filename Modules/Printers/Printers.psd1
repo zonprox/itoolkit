@@ -21,7 +21,9 @@
         'Public/Test-PointAndPrintPolicy.ps1',
         'Public/Set-PointAndPrintRemediation.ps1',
         'Public/Test-NetworkPrinterConnectivity.ps1',
-        'Public/Reset-PrinterConnections.ps1'
+        'Public/Reset-PrinterConnections.ps1',
+        'Public/Set-PrinterServerRemediation.ps1',
+        'Public/Set-PrinterClientRemediation.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -33,7 +35,9 @@
         'Test-PointAndPrintPolicy',
         'Set-PointAndPrintRemediation',
         'Test-NetworkPrinterConnectivity',
-        'Reset-PrinterConnections'
+        'Reset-PrinterConnections',
+        'Set-PrinterServerRemediation',
+        'Set-PrinterClientRemediation'
     )
 
     CmdletsToExport        = @()

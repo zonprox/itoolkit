@@ -194,6 +194,32 @@ if (Test-Path -LiteralPath $rootManifest) {
     Write-Warning "IToolkit root manifest not found at: $rootManifest"
 }
 
+# Ensure WindowsRepair module is imported if not loaded via root manifest
+$windowsRepairManifest = Join-Path -Path $scriptDir -ChildPath 'Modules/WindowsRepair/WindowsRepair.psd1'
+if (Test-Path -LiteralPath $windowsRepairManifest) {
+    if (-not (Get-Module -Name 'WindowsRepair' -ErrorAction SilentlyContinue)) {
+        try {
+            Write-Verbose "Importing WindowsRepair module: $windowsRepairManifest"
+            Import-Module -Name $windowsRepairManifest -DisableNameChecking -ErrorAction SilentlyContinue
+        } catch {
+            Write-Verbose "Failed importing WindowsRepair module directly: $($_.Exception.Message)"
+        }
+    }
+}
+
+# Ensure AppInstaller module is imported if not loaded via root manifest
+$appInstallerManifest = Join-Path -Path $scriptDir -ChildPath 'Modules/AppInstaller/AppInstaller.psd1'
+if (Test-Path -LiteralPath $appInstallerManifest) {
+    if (-not (Get-Module -Name 'AppInstaller' -ErrorAction SilentlyContinue)) {
+        try {
+            Write-Verbose "Importing AppInstaller module: $appInstallerManifest"
+            Import-Module -Name $appInstallerManifest -DisableNameChecking -ErrorAction SilentlyContinue
+        } catch {
+            Write-Verbose "Failed importing AppInstaller module directly: $($_.Exception.Message)"
+        }
+    }
+}
+
 # 4. Handle non-interactive execution or immediate exit
 if ($ExitImmediately) {
     if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {

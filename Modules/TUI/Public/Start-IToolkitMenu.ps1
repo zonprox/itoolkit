@@ -463,6 +463,86 @@ function Get-ExternalToolsContextInfoLines {
     return $lines.ToArray()
 }
 
+function Get-WindowsRepairContextInfoLines {
+    [CmdletBinding()]
+    param()
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # 1. OS & Architecture
+    $telemetry = Get-ToolkitTelemetryData
+    $lines.Add("OS & Build     : $($telemetry.OSDisplay) | $($telemetry.Architecture)")
+
+    # 2. Elevation Status
+    $adminStr = "Standard User [WARN: Non-Elevated]"
+    if (Get-Command -Name 'Test-IsAdmin' -ErrorAction SilentlyContinue) {
+        try {
+            if (Test-IsAdmin) {
+                $adminStr = "Administrator [ELEVATED - Full Access]"
+            }
+        }
+        catch { $null = $_ }
+    }
+    $lines.Add("Elevation State: $adminStr")
+
+    # 3. Component Store & System Root
+    $sysDir = if ($env:SystemRoot) { $env:SystemRoot } else { 'C:\Windows' }
+    $lines.Add("System Root    : $sysDir | Component Store [ONLINE]")
+
+    # 4. Repair Subsystems
+    $lines.Add("Repair Tools   : SFC, DISM, Windows Update, Network Stack, WMI [READY]")
+
+    return $lines.ToArray()
+}
+
+if (Get-Command -Name 'Get-WindowsRepairContextInfoLines' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Get-WindowsRepairContextInfoLines' -Value (Get-Command -Name 'Get-WindowsRepairContextInfoLines').ScriptBlock
+}
+
+function Get-AppInstallerContextInfoLines {
+    [CmdletBinding()]
+    param()
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+
+    # 1. Desktop Location & Current User
+    $currentUser = if ($env:USERNAME) { $env:USERNAME } else { [Environment]::UserName }
+    $desktopPath = [Environment]::GetFolderPath('Desktop')
+    if ([string]::IsNullOrWhiteSpace($desktopPath)) { $desktopPath = "$env:USERPROFILE\Desktop" }
+    $lines.Add("Current User   : $currentUser | Desktop: $desktopPath")
+
+    # 2. Package Manager & Installation Engine
+    $hasWinget = [bool](Get-Command -Name 'winget' -ErrorAction SilentlyContinue)
+    $pmStr = if ($hasWinget) { "winget [READY]" } else { "Direct HTTPS Installer [READY]" }
+    $lines.Add("Deploy Engine  : $pmStr")
+
+    # 3. Installed Apps Overview
+    $chromeStat = "[MISSING]"
+    $foxitStat = "[MISSING]"
+    $unikeyStat = "[MISSING]"
+    if (Get-Command -Name 'Get-ToolkitInstalledApplication' -ErrorAction SilentlyContinue) {
+        try {
+            $apps = Get-ToolkitInstalledApplication
+            $chrome = $apps | Where-Object { $_.AppName -eq 'Chrome' }
+            if ($chrome -and $chrome.Installed) { $chromeStat = "[INSTALLED]" }
+            $foxit = $apps | Where-Object { $_.AppName -eq 'FoxitReader' }
+            if ($foxit -and $foxit.Installed) { $foxitStat = "[INSTALLED]" }
+            $unikey = $apps | Where-Object { $_.AppName -eq 'UniKey' }
+            if ($unikey -and $unikey.Installed) { $unikeyStat = "[INSTALLED]" }
+        } catch {
+            $null = $_
+        }
+    }
+    $lines.Add("App Status     : Chrome $chromeStat | Foxit $foxitStat | UniKey $unikeyStat")
+    $lines.Add("Catalog Targets: UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit [READY]")
+
+    return $lines.ToArray()
+}
+
+if (Get-Command -Name 'Get-AppInstallerContextInfoLines' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Get-AppInstallerContextInfoLines' -Value (Get-Command -Name 'Get-AppInstallerContextInfoLines').ScriptBlock
+}
+
 function Start-IToolkitMenu {
 <#
 .SYNOPSIS
@@ -521,7 +601,9 @@ function Start-IToolkitMenu {
         @{ Key = '3'; Action = 'Network & Printers'; Description = 'Print spooler queue, Ne ports, Point & Print policies.'; Prerequisite = 'Spooler service [READY]' },
         @{ Key = '4'; Action = 'User Profile Backup'; Description = 'User folder sync, Chromium bookmarks, certs & manifests.'; Prerequisite = 'Local drive space [READY]' },
         @{ Key = '5'; Action = 'Account Admin'; Description = 'Local/domain account management, SID -500, domain health.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '6'; Action = 'External Tools'; Description = 'Browser Debloat, Win11Debloat, network testing.'; Prerequisite = 'Internet access [READY]' }
+        @{ Key = '6'; Action = 'External Tools'; Description = 'Browser Debloat, Win11Debloat, network testing.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '7'; Action = 'Windows Repair'; Description = 'SFC scan, DISM RestoreHealth, Windows Update & network reset.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
+        @{ Key = '8'; Action = 'Quick App Installer'; Description = 'Silent install UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit.'; Prerequisite = 'Internet access [READY]' }
     )
 
     # If NonInteractive flag is set without MenuOption, display main menu once and return
@@ -551,6 +633,8 @@ function Start-IToolkitMenu {
             '4' { Invoke-ToolkitSubmenuBackup @subParams }
             '5' { Invoke-ToolkitSubmenuAccounts @subParams }
             '6' { Invoke-ToolkitSubmenuExternalTools @subParams }
+            '7' { Invoke-ToolkitSubmenuWindowsRepair @subParams }
+            '8' { Invoke-ToolkitSubmenuAppInstaller @subParams }
             'Q' {
                 Write-ToolkitStatus -Message "Exiting IToolkit." -Type 'OK'
             }
@@ -571,7 +655,7 @@ function Start-IToolkitMenu {
         Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -InfoLines $sysInfo
         Show-ToolkitDetailPanel -Details $mainDetails -NavActions $mainNav -Title 'ACTIONS & COMMANDS'
 
-        $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', 'R', 'Q', 'X') -Default $DefaultSelection
+        $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', 'R', 'Q', 'X') -Default $DefaultSelection
 
         if ([string]::IsNullOrWhiteSpace($choice)) {
             break
@@ -584,6 +668,8 @@ function Start-IToolkitMenu {
             '4' { Invoke-ToolkitSubmenuBackup }
             '5' { Invoke-ToolkitSubmenuAccounts }
             '6' { Invoke-ToolkitSubmenuExternalTools }
+            '7' { Invoke-ToolkitSubmenuWindowsRepair }
+            '8' { Invoke-ToolkitSubmenuAppInstaller }
             'R' {
                 continue
             }
@@ -734,6 +820,7 @@ function Invoke-ToolkitSubmenuOutlook {
 
         Write-Host ""
         $topLevelActions = @(
+            @{ Key = 'N'; Label = 'Create New PST' },
             @{ Key = 'K'; Label = 'Kill Stuck Outlook' },
             @{ Key = 'S'; Label = 'Safe Mode' },
             @{ Key = 'E'; Label = 'Expand PST Limit (100GB)' },
@@ -751,8 +838,8 @@ function Invoke-ToolkitSubmenuOutlook {
             return
         }
 
-        $validKeys = @('K', 'S', 'E', 'D', 'C', 'B', 'Q')
-        $promptText = if ($outlookItems.Count -gt 0) { "  Select item [1-$($outlookItems.Count)] or action" } else { "  Select action [K, S, E, D, C, B, Q]" }
+        $validKeys = @('N', 'K', 'S', 'E', 'D', 'C', 'B', 'Q')
+        $promptText = if ($outlookItems.Count -gt 0) { "  Select item [1-$($outlookItems.Count)] or action" } else { "  Select action [N, K, S, E, D, C, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $outlookItems.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -767,6 +854,35 @@ function Invoke-ToolkitSubmenuOutlook {
                 }
                 'Q' {
                     return
+                }
+                'N' {
+                    $targetPath = Read-Host "  Enter Target PST Path (e.g. C:\Mail\Archive.pst)"
+                    if (-not [string]::IsNullOrWhiteSpace($targetPath)) {
+                        if (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue) {
+                            try {
+                                $newPstRes = New-OutlookDataFile -Path $targetPath
+                                if ($newPstRes -and $newPstRes.Success) {
+                                    Write-ToolkitStatus -Message "New PST data file created successfully: '$targetPath'." -Type 'OK'
+                                }
+                                elseif ($newPstRes -and -not $newPstRes.Success) {
+                                    Write-ToolkitStatus -Message "Failed to create PST file: $($newPstRes.ErrorMessage)" -Type 'FAIL'
+                                }
+                                else {
+                                    Write-ToolkitStatus -Message "New PST data file created: '$targetPath'." -Type 'OK'
+                                }
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "PST creation failed: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "New-OutlookDataFile command not available." -Type 'WARN'
+                        }
+                    }
+                    else {
+                        Write-ToolkitStatus -Message "No target path specified. Operation cancelled." -Type 'INFO'
+                    }
+                    Wait-UserAcknowledge
                 }
                 'K' {
                     try {
@@ -851,7 +967,8 @@ function Invoke-ToolkitSubmenuOutlook {
                     @{ Key = '1'; Action = 'Repair Profile / Data File'; Description = "Run integrity check / SCANPST on '$($targetItem.Name)'."; Prerequisite = 'Outlook stopped [SAFE]' },
                     @{ Key = '2'; Action = 'Cache Reset [OST]'; Description = "Reset or rebuild offline cache file for '$($targetItem.Name)'."; Prerequisite = 'Outlook stopped [SAFE]' },
                     @{ Key = '3'; Action = 'Autodiscover Check'; Description = "Test Autodiscover and Exchange endpoints for profile '$($targetItem.Name)'."; Prerequisite = 'Network online [READY]' },
-                    @{ Key = '4'; Action = 'Backup / Relocate Data File'; Description = "Relocate or back up '$($targetItem.Name)' with cryptographic SHA-256 verification."; Prerequisite = 'Target disk space [READY]' }
+                    @{ Key = '4'; Action = 'Backup / Relocate Data File'; Description = "Relocate or back up '$($targetItem.Name)' with cryptographic SHA-256 verification."; Prerequisite = 'Target disk space [READY]' },
+                    @{ Key = '5'; Action = 'Set as Default Data File'; Description = "Assign '$($targetItem.Name)' as default delivery data file for profile."; Prerequisite = 'Outlook data file [READY]' }
                 )
                 $contextNav = @(
                     @{ Key = 'B'; Label = 'Back to Outlook Table' },
@@ -859,7 +976,7 @@ function Invoke-ToolkitSubmenuOutlook {
                 )
                 Show-ToolkitDetailPanel -Details $contextDetails -NavActions $contextNav -Title 'CONTEXTUAL ACTIONS'
 
-                $ctxChoice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', 'B', 'Q') -Default 'B'
+                $ctxChoice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', 'B', 'Q') -Default 'B'
 
                 if ([string]::IsNullOrWhiteSpace($ctxChoice) -or $ctxChoice.ToUpperInvariant() -eq 'B') {
                     continue
@@ -959,6 +1076,41 @@ function Invoke-ToolkitSubmenuOutlook {
                                         }
                                     }
                                 }
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Target item '$($targetItem.Name)' does not have a bound data file path." -Type 'WARN'
+                        }
+                    }
+                    '5' {
+                        $filePath = $targetItem.Path
+                        if ([string]::IsNullOrWhiteSpace($filePath) -and -not [string]::IsNullOrWhiteSpace($targetItem.Details) -and ($targetItem.Details -match '(?i)\.(pst|ost)$')) {
+                            $filePath = $targetItem.Details
+                        }
+                        if (-not [string]::IsNullOrWhiteSpace($filePath)) {
+                            if (Get-Command -Name 'Set-OutlookDefaultDataFile' -ErrorAction SilentlyContinue) {
+                                try {
+                                    $setDefaultParams = @{ Path = $filePath }
+                                    if (-not [string]::IsNullOrWhiteSpace($targetItem.Profile)) {
+                                        $setDefaultParams['ProfileName'] = $targetItem.Profile
+                                    }
+                                    $defRes = Set-OutlookDefaultDataFile @setDefaultParams
+                                    if ($defRes -and $defRes.Success) {
+                                        Write-ToolkitStatus -Message "Data file '$($targetItem.Name)' set as default for profile." -Type 'OK'
+                                    }
+                                    elseif ($defRes -and -not $defRes.Success) {
+                                        Write-ToolkitStatus -Message "Failed to set default data file: $($defRes.ErrorMessage)" -Type 'FAIL'
+                                    }
+                                    else {
+                                        Write-ToolkitStatus -Message "Data file '$($targetItem.Name)' configured as default." -Type 'OK'
+                                    }
+                                }
+                                catch {
+                                    Write-ToolkitStatus -Message "Failed to set default data file: $($_.Exception.Message)" -Type 'FAIL'
+                                }
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Set-OutlookDefaultDataFile command not available." -Type 'WARN'
                             }
                         }
                         else {
@@ -1426,6 +1578,10 @@ function Invoke-ToolkitSubmenuPrinters {
 
         Write-Host ""
         $topLevelActions = @(
+            @{ Key = 'A'; Label = 'Apply All Server' },
+            @{ Key = 'L'; Label = 'Apply All Client' },
+            @{ Key = 'F'; Label = 'Fixes Catalog' },
+            @{ Key = 'U'; Label = 'Rollback' },
             @{ Key = 'S'; Label = 'Spooler Restart & Purge' },
             @{ Key = 'R'; Label = 'Register DLLs' },
             @{ Key = 'P'; Label = 'Point & Print Remediation' },
@@ -1443,8 +1599,8 @@ function Invoke-ToolkitSubmenuPrinters {
             return
         }
 
-        $validKeys = @('S', 'R', 'P', 'N', 'C', 'B', 'Q')
-        $promptText = if ($printers.Count -gt 0) { "  Select item [1-$($printers.Count)] or action" } else { "  Select action [S, R, P, N, C, B, Q]" }
+        $validKeys = @('A', 'L', 'F', 'U', 'S', 'R', 'P', 'N', 'C', 'B', 'Q')
+        $promptText = if ($printers.Count -gt 0) { "  Select item [1-$($printers.Count)] or action" } else { "  Select action [A, L, F, U, S, R, P, N, C, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $printers.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -1459,6 +1615,145 @@ function Invoke-ToolkitSubmenuPrinters {
                 }
                 'Q' {
                     return
+                }
+                'A' {
+                    if (Get-Command -Name 'Set-PrinterServerRemediation' -ErrorAction SilentlyContinue) {
+                        try {
+                            $res = Set-PrinterServerRemediation -All
+                            if ($res -and $res.Success) {
+                                Write-ToolkitStatus -Message "All server printer remediations applied successfully. Fixes: $($res.FixesApplied -join ', ')." -Type 'OK'
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Server remediation completed with warnings." -Type 'WARN'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to apply server remediations: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    else {
+                        Write-ToolkitStatus -Message "Set-PrinterServerRemediation command not available." -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
+                }
+                'L' {
+                    if (Get-Command -Name 'Set-PrinterClientRemediation' -ErrorAction SilentlyContinue) {
+                        try {
+                            $res = Set-PrinterClientRemediation -All
+                            if ($res -and $res.Success) {
+                                Write-ToolkitStatus -Message "All client printer remediations applied successfully. Fixes: $($res.FixesApplied -join ', ')." -Type 'OK'
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Client remediation completed with warnings." -Type 'WARN'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to apply client remediations: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    else {
+                        Write-ToolkitStatus -Message "Set-PrinterClientRemediation command not available." -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
+                }
+                'F' {
+                    Write-Host ""
+                    Write-Host "  Select remediation fix from catalog:" -ForegroundColor Cyan
+                    Write-Host "  [1] RpcAuthnLevel (Server - Fix 0x0000011b)"
+                    Write-Host "  [2] RemoteRpcEndPoint (Server - Allow client RPC binds)"
+                    Write-Host "  [3] RpcProtocols (Server - Named pipes & protocols)"
+                    Write-Host "  [4] SpoolerHealth (Server - Permissions & service restart)"
+                    Write-Host "  [5] PointAndPrintAdmin (Client - RestrictDriverInstallationToAdministrators=0)"
+                    Write-Host "  [6] PointAndPrintPrompts (Client - Suppress elevation prompts)"
+                    Write-Host "  [7] RpcNamedPipe (Client - Fix 0x00000709)"
+                    Write-Host "  [8] CopyFilesPolicy (Client - Fix 0x0000007c)"
+                    Write-Host "  [B] Back"
+                    $fChoice = Read-ToolkitMenuChoice -Prompt 'Select Fix' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', 'B') -Default 'B'
+                    if (-not [string]::IsNullOrWhiteSpace($fChoice) -and $fChoice.ToUpperInvariant() -ne 'B') {
+                        try {
+                            switch ($fChoice) {
+                                '1' {
+                                    $res = Set-PrinterServerRemediation -Fix 'RpcAuthnLevel'
+                                    Write-ToolkitStatus -Message "Applied server fix: RpcAuthnLevel." -Type 'OK'
+                                }
+                                '2' {
+                                    $res = Set-PrinterServerRemediation -Fix 'RemoteRpcEndPoint'
+                                    Write-ToolkitStatus -Message "Applied server fix: RemoteRpcEndPoint." -Type 'OK'
+                                }
+                                '3' {
+                                    $res = Set-PrinterServerRemediation -Fix 'RpcProtocols'
+                                    Write-ToolkitStatus -Message "Applied server fix: RpcProtocols." -Type 'OK'
+                                }
+                                '4' {
+                                    $res = Set-PrinterServerRemediation -Fix 'SpoolerHealth'
+                                    Write-ToolkitStatus -Message "Applied server fix: SpoolerHealth." -Type 'OK'
+                                }
+                                '5' {
+                                    $res = Set-PrinterClientRemediation -Fix 'PointAndPrintAdmin'
+                                    Write-ToolkitStatus -Message "Applied client fix: PointAndPrintAdmin." -Type 'OK'
+                                }
+                                '6' {
+                                    $res = Set-PrinterClientRemediation -Fix 'PointAndPrintPrompts'
+                                    Write-ToolkitStatus -Message "Applied client fix: PointAndPrintPrompts." -Type 'OK'
+                                }
+                                '7' {
+                                    $res = Set-PrinterClientRemediation -Fix 'RpcNamedPipe'
+                                    Write-ToolkitStatus -Message "Applied client fix: RpcNamedPipe." -Type 'OK'
+                                }
+                                '8' {
+                                    $res = Set-PrinterClientRemediation -Fix 'CopyFilesPolicy'
+                                    Write-ToolkitStatus -Message "Applied client fix: CopyFilesPolicy." -Type 'OK'
+                                }
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to apply fix: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    Wait-UserAcknowledge
+                }
+                'U' {
+                    $regFile = Read-Host "  Enter registry backup .reg file path (or press Enter to search default backup folder)"
+                    if ([string]::IsNullOrWhiteSpace($regFile)) {
+                        $searchDirs = @('C:\Backups\Registry', "$env:TEMP\IToolkit_RegistryBackups", "$env:TEMP")
+                        $foundFiles = @()
+                        foreach ($sDir in $searchDirs) {
+                            if (Test-Path -LiteralPath $sDir) {
+                                $foundFiles += @(Get-ChildItem -LiteralPath $sDir -Filter '*.reg' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+                            }
+                        }
+                        if ($foundFiles.Count -gt 0) {
+                            $latest = $foundFiles[0].FullName
+                            Write-Host "  Found recent backup: $latest" -ForegroundColor Cyan
+                            $confirm = Read-Host "  Restore this backup? [Y/N] (Default: Y)"
+                            if ([string]::IsNullOrWhiteSpace($confirm) -or $confirm.ToUpperInvariant() -eq 'Y') {
+                                $regFile = $latest
+                            }
+                        }
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace($regFile)) {
+                        if (Get-Command -Name 'Restore-RegistryKeyBackup' -ErrorAction SilentlyContinue) {
+                            try {
+                                $success = Restore-RegistryKeyBackup -BackupFilePath $regFile
+                                if ($success) {
+                                    Write-ToolkitStatus -Message "Registry restored successfully from '$regFile'." -Type 'OK'
+                                }
+                                else {
+                                    Write-ToolkitStatus -Message "Registry restore failed for '$regFile'." -Type 'FAIL'
+                                }
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Rollback error: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Restore-RegistryKeyBackup command not available." -Type 'WARN'
+                        }
+                    }
+                    else {
+                        Write-ToolkitStatus -Message "No registry backup file selected. Rollback cancelled." -Type 'INFO'
+                    }
+                    Wait-UserAcknowledge
                 }
                 'S' {
                     if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
@@ -1736,6 +2031,7 @@ function Invoke-ToolkitSubmenuBackup {
             @{ Key = 'N'; Label = 'New Full Backup' },
             @{ Key = 'E'; Label = 'Export Bookmarks' },
             @{ Key = 'C'; Label = 'Export Certs' },
+            @{ Key = 'I'; Label = 'Import Certs' },
             @{ Key = 'M'; Label = 'Map Folders' },
             @{ Key = 'G'; Label = 'Generate Manifest' },
             @{ Key = 'V'; Label = 'Verify Manifest' }
@@ -1751,8 +2047,8 @@ function Invoke-ToolkitSubmenuBackup {
             return
         }
 
-        $validKeys = @('N', 'E', 'C', 'M', 'G', 'V', 'B', 'Q')
-        $promptText = if ($backupItems.Count -gt 0) { "  Select item [1-$($backupItems.Count)] or action" } else { "  Select action [N, E, C, M, G, V, B, Q]" }
+        $validKeys = @('N', 'E', 'C', 'I', 'M', 'G', 'V', 'B', 'Q')
+        $promptText = if ($backupItems.Count -gt 0) { "  Select item [1-$($backupItems.Count)] or action" } else { "  Select action [N, E, C, I, M, G, V, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $backupItems.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -1809,15 +2105,63 @@ function Invoke-ToolkitSubmenuBackup {
                     if ([string]::IsNullOrWhiteSpace($outDir)) {
                         $outDir = 'C:\Backups\Certificates'
                     }
-                    $pwd = Read-Host "  Enter Protection Password for Certificates" -AsSecureString
-                    if ($null -ne $pwd -and (Get-Command -Name 'Export-PersonalCertificates' -ErrorAction SilentlyContinue)) {
+                    $pwd = Read-Host "  Enter Protection Password for Certificates (Optional)" -AsSecureString
+                    if (Get-Command -Name 'Export-ToolkitCertificates' -ErrorAction SilentlyContinue) {
                         try {
-                            Export-PersonalCertificates -DestinationPath $outDir -Password $pwd | Format-List
+                            $exportParams = @{ DestinationPath = $outDir }
+                            if ($pwd -is [System.Security.SecureString] -and $pwd.Length -gt 0) {
+                                $exportParams['Password'] = $pwd
+                            }
+                            elseif ($pwd -is [string] -and -not [string]::IsNullOrWhiteSpace($pwd)) {
+                                $exportParams['Password'] = ConvertTo-SecureString -String $pwd -AsPlainText -Force
+                            }
+                            $certs = Export-ToolkitCertificates @exportParams
+                            $cnt = if ($null -ne $certs) { @($certs).Count } else { 0 }
+                            Write-ToolkitStatus -Message "Certificate export completed ($cnt certificate(s) exported to '$outDir')." -Type 'OK'
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Certificates export failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    elseif (Get-Command -Name 'Export-PersonalCertificates' -ErrorAction SilentlyContinue) {
+                        try {
+                            $secPwd = if ($pwd -is [System.Security.SecureString]) { $pwd } elseif ($pwd -is [string] -and -not [string]::IsNullOrWhiteSpace($pwd)) { ConvertTo-SecureString -String $pwd -AsPlainText -Force } else { $null }
+                            Export-PersonalCertificates -DestinationPath $outDir -Password $secPwd | Format-List
                             Write-ToolkitStatus -Message "Personal certificates exported to '$outDir'." -Type 'OK'
                         }
                         catch {
                             Write-ToolkitStatus -Message "Certificates export failed: $($_.Exception.Message)" -Type 'FAIL'
                         }
+                    }
+                    Wait-UserAcknowledge
+                }
+                'I' {
+                    $inPath = Read-Host "  Enter Certificate File or Directory Path to Import"
+                    if (-not [string]::IsNullOrWhiteSpace($inPath)) {
+                        $pwd = Read-Host "  Enter Certificate Password for PFX (Optional)" -AsSecureString
+                        if (Get-Command -Name 'Import-ToolkitCertificates' -ErrorAction SilentlyContinue) {
+                            try {
+                                $importParams = @{ Path = $inPath }
+                                if ($pwd -is [System.Security.SecureString] -and $pwd.Length -gt 0) {
+                                    $importParams['Password'] = $pwd
+                                }
+                                elseif ($pwd -is [string] -and -not [string]::IsNullOrWhiteSpace($pwd)) {
+                                    $importParams['Password'] = ConvertTo-SecureString -String $pwd -AsPlainText -Force
+                                }
+                                $imported = Import-ToolkitCertificates @importParams
+                                $cnt = if ($null -ne $imported) { @($imported).Count } else { 0 }
+                                Write-ToolkitStatus -Message "Certificate import completed ($cnt certificate(s) imported from '$inPath')." -Type 'OK'
+                            }
+                            catch {
+                                Write-ToolkitStatus -Message "Certificate import failed: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Import-ToolkitCertificates command not available." -Type 'WARN'
+                        }
+                    }
+                    else {
+                        Write-ToolkitStatus -Message "No import path specified. Import cancelled." -Type 'INFO'
                     }
                     Wait-UserAcknowledge
                 }
@@ -2327,7 +2671,8 @@ function Invoke-ToolkitSubmenuExternalTools {
     $toolsDetails = @(
         @{ Key = '1'; Action = 'Run Browser Debloat'; Description = 'Launch Chrome/Browser debloat utility.'; Prerequisite = 'Internet access [READY]' },
         @{ Key = '2'; Action = 'Run Win11Debloat'; Description = 'Launch Win11Debloat script for bloatware/telemetry purge.'; Prerequisite = 'Internet access [READY]' },
-        @{ Key = '3'; Action = 'Test Connectivity'; Description = 'Test ICMP ping, HTTP, and HTTPS endpoints.'; Prerequisite = 'Network adapter [READY]' }
+        @{ Key = '3'; Action = 'Run Office Tool Plus'; Description = 'Launch Office Tool Plus for deployment and activation.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '4'; Action = 'Test Connectivity'; Description = 'Test ICMP ping, HTTP, and HTTPS endpoints.'; Prerequisite = 'Network adapter [READY]' }
     )
 
     $inSubmenu = $true
@@ -2342,7 +2687,7 @@ function Invoke-ToolkitSubmenuExternalTools {
             return
         }
 
-        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', 'B', 'Q')
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
             break
@@ -2364,6 +2709,14 @@ function Invoke-ToolkitSubmenuExternalTools {
                 }
             }
             '3' {
+                if (Get-Command -Name 'Invoke-OfficeToolPlus' -ErrorAction SilentlyContinue) {
+                    Invoke-OfficeToolPlus | Format-List
+                }
+                else {
+                    Write-ToolkitStatus -Message "Invoke-OfficeToolPlus command not available." -Type 'WARN'
+                }
+            }
+            '4' {
                 if (Get-Command -Name 'Test-InternetConnectivity' -ErrorAction SilentlyContinue) {
                     $reachable = Test-InternetConnectivity
                     if ($reachable) {
@@ -2379,13 +2732,491 @@ function Invoke-ToolkitSubmenuExternalTools {
     }
 }
 
+function Invoke-ToolkitSubmenuWindowsRepair {
+<#
+.SYNOPSIS
+    Submenu for Windows System Repair & Maintenance with Tri-Panel / Action Catalog UI/UX.
+.DESCRIPTION
+    Presents diagnostic repair capabilities for System File Checker (sfc /scannow),
+    DISM Component Store (/RestoreHealth), Windows Update components reset,
+    network stack (Winsock/TCP-IP/DNS) reset, and WMI repository salvage.
+.PARAMETER ExitImmediately
+    Switch to bypass interactive loop and return immediately (used for automated testing).
+.PARAMETER NonInteractive
+    Switch to run in headless automation mode: renders menu once and returns cleanly.
+.PARAMETER MenuDepth
+    Optional menu recursion depth.
+#>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NonInteractive,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MenuDepth = 1
+    )
+
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    if (-not (Get-Command -Name 'Show-ToolkitActionCatalog' -ErrorAction SilentlyContinue)) {
+        $catScript = Join-Path $PSScriptRoot 'Show-ToolkitActionCatalog.ps1'
+        if (Test-Path $catScript) {
+            . $catScript
+        }
+    }
+    if (-not (Get-Command -Name 'Show-ToolkitItemTable' -ErrorAction SilentlyContinue)) {
+        $tableScript = Join-Path $PSScriptRoot 'Show-ToolkitItemTable.ps1'
+        if (Test-Path $tableScript) {
+            . $tableScript
+        }
+    }
+    if (-not (Get-Command -Name 'Read-ToolkitItemSelection' -ErrorAction SilentlyContinue)) {
+        $selectScript = Join-Path $PSScriptRoot 'Read-ToolkitItemSelection.ps1'
+        if (Test-Path $selectScript) {
+            . $selectScript
+        }
+    }
+
+    $inSubmenu = $true
+    while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        $repairInfo = Get-WindowsRepairContextInfoLines
+        Show-ToolkitHeader -Title 'ITOOLKIT > WINDOWS SYSTEM REPAIR & MAINTENANCE' -Subtitle 'SFC Integrity, DISM Component Store, Windows Update & Network Stack' -ClearScreen:$clear -InfoLines $repairInfo
+
+        # Elevation warning banner if Test-IsAdmin returns false
+        $isAdmin = $true
+        if (Get-Command -Name 'Test-IsAdmin' -ErrorAction SilentlyContinue) {
+            try {
+                $isAdmin = Test-IsAdmin
+            }
+            catch {
+                $isAdmin = $false
+            }
+        }
+        if (-not $isAdmin) {
+            Write-ToolkitStatus -Message "ELEVATION WARNING: Administrative privileges required. Run as Administrator for system repairs." -Type 'WARN'
+        }
+
+        # Item-centric summary of repair subsystems
+        $repairItems = @(
+            [PSCustomObject]@{ Component = 'System File Checker (SFC)'; Status = '[READY]'; Action = 'sfc /scannow'; Details = 'Integrity scan & repair of protected system files' },
+            [PSCustomObject]@{ Component = 'DISM Component Store'; Status = '[READY]'; Action = 'DISM /RestoreHealth'; Details = 'Windows component store repair via online/cleanup' },
+            [PSCustomObject]@{ Component = 'Windows Update Services'; Status = '[READY]'; Action = 'Reset-WindowsUpdate'; Details = 'Reset update services & clear SoftwareDistribution' },
+            [PSCustomObject]@{ Component = 'Network & Winsock Stack'; Status = '[READY]'; Action = 'Reset-NetworkStack'; Details = 'Reset Winsock, TCP/IP stack, and flush DNS cache' },
+            [PSCustomObject]@{ Component = 'WMI Repository'; Status = '[READY]'; Action = 'Repair-WmiRepository'; Details = 'Verify and salvage corrupted WMI repository' }
+        )
+        Show-ToolkitItemTable -Items $repairItems -Columns @('Component', 'Status', 'Action', 'Details') -Headers @('COMPONENT', 'STATUS', 'ACTION', 'DETAILS') -Title 'Windows Repair Subsystems'
+
+        Write-Host ""
+        $repairActions = @(
+            @{ Key = 'S'; Label = 'SFC Scan' },
+            @{ Key = 'D'; Label = 'DISM RestoreHealth' },
+            @{ Key = 'W'; Label = 'Reset Windows Update' },
+            @{ Key = 'N'; Label = 'Reset Network Stack' },
+            @{ Key = 'R'; Label = 'Repair WMI Repository' }
+        )
+        $navActions = @(
+            @{ Key = 'B'; Label = 'Back to Main Menu' },
+            @{ Key = 'Q'; Label = 'Quit' }
+        )
+        Show-ToolkitActionCatalog -Actions $repairActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
+
+        if ($NonInteractive) {
+            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Windows System Repair & Maintenance'." -Type 'INFO'
+            return
+        }
+
+        $validKeys = @('S', 'D', 'W', 'N', 'R', 'B', 'Q')
+        $promptText = "  Select item [1-$($repairItems.Count)] or action [S, D, W, N, R, B, Q]"
+        $selection = Read-ToolkitItemSelection -MaxIndex $repairItems.Count -ValidHotkeys $validKeys -Prompt $promptText
+
+        if ($null -eq $selection -or $selection.Type -eq 'Exit') {
+            return
+        }
+
+        $actionKey = ''
+        if ($selection.Type -eq 'Hotkey') {
+            $actionKey = $selection.Value.ToString().ToUpperInvariant()
+        }
+        elseif ($selection.Type -eq 'Index') {
+            switch ($selection.Value) {
+                1 { $actionKey = 'S' }
+                2 { $actionKey = 'D' }
+                3 { $actionKey = 'W' }
+                4 { $actionKey = 'N' }
+                5 { $actionKey = 'R' }
+            }
+        }
+
+        switch ($actionKey) {
+            'B' {
+                return
+            }
+            'Q' {
+                return
+            }
+            'S' {
+                if (Get-Command -Name 'Invoke-WindowsSfcScan' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Executing System File Checker scan (sfc /scannow)..." -Type 'INFO'
+                        $sfcResult = Invoke-WindowsSfcScan
+                        if ($sfcResult -and $sfcResult.Success) {
+                            Write-ToolkitStatus -Message "SFC scan completed successfully: $($sfcResult.Status)." -Type 'OK'
+                        }
+                        else {
+                            $statMsg = if ($sfcResult) { $sfcResult.Status } else { 'Scan completed' }
+                            Write-ToolkitStatus -Message "SFC scan finished with notice: $statMsg." -Type 'WARN'
+                        }
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "SFC scan error: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                }
+                else {
+                    Write-ToolkitStatus -Message "Invoke-WindowsSfcScan command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            'D' {
+                if (Get-Command -Name 'Invoke-WindowsDismRepair' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Executing DISM RestoreHealth repair..." -Type 'INFO'
+                        $dismResult = Invoke-WindowsDismRepair -Mode 'RestoreHealth'
+                        if ($dismResult -and $dismResult.Success) {
+                            Write-ToolkitStatus -Message "DISM RestoreHealth completed successfully: $($dismResult.Status)." -Type 'OK'
+                        }
+                        else {
+                            $dismMsg = if ($dismResult) { $dismResult.Status } else { 'Repair completed' }
+                            Write-ToolkitStatus -Message "DISM repair finished with notice: $dismMsg." -Type 'WARN'
+                        }
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "DISM repair error: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                }
+                else {
+                    Write-ToolkitStatus -Message "Invoke-WindowsDismRepair command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            'W' {
+                if (Get-Command -Name 'Reset-WindowsUpdateComponents' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Resetting Windows Update components and cache..." -Type 'INFO'
+                        $wuResult = Reset-WindowsUpdateComponents
+                        if ($wuResult -and $wuResult.Success) {
+                            Write-ToolkitStatus -Message "Windows Update components reset successfully." -Type 'OK'
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Windows Update reset finished with warnings." -Type 'WARN'
+                        }
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "Windows Update reset error: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                }
+                else {
+                    Write-ToolkitStatus -Message "Reset-WindowsUpdateComponents command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            'N' {
+                if (Get-Command -Name 'Reset-NetworkStack' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Resetting network sockets, IP stack, and DNS cache..." -Type 'INFO'
+                        $netResult = Reset-NetworkStack
+                        if ($netResult -and $netResult.Success) {
+                            Write-ToolkitStatus -Message "Network stack reset successfully." -Type 'OK'
+                        }
+                        else {
+                            Write-ToolkitStatus -Message "Network stack reset finished with warnings." -Type 'WARN'
+                        }
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "Network stack reset error: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                }
+                else {
+                    Write-ToolkitStatus -Message "Reset-NetworkStack command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            'R' {
+                if (Get-Command -Name 'Repair-WmiRepository' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Salvaging and repairing WMI repository..." -Type 'INFO'
+                        $wmiResult = Repair-WmiRepository -Action 'Salvage'
+                        if ($wmiResult -and $wmiResult.Success) {
+                            Write-ToolkitStatus -Message "WMI repository salvage completed successfully: $($wmiResult.Status)." -Type 'OK'
+                        }
+                        else {
+                            $wmiMsg = if ($wmiResult) { $wmiResult.Status } else { 'Salvage notice' }
+                            Write-ToolkitStatus -Message "WMI repository salvage finished with notice: $wmiMsg." -Type 'WARN'
+                        }
+                    }
+                    catch {
+                        Write-ToolkitStatus -Message "WMI repair error: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                }
+                else {
+                    Write-ToolkitStatus -Message "Repair-WmiRepository command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+        }
+    }
+}
+
+function Invoke-ToolkitSubmenuAppInstaller {
+<#
+.SYNOPSIS
+    Submenu for Quick Application Installation, Desktop Shortcuts & Default Application Configuration.
+.DESCRIPTION
+    Presents automated silent installation capabilities for:
+    - UniKey (Vietnamese Input Method)
+    - UltraVNC (Remote Administration & Screen Sharing)
+    - K-Lite Codec Pack (Audio/Video Codecs & Media Player Classic)
+    - Google Chrome (Web Browser)
+    - Visual C++ Redistributables All-In-One (vcredist AIO)
+    - Foxit PDF Reader (PDF Viewer & Editor)
+    Generates desktop shortcuts for the current user account and sets Chrome and Foxit as system defaults.
+.PARAMETER ExitImmediately
+    Switch to bypass interactive loop and return immediately (used for automated testing).
+.PARAMETER NonInteractive
+    Switch to run in headless automation mode: renders menu once and returns cleanly.
+.PARAMETER MenuDepth
+    Optional menu recursion depth.
+#>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NonInteractive,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MenuDepth = 1
+    )
+
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    if (-not (Get-Command -Name 'Show-ToolkitActionCatalog' -ErrorAction SilentlyContinue)) {
+        $catScript = Join-Path $PSScriptRoot 'Show-ToolkitActionCatalog.ps1'
+        if (Test-Path $catScript) { . $catScript }
+    }
+    if (-not (Get-Command -Name 'Show-ToolkitItemTable' -ErrorAction SilentlyContinue)) {
+        $tableScript = Join-Path $PSScriptRoot 'Show-ToolkitItemTable.ps1'
+        if (Test-Path $tableScript) { . $tableScript }
+    }
+
+    $inSubmenu = $true
+    while ($inSubmenu) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        $installerInfo = Get-AppInstallerContextInfoLines
+        Show-ToolkitHeader -Title 'ITOOLKIT > QUICK APP INSTALLER & DEPLOYMENT' -Subtitle 'Silent Installation, Desktop Shortcuts & Default App Configuration' -ClearScreen:$clear -InfoLines $installerInfo
+
+        # Query installed apps
+        $appsList = @()
+        if (Get-Command -Name 'Get-ToolkitInstalledApplication' -ErrorAction SilentlyContinue) {
+            try {
+                $rawApps = Get-ToolkitInstalledApplication
+                foreach ($app in $rawApps) {
+                    $statusBadge = if ($app.Installed) { '[INSTALLED]' } else { '[MISSING]' }
+                    $exeDisplay = if ($app.ExecutablePath) { Split-Path -Leaf $app.ExecutablePath } else { 'Not Installed' }
+                    $appsList += [PSCustomObject]@{
+                        Application = $app.DisplayName
+                        Status      = $statusBadge
+                        Executable  = $exeDisplay
+                        Version     = if ($app.Version) { $app.Version } else { 'N/A' }
+                    }
+                }
+            } catch {
+                $null = $_
+            }
+        }
+
+        if ($appsList.Count -eq 0) {
+            $appsList = @(
+                [PSCustomObject]@{ Application = 'Google Chrome Browser'; Status = '[READY]'; Executable = 'chrome.exe'; Version = 'Latest' },
+                [PSCustomObject]@{ Application = 'Foxit PDF Reader'; Status = '[READY]'; Executable = 'FoxitPDFReader.exe'; Version = 'Latest' },
+                [PSCustomObject]@{ Application = 'UniKey Vietnamese Input'; Status = '[READY]'; Executable = 'UniKeyNT.exe'; Version = '4.3 RC5' },
+                [PSCustomObject]@{ Application = 'UltraVNC Remote Support'; Status = '[READY]'; Executable = 'vncviewer.exe'; Version = 'Latest' },
+                [PSCustomObject]@{ Application = 'K-Lite Codec Pack'; Status = '[READY]'; Executable = 'mpc-hc64.exe'; Version = 'Standard' },
+                [PSCustomObject]@{ Application = 'Visual C++ Redistributable AIO'; Status = '[READY]'; Executable = 'System Runtimes'; Version = '2005-2022' }
+            )
+        }
+
+        Show-ToolkitItemTable -Items $appsList -Columns @('Application', 'Status', 'Executable', 'Version') -Headers @('APPLICATION', 'STATUS', 'EXECUTABLE', 'VERSION') -Title 'Managed Enterprise Application Catalog'
+
+        Write-Host ""
+        $installerActions = @(
+            @{ Key = 'A'; Label = 'Install All Apps (Full Setup)' },
+            @{ Key = '1'; Label = 'Install Chrome (Set Default)' },
+            @{ Key = '2'; Label = 'Install Foxit Reader (Set Default)' },
+            @{ Key = '3'; Label = 'Install UniKey (Desktop Shortcut)' },
+            @{ Key = '4'; Label = 'Install UltraVNC (Desktop Shortcut)' },
+            @{ Key = '5'; Label = 'Install K-Lite Codec Pack' },
+            @{ Key = '6'; Label = 'Install VC++ Redist AIO' },
+            @{ Key = 'S'; Label = 'Create Desktop Shortcuts' },
+            @{ Key = 'D'; Label = 'Set Default Applications' }
+        )
+        $navActions = @(
+            @{ Key = 'B'; Label = 'Back to Main Menu' },
+            @{ Key = 'Q'; Label = 'Quit' }
+        )
+        Show-ToolkitActionCatalog -Actions $installerActions -NavActions $navActions -Title 'DEPLOYMENT ACTIONS'
+
+        if ($NonInteractive) {
+            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Quick App Installer'." -Type 'INFO'
+            return
+        }
+
+        $validKeys = @('A', '1', '2', '3', '4', '5', '6', 'S', 'D', 'B', 'Q')
+        $sub = Read-ToolkitMenuChoice -Prompt 'Select Action' -ValidKeys $validKeys
+        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
+            $inSubmenu = $false
+            break
+        }
+        if ($sub.ToUpperInvariant() -eq 'Q') {
+            $inSubmenu = $false
+            return
+        }
+
+        switch ($sub.ToUpperInvariant()) {
+            'A' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Initiating automated installation of all standard applications..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'All' -CreateShortcut -SetDefault
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "All application deployments completed." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            '1' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Installing Google Chrome and setting as default browser..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'Chrome' -CreateShortcut -SetDefault
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "Google Chrome deployment finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            '2' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Installing Foxit PDF Reader and setting as default PDF viewer..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'FoxitReader' -CreateShortcut -SetDefault
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "Foxit PDF Reader deployment finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            '3' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Installing UniKey and creating desktop shortcut..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'UniKey' -CreateShortcut
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "UniKey deployment finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            '4' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Installing UltraVNC and creating desktop shortcut..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'UltraVNC' -CreateShortcut
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "UltraVNC deployment finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            '5' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Installing K-Lite Codec Pack..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'KLiteCodec' -CreateShortcut
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "K-Lite Codec Pack deployment finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            '6' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Installing Microsoft Visual C++ Redistributable AIO..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'VCRedistAIO'
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "Visual C++ Redistributable AIO deployment finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            'S' {
+                if ((Get-Command -Name 'Get-ToolkitInstalledApplication' -ErrorAction SilentlyContinue) -and
+                    (Get-Command -Name 'New-ToolkitDesktopShortcut' -ErrorAction SilentlyContinue)) {
+                    Write-ToolkitStatus -Message "Creating desktop shortcuts for current user..." -Type 'INFO'
+                    $installedApps = Get-ToolkitInstalledApplication
+                    $shortcutMap = @{
+                        'UniKey'      = 'UniKey.lnk'
+                        'UltraVNC'    = 'UltraVNC Viewer.lnk'
+                        'KLiteCodec'  = 'Media Player Classic.lnk'
+                        'Chrome'      = 'Google Chrome.lnk'
+                        'FoxitReader' = 'Foxit PDF Reader.lnk'
+                    }
+                    foreach ($app in $installedApps) {
+                        if ($app.Installed -and $app.ExecutablePath -and $shortcutMap.ContainsKey($app.AppName)) {
+                            New-ToolkitDesktopShortcut -TargetExecutable $app.ExecutablePath -ShortcutName $shortcutMap[$app.AppName] -Force | Out-Null
+                        }
+                    }
+                    Write-ToolkitStatus -Message "Desktop shortcut creation completed." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Shortcut creation cmdlets not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+            'D' {
+                if (Get-Command -Name 'Set-ToolkitDefaultApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Setting default applications (Chrome for Browser, Foxit for PDF)..." -Type 'INFO'
+                    $res = Set-ToolkitDefaultApplication -Application 'All'
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "Default application configuration completed." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Set-ToolkitDefaultApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+            }
+        }
+    }
+}
+
 foreach ($subFn in @(
     'Invoke-ToolkitSubmenuOutlook',
     'Invoke-ToolkitSubmenuOffice',
     'Invoke-ToolkitSubmenuPrinters',
     'Invoke-ToolkitSubmenuBackup',
     'Invoke-ToolkitSubmenuAccounts',
-    'Invoke-ToolkitSubmenuExternalTools'
+    'Invoke-ToolkitSubmenuExternalTools',
+    'Invoke-ToolkitSubmenuWindowsRepair',
+    'Invoke-ToolkitSubmenuAppInstaller'
 )) {
     if (Get-Command -Name $subFn -CommandType Function -ErrorAction SilentlyContinue) {
         Set-Item -Path "function:global:$subFn" -Value (Get-Command -Name $subFn).ScriptBlock

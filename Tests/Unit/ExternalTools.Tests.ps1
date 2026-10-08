@@ -95,4 +95,36 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
             $res.Launched | Should -BeFalse
         }
     }
+
+    Context 'Office Tool Plus Launcher' {
+        It 'Invoke-OfficeToolPlus checks internet and prompts confirmation before launch' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Show-ToolkitConfirmation { return $true }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+
+            $res = Invoke-OfficeToolPlus
+            $res.ToolName | Should -Be 'OfficeToolPlus'
+            $res.ScriptUrl | Should -Be 'https://otp.landian.vip/'
+            $res.Launched | Should -BeTrue
+        }
+
+        It 'Invoke-OfficeToolPlus aborts if offline' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $false }
+            { Invoke-OfficeToolPlus } | Should -Throw
+        }
+
+        It 'Invoke-OfficeToolPlus cancels if user declines prompt' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Show-ToolkitConfirmation { return $false }
+
+            $res = Invoke-OfficeToolPlus
+            $res.Launched | Should -BeFalse
+        }
+
+        It 'Invoke-OfficeToolPlus supports WhatIf' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            $res = Invoke-OfficeToolPlus -WhatIf
+            $res.Launched | Should -BeFalse
+        }
+    }
 }

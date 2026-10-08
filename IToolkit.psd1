@@ -21,7 +21,9 @@
         'Modules/Printers/Printers.psd1',
         'Modules/Backup/Backup.psd1',
         'Modules/Accounts/Accounts.psd1',
-        'Modules/ExternalTools/ExternalTools.psd1'
+        'Modules/WindowsRepair/WindowsRepair.psd1',
+        'Modules/ExternalTools/ExternalTools.psd1',
+        'Modules/AppInstaller/AppInstaller.psd1'
     )
 
     # Public Cmdlets & Functions Exported by IToolkit
@@ -59,6 +61,8 @@
         'Get-OutlookSystemContext',
         'Get-OutlookPstThreshold',
         'Test-OutlookDataFileLock',
+        'New-OutlookDataFile',
+        'Set-OutlookDefaultDataFile',
 
         # Office & Excel Troubleshooting Services
         'Set-ExcelHardwareAcceleration',
@@ -80,11 +84,15 @@
         'Set-PointAndPrintRemediation',
         'Test-NetworkPrinterConnectivity',
         'Reset-PrinterConnections',
+        'Set-PrinterServerRemediation',
+        'Set-PrinterClientRemediation',
 
         # User Data & Profile Backup Services
         'Get-UserProfileDirectoryMap',
         'Export-BrowserBookmarks',
         'Export-PersonalCertificates',
+        'Export-ToolkitCertificates',
+        'Import-ToolkitCertificates',
         'Start-ProfileDirectoryBackup',
         'New-BackupIntegrityManifest',
         'Test-BackupIntegrityManifest',
@@ -104,10 +112,24 @@
         'Join-ToolkitDomain',
         'Disconnect-ToolkitDomain',
 
+        # Windows Repair & Maintenance Services
+        'Invoke-WindowsSfcScan',
+        'Invoke-WindowsDismRepair',
+        'Reset-WindowsUpdateComponents',
+        'Reset-NetworkStack',
+        'Repair-WmiRepository',
+
         # External Tools & Quick Launchers
         'Test-InternetConnectivity',
         'Invoke-BrowserDebloat',
         'Invoke-Win11Debloat',
+        'Invoke-OfficeToolPlus',
+
+        # Quick App Installer & Default App Services
+        'Get-ToolkitInstalledApplication',
+        'New-ToolkitDesktopShortcut',
+        'Set-ToolkitDefaultApplication',
+        'Install-ToolkitApplication',
 
         # Interactive Console TUI Menu Services
         'Get-ToolkitLayoutWidth',
@@ -120,7 +142,11 @@
         'Write-ToolkitStatus',
         'Start-IToolkitMenu',
         'Get-ToolkitTelemetryData',
-        'Get-MainSystemInfoLines'
+        'Get-MainSystemInfoLines',
+        'Get-WindowsRepairContextInfoLines',
+        'Invoke-ToolkitSubmenuWindowsRepair',
+        'Get-AppInstallerContextInfoLines',
+        'Invoke-ToolkitSubmenuAppInstaller'
     )
 
     CmdletsToExport        = @()

@@ -1,12 +1,12 @@
 @{
     # Module Identity & Loader
-    RootModule             = 'ExternalTools.psm1'
+    RootModule             = 'AppInstaller.psm1'
     ModuleVersion          = '1.0.0'
-    GUID                   = '9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'
+    GUID                   = '3f8d1e2c-4b5a-6c7d-8e9f-0a1b2c3d4e5f'
     Author                 = 'IToolkit Team'
     CompanyName            = 'Enterprise IT Administration'
     Copyright              = '(c) 2026 IToolkit. All rights reserved.'
-    Description            = 'External IT scripts and utility launchers with internet reachability pre-flight checks and safety confirmation prompts.'
+    Description            = 'Automated application installer, desktop shortcut generator, and default application association manager.'
 
     # PowerShell Engine Compatibility
     PowerShellVersion      = '5.1'
@@ -14,18 +14,18 @@
 
     # Scripts to run in the caller's session state upon import
     ScriptsToProcess       = @(
-        'Public/Test-InternetConnectivity.ps1',
-        'Public/Invoke-BrowserDebloat.ps1',
-        'Public/Invoke-Win11Debloat.ps1',
-        'Public/Invoke-OfficeToolPlus.ps1'
+        'Public/Get-ToolkitInstalledApplication.ps1',
+        'Public/New-ToolkitDesktopShortcut.ps1',
+        'Public/Set-ToolkitDefaultApplication.ps1',
+        'Public/Install-ToolkitApplication.ps1'
     )
 
     # Explicit Whitelist of Public Functions
     FunctionsToExport      = @(
-        'Test-InternetConnectivity',
-        'Invoke-BrowserDebloat',
-        'Invoke-Win11Debloat',
-        'Invoke-OfficeToolPlus'
+        'Get-ToolkitInstalledApplication',
+        'New-ToolkitDesktopShortcut',
+        'Set-ToolkitDefaultApplication',
+        'Install-ToolkitApplication'
     )
 
     CmdletsToExport        = @()
@@ -34,7 +34,7 @@
 
     PrivateData            = @{
         PSData = @{
-            Tags = @('IToolkit', 'ExternalTools', 'BrowserDebloat', 'Win11Debloat', 'OfficeToolPlus', 'Launchers')
+            Tags = @('IToolkit', 'AppInstaller', 'SoftwareDeployment', 'Shortcuts', 'DefaultApps')
         }
     }
 }

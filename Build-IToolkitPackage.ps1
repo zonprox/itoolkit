@@ -150,6 +150,8 @@ try {
         'Backup',
         'Accounts',
         'ExternalTools',
+        'WindowsRepair',
+        'AppInstaller',
         'TUI'
     )
 

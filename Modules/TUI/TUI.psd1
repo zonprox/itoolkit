@@ -42,7 +42,11 @@
         'Write-ToolkitStatus',
         'Start-IToolkitMenu',
         'Get-ToolkitTelemetryData',
-        'Get-MainSystemInfoLines'
+        'Get-MainSystemInfoLines',
+        'Get-WindowsRepairContextInfoLines',
+        'Invoke-ToolkitSubmenuWindowsRepair',
+        'Get-AppInstallerContextInfoLines',
+        'Invoke-ToolkitSubmenuAppInstaller'
     )
 
     CmdletsToExport        = @()

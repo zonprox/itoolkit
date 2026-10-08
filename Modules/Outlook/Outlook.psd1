@@ -23,7 +23,9 @@
         'Public/Restore-OutlookPst.ps1',
         'Public/Get-OutlookSystemContext.ps1',
         'Public/Get-OutlookPstThreshold.ps1',
-        'Public/Test-OutlookDataFileLock.ps1'
+        'Public/Test-OutlookDataFileLock.ps1',
+        'Public/New-OutlookDataFile.ps1',
+        'Public/Set-OutlookDefaultDataFile.ps1'
     )
 
     # Explicit Whitelist of Public Functions (Strictly hides Private helpers)
@@ -37,7 +39,9 @@
         'Restore-OutlookPst',
         'Get-OutlookSystemContext',
         'Get-OutlookPstThreshold',
-        'Test-OutlookDataFileLock'
+        'Test-OutlookDataFileLock',
+        'New-OutlookDataFile',
+        'Set-OutlookDefaultDataFile'
     )
 
     CmdletsToExport        = @()

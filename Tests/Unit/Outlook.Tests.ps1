@@ -520,4 +520,194 @@ Describe 'Unit: Outlook Data Management Module' {
             $context.ThresholdPolicy | Should -Not -BeNullOrEmpty
         }
     }
+
+    Context 'PST Creation & Profile Attachment (New-OutlookDataFile)' {
+        It 'Rejects non-.pst data file extensions with terminating error' -Skip:(-not $isOutlookAvailable) {
+            { New-OutlookDataFile -Path 'C:\Outlook\archive.txt' } | Should -Throw "*must have a .pst extension*"
+            { New-OutlookDataFile -Path 'C:\Outlook\archive.ost' } | Should -Throw "*must have a .pst extension*"
+        }
+
+        It 'Creates parent directory if missing' -Skip:(-not $isOutlookAvailable) {
+            $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "itoolkit_test_$(Get-Random)"
+            $pstPath = Join-Path $tempDir 'test.pst'
+            try {
+                Mock Get-OutlookComApplication { return $null } -ModuleName 'Outlook'
+                Mock Start-Process { return [PSCustomObject]@{ Id = 101 } }
+                $res = New-OutlookDataFile -Path $pstPath
+                Test-Path -LiteralPath $tempDir | Should -BeTrue
+                $res.Success | Should -BeTrue
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempDir) { Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        It 'Rejects existing file without -Force switch' -Skip:(-not $isOutlookAvailable) {
+            Mock Test-Path { return $true }
+            $res = New-OutlookDataFile -Path 'C:\Outlook\existing.pst'
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'already exists'
+        }
+
+        It 'Detects locked file and aborts even with -Force switch' -Skip:(-not $isOutlookAvailable) {
+            Mock Test-Path { return $true }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{
+                    Path           = 'C:\Outlook\locked.pst'
+                    IsLocked       = $true
+                    Exists         = $true
+                    OutlookRunning = $true
+                    ErrorMessage   = 'File is open exclusively by OUTLOOK'
+                }
+            }
+            $res = New-OutlookDataFile -Path 'C:\Outlook\locked.pst' -Force
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'locked by an external process'
+        }
+
+        It 'Supports WhatIf simulation without modifying system' -Skip:(-not $isOutlookAvailable) {
+            $res = New-OutlookDataFile -Path 'C:\Outlook\whatif.pst' -WhatIf
+            $res.Method | Should -Be 'WhatIf'
+            $res.Success | Should -BeTrue
+            $res.Created | Should -BeFalse
+            $res.Attached | Should -BeFalse
+        }
+
+        It 'Creates and attaches PST via COM automation when available' -Skip:(-not $isOutlookAvailable) {
+            Mock Test-Path { return $false }
+            $script:storePath = $null
+            $script:storeType = $null
+            $mockNs = [PSCustomObject]@{}
+            $mockNs | Add-Member -MemberType ScriptMethod -Name AddStoreEx -Value {
+                param($p, $t)
+                $script:storePath = $p
+                $script:storeType = $t
+            }
+            $mockApp = [PSCustomObject]@{}
+            $mockApp | Add-Member -MemberType ScriptMethod -Name GetNamespace -Value {
+                param($t)
+                return $mockNs
+            }
+
+            Mock Get-OutlookComApplication { return $mockApp } -ModuleName 'Outlook'
+
+            $res = New-OutlookDataFile -Path 'C:\Outlook\newstore.pst' -ProfileName 'TestProfile' -DisplayName 'My Archive'
+            $res.Success | Should -BeTrue
+            $res.Created | Should -BeTrue
+            $res.Attached | Should -BeTrue
+            $res.Method | Should -Be 'COM'
+            $res.FallbackTriggered | Should -BeFalse
+            $script:storePath | Should -Be 'C:\Outlook\newstore.pst'
+            $script:storeType | Should -Be 1
+        }
+
+        It 'Triggers guided fallback when COM automation is unavailable' -Skip:(-not $isOutlookAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-OutlookComApplication { return $null } -ModuleName 'Outlook'
+            Mock Start-Process { return [PSCustomObject]@{ Id = 123 } }
+
+            $res = New-OutlookDataFile -Path 'C:\Outlook\fallback.pst'
+            $res.Success | Should -BeTrue
+            $res.Method | Should -Be 'GuidedFallback'
+            $res.FallbackTriggered | Should -BeTrue
+            $res.Created | Should -BeFalse
+            $res.Attached | Should -BeFalse
+        }
+
+        It 'Invokes Set-OutlookDefaultDataFile when -SetAsDefault switch is set' -Skip:(-not $isOutlookAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-OutlookComApplication { return $null } -ModuleName 'Outlook'
+            Mock Start-Process { return [PSCustomObject]@{ Id = 456 } }
+            $script:defaultTarget = $null
+            Mock Set-OutlookDefaultDataFile {
+                param($Path, $ProfileName)
+                $script:defaultTarget = $Path
+                return [PSCustomObject]@{ Success = $true }
+            }
+
+            $res = New-OutlookDataFile -Path 'C:\Outlook\default.pst' -SetAsDefault
+            $res.IsDefault | Should -BeTrue
+            $script:defaultTarget | Should -Be 'C:\Outlook\default.pst'
+        }
+
+        It 'Attaches existing PST when -Force is passed' -Skip:(-not $isOutlookAvailable) {
+            Mock Test-Path { return $true }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{ Path = 'C:\Outlook\existing.pst'; IsLocked = $false; Exists = $true; OutlookRunning = $false }
+            }
+            $mockNs = [PSCustomObject]@{}
+            $mockNs | Add-Member -MemberType ScriptMethod -Name AddStoreEx -Value { param($p, $t) }
+            $mockApp = [PSCustomObject]@{}
+            $mockApp | Add-Member -MemberType ScriptMethod -Name GetNamespace -Value { param($t) return $mockNs }
+            Mock Get-OutlookComApplication { return $mockApp } -ModuleName 'Outlook'
+
+            $res = New-OutlookDataFile -Path 'C:\Outlook\existing.pst' -Force
+            $res.Success | Should -BeTrue
+            $res.Created | Should -BeFalse
+            $res.Attached | Should -BeTrue
+            $res.Method | Should -Be 'COM'
+        }
+    }
+
+    Context 'Default Data File Configuration (Set-OutlookDefaultDataFile)' {
+        It 'Rejects invalid extensions with terminating error' -Skip:(-not $isOutlookAvailable) {
+            { Set-OutlookDefaultDataFile -Path 'C:\Outlook\data.txt' } | Should -Throw "*must have a .pst or .ost extension*"
+        }
+
+        It 'Accepts .pst and .ost extensions without throwing' -Skip:(-not $isOutlookAvailable) {
+            Mock Start-Process { return [PSCustomObject]@{ Id = 789 } }
+            { Set-OutlookDefaultDataFile -Path 'C:\Outlook\data.pst' } | Should -Not -Throw
+            { Set-OutlookDefaultDataFile -Path 'C:\Outlook\data.ost' } | Should -Not -Throw
+        }
+
+        It 'Detects running Outlook process during default data file configuration' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'OUTLOOK') { return @([PSCustomObject]@{ ProcessName = 'OUTLOOK'; Id = 1111 }) }
+                return @()
+            }
+            Mock Start-Process { return [PSCustomObject]@{ Id = 2222 } }
+
+            $res = Set-OutlookDefaultDataFile -Path 'C:\Outlook\test.pst' -ProfileName 'DefaultProfile'
+            $res.Success | Should -BeTrue
+            $res.OutlookRunning | Should -BeTrue
+            $res.Method | Should -Be 'GuidedFallback'
+            $res.FallbackTriggered | Should -BeTrue
+        }
+
+        It 'Detects stopped Outlook process state' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Start-Process { return [PSCustomObject]@{ Id = 3333 } }
+
+            $res = Set-OutlookDefaultDataFile -Path 'C:\Outlook\test.pst'
+            $res.Success | Should -BeTrue
+            $res.OutlookRunning | Should -BeFalse
+        }
+
+        It 'Supports WhatIf simulation for default data file assignment' -Skip:(-not $isOutlookAvailable) {
+            $res = Set-OutlookDefaultDataFile -Path 'C:\Outlook\default.pst' -WhatIf
+            $res.Method | Should -Be 'WhatIf'
+            $res.Success | Should -BeTrue
+            $res.FallbackTriggered | Should -BeFalse
+        }
+
+        It 'Resolves default profile from Get-OutlookSystemContext when ProfileName is omitted' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Start-Process { return [PSCustomObject]@{ Id = 4444 } }
+            Mock Get-OutlookSystemContext {
+                return [PSCustomObject]@{ DefaultProfile = 'CorporateProfile'; OutlookPath = 'C:\Office\outlook.exe' }
+            }
+
+            $res = Set-OutlookDefaultDataFile -Path 'C:\Outlook\test.pst'
+            $res.Profile | Should -Be 'CorporateProfile'
+        }
+    }
+
+    Context 'Private Helper: Get-OutlookComApplication' {
+        It 'Safely handles platform detection without throwing' -Skip:(-not $isOutlookAvailable) {
+            InModuleScope 'Outlook' {
+                { Get-OutlookComApplication } | Should -Not -Throw
+            }
+        }
+    }
 }

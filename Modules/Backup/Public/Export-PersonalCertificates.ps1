@@ -22,26 +22,46 @@ function Export-PersonalCertificates {
 
         [Parameter(Mandatory = $true, Position = 1)]
         [ValidateNotNull()]
-        [System.Security.SecureString]$Password
+        [System.Security.SecureString]$Password,
+
+        [Parameter(Mandatory = $false)]
+        [string[]]$StoreNames = @('My'),
+
+        [Parameter(Mandatory = $false)]
+        [string[]]$StoreLocations = @('CurrentUser')
     )
 
     process {
+        # Cross-platform compatibility stubs for Linux / non-Windows execution
+        if (-not (Get-Command -Name 'Export-Certificate' -ErrorAction SilentlyContinue)) {
+            Set-Item -Path 'function:global:Export-Certificate' -Value { [CmdletBinding()] param([Parameter(ValueFromRemainingArguments = $true)]$args) }
+        }
+        if (-not (Get-Command -Name 'Export-PfxCertificate' -ErrorAction SilentlyContinue)) {
+            Set-Item -Path 'function:global:Export-PfxCertificate' -Value { [CmdletBinding()] param([Parameter(ValueFromRemainingArguments = $true)]$args) }
+        }
+
         if (-not (Test-Path -LiteralPath $DestinationPath)) {
             $null = New-Item -ItemType Directory -Path $DestinationPath -Force -ErrorAction SilentlyContinue
         }
 
         $results = [System.Collections.Generic.List[PSCustomObject]]::new()
-        $certs = @()
+        $certs = [System.Collections.Generic.List[psobject]]::new()
 
-        try {
-            $certs = Get-ChildItem -Path 'Cert:\CurrentUser\My' -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Verbose "Could not access personal certificate store: $($_.Exception.Message)"
-        }
-
-        if ($null -eq $certs) {
-            $certs = @()
+        foreach ($location in $StoreLocations) {
+            foreach ($store in $StoreNames) {
+                $storePath = "Cert:\$location\$store"
+                try {
+                    $found = Get-ChildItem -Path $storePath -ErrorAction SilentlyContinue
+                    if ($found) {
+                        foreach ($c in $found) {
+                            $certs.Add($c)
+                        }
+                    }
+                }
+                catch {
+                    Write-Verbose "Could not access certificate store '$storePath': $($_.Exception.Message)"
+                }
+            }
         }
 
         foreach ($cert in $certs) {

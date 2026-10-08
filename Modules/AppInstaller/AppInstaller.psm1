@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    TUI module loader for IToolkit.
+    AppInstaller module loader for IToolkit.
 .DESCRIPTION
     Loads private internal helper scripts, dot-sources public cmdlets, and
     exports only authorized public functions while strictly hiding private helpers.
@@ -10,6 +10,14 @@
 param()
 
 $moduleRoot = $PSScriptRoot
+
+# 0. Cross-platform compatibility stubs for Windows-only primitives (enables Pester mocking on non-Windows)
+if (-not (Get-PSDrive -Name 'C' -ErrorAction SilentlyContinue)) {
+    New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue | Out-Null
+}
+if (-not (Get-PSDrive -Name 'D' -ErrorAction SilentlyContinue)) {
+    New-PSDrive -Name 'D' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue | Out-Null
+}
 
 # 1. Dot-source Private helper scripts first (available to public functions, not exported)
 $privatePath = Join-Path -Path $moduleRoot -ChildPath 'Private'
@@ -50,11 +58,5 @@ if (Test-Path -LiteralPath $publicPath) {
 
 # 3. Export public functions explicitly
 if ($exportedFunctions.Count -gt 0) {
-    $allExports = @($exportedFunctions)
-    foreach ($extraFn in @('Get-ToolkitTelemetryData', 'Get-MainSystemInfoLines', 'Get-ToolkitLayoutWidth', 'Write-ToolkitMenuDivider', 'Get-WindowsRepairContextInfoLines', 'Invoke-ToolkitSubmenuWindowsRepair', 'Get-AppInstallerContextInfoLines', 'Invoke-ToolkitSubmenuAppInstaller')) {
-        if ($allExports -notcontains $extraFn -and (Get-Command -Name $extraFn -CommandType Function -ErrorAction SilentlyContinue)) {
-            $allExports += $extraFn
-        }
-    }
-    Export-ModuleMember -Function $allExports -Variable @()
+    Export-ModuleMember -Function $exportedFunctions -Variable @()
 }

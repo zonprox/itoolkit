@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    TUI module loader for IToolkit.
+    Windows Repair module loader for IToolkit.
 .DESCRIPTION
     Loads private internal helper scripts, dot-sources public cmdlets, and
     exports only authorized public functions while strictly hiding private helpers.
@@ -10,6 +10,33 @@
 param()
 
 $moduleRoot = $PSScriptRoot
+
+# 0. Cross-platform compatibility stubs for Windows-only cmdlets (enables Pester mocking on non-Windows)
+$windowsCmdlets = @('Get-Service', 'Stop-Service', 'Start-Service', 'Get-CimInstance')
+foreach ($cmdName in $windowsCmdlets) {
+    if (-not (Get-Command -Name $cmdName -ErrorAction SilentlyContinue)) {
+        Set-Item -Path "function:global:$cmdName" -Value { [CmdletBinding()] param([Parameter(ValueFromRemainingArguments = $true)]$args) }
+    }
+}
+
+if (-not (Get-PSDrive -Name 'C' -ErrorAction SilentlyContinue)) {
+    New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue | Out-Null
+}
+if (-not (Get-PSDrive -Name 'D' -ErrorAction SilentlyContinue)) {
+    New-PSDrive -Name 'D' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue | Out-Null
+}
+
+# Ensure Test-IsAdmin is available if Core module is alongside
+if (-not (Get-Command -Name 'Test-IsAdmin' -ErrorAction SilentlyContinue)) {
+    $coreAdminScript = Join-Path -Path $moduleRoot -ChildPath '../Core/Public/Test-IsAdmin.ps1'
+    if (Test-Path -LiteralPath $coreAdminScript) {
+        try {
+            . $coreAdminScript
+        } catch {
+            Write-Verbose "Failed to dot-source Test-IsAdmin: $($_.Exception.Message)"
+        }
+    }
+}
 
 # 1. Dot-source Private helper scripts first (available to public functions, not exported)
 $privatePath = Join-Path -Path $moduleRoot -ChildPath 'Private'
@@ -50,11 +77,5 @@ if (Test-Path -LiteralPath $publicPath) {
 
 # 3. Export public functions explicitly
 if ($exportedFunctions.Count -gt 0) {
-    $allExports = @($exportedFunctions)
-    foreach ($extraFn in @('Get-ToolkitTelemetryData', 'Get-MainSystemInfoLines', 'Get-ToolkitLayoutWidth', 'Write-ToolkitMenuDivider', 'Get-WindowsRepairContextInfoLines', 'Invoke-ToolkitSubmenuWindowsRepair', 'Get-AppInstallerContextInfoLines', 'Invoke-ToolkitSubmenuAppInstaller')) {
-        if ($allExports -notcontains $extraFn -and (Get-Command -Name $extraFn -CommandType Function -ErrorAction SilentlyContinue)) {
-            $allExports += $extraFn
-        }
-    }
-    Export-ModuleMember -Function $allExports -Variable @()
+    Export-ModuleMember -Function $exportedFunctions -Variable @()
 }
