@@ -17,7 +17,8 @@
         'Public/Get-ToolkitInstalledApplication.ps1',
         'Public/New-ToolkitDesktopShortcut.ps1',
         'Public/Set-ToolkitDefaultApplication.ps1',
-        'Public/Install-ToolkitApplication.ps1'
+        'Public/Install-ToolkitApplication.ps1',
+        'Public/Set-ToolkitChromeExtensionPolicy.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -25,7 +26,8 @@
         'Get-ToolkitInstalledApplication',
         'New-ToolkitDesktopShortcut',
         'Set-ToolkitDefaultApplication',
-        'Install-ToolkitApplication'
+        'Install-ToolkitApplication',
+        'Set-ToolkitChromeExtensionPolicy'
     )
 
     CmdletsToExport        = @()

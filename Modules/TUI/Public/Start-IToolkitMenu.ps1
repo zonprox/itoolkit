@@ -520,6 +520,7 @@ function Get-AppInstallerContextInfoLines {
     $chromeStat = "[MISSING]"
     $foxitStat = "[MISSING]"
     $unikeyStat = "[MISSING]"
+    $zaloStat = "[MISSING]"
     if (Get-Command -Name 'Get-ToolkitInstalledApplication' -ErrorAction SilentlyContinue) {
         try {
             $apps = Get-ToolkitInstalledApplication
@@ -529,12 +530,14 @@ function Get-AppInstallerContextInfoLines {
             if ($foxit -and $foxit.Installed) { $foxitStat = "[INSTALLED]" }
             $unikey = $apps | Where-Object { $_.AppName -eq 'UniKey' }
             if ($unikey -and $unikey.Installed) { $unikeyStat = "[INSTALLED]" }
+            $zalo = $apps | Where-Object { $_.AppName -eq 'Zalo' }
+            if ($zalo -and $zalo.Installed) { $zaloStat = "[INSTALLED]" }
         } catch {
             $null = $_
         }
     }
-    $lines.Add("App Status     : Chrome $chromeStat | Foxit $foxitStat | UniKey $unikeyStat")
-    $lines.Add("Catalog Targets: UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit [READY]")
+    $lines.Add("App Status     : Chrome $chromeStat | Foxit $foxitStat | UniKey $unikeyStat | Zalo $zaloStat")
+    $lines.Add("Catalog Targets: UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit, Zalo [READY]")
 
     return $lines.ToArray()
 }
@@ -3052,7 +3055,8 @@ function Invoke-ToolkitSubmenuAppInstaller {
                 [PSCustomObject]@{ Application = 'UniKey Vietnamese Input'; Status = '[READY]'; Executable = 'UniKeyNT.exe'; Version = '4.3 RC5' },
                 [PSCustomObject]@{ Application = 'UltraVNC Remote Support'; Status = '[READY]'; Executable = 'vncviewer.exe'; Version = 'Latest' },
                 [PSCustomObject]@{ Application = 'K-Lite Codec Pack'; Status = '[READY]'; Executable = 'mpc-hc64.exe'; Version = 'Standard' },
-                [PSCustomObject]@{ Application = 'Visual C++ Redistributable AIO'; Status = '[READY]'; Executable = 'System Runtimes'; Version = '2005-2022' }
+                [PSCustomObject]@{ Application = 'Visual C++ Redistributable AIO'; Status = '[READY]'; Executable = 'System Runtimes'; Version = '2005-2022' },
+                [PSCustomObject]@{ Application = 'Zalo PC Messenger'; Status = '[READY]'; Executable = 'Zalo.exe'; Version = 'Latest' }
             )
         }
 
@@ -3067,6 +3071,8 @@ function Invoke-ToolkitSubmenuAppInstaller {
             @{ Key = '4'; Label = 'Install UltraVNC (Desktop Shortcut)' },
             @{ Key = '5'; Label = 'Install K-Lite Codec Pack' },
             @{ Key = '6'; Label = 'Install VC++ Redist AIO' },
+            @{ Key = '7'; Label = 'Install Zalo PC (Desktop Shortcut)' },
+            @{ Key = 'E'; Label = 'Deploy Chrome Extensions (uBlock Lite)' },
             @{ Key = 'S'; Label = 'Create Desktop Shortcuts' },
             @{ Key = 'D'; Label = 'Set Default Applications' }
         )
@@ -3081,7 +3087,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
             return
         }
 
-        $validKeys = @('A', '1', '2', '3', '4', '5', '6', 'S', 'D', 'B', 'Q')
+        $validKeys = @('A', '1', '2', '3', '4', '5', '6', '7', 'E', 'S', 'D', 'B', 'Q')
         $sub = Read-ToolkitMenuChoice -Prompt 'Select Action' -ValidKeys $validKeys
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
@@ -3103,6 +3109,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
             '1' {
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
@@ -3114,6 +3121,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
             '2' {
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
@@ -3125,6 +3133,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
             '3' {
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
@@ -3136,6 +3145,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
             '4' {
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
@@ -3147,6 +3157,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
             '5' {
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
@@ -3158,6 +3169,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
             '6' {
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
@@ -3169,6 +3181,39 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
+            }
+            '7' {
+                if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Installing Zalo PC and creating desktop shortcut..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'Zalo' -CreateShortcut
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "Zalo PC deployment finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+                break
+            }
+            'E' {
+                if (Get-Command -Name 'Set-ToolkitChromeExtensionPolicy' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Deploying uBlock Origin Lite extension policy for Chrome..." -Type 'INFO'
+                    $extRes = Set-ToolkitChromeExtensionPolicy
+                    if ($extRes.Configured) {
+                        Write-ToolkitStatus -Message "uBlock Origin Lite enterprise policy applied successfully." -Type 'OK'
+                    } else {
+                        Write-ToolkitStatus -Message "Chrome extension policy could not be verified." -Type 'WARN'
+                    }
+                } elseif (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Configuring Chrome extension policy via AppInstaller..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'Chrome' -ConfigureChromeExtensions
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "Chrome extension configuration finished." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Chrome extension deployment cmdlet not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+                break
             }
             'S' {
                 if ((Get-Command -Name 'Get-ToolkitInstalledApplication' -ErrorAction SilentlyContinue) -and
@@ -3181,6 +3226,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                         'KLiteCodec'  = 'Media Player Classic.lnk'
                         'Chrome'      = 'Google Chrome.lnk'
                         'FoxitReader' = 'Foxit PDF Reader.lnk'
+                        'Zalo'        = 'Zalo.lnk'
                     }
                     foreach ($app in $installedApps) {
                         if ($app.Installed -and $app.ExecutablePath -and $shortcutMap.ContainsKey($app.AppName)) {
@@ -3192,6 +3238,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Shortcut creation cmdlets not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
             'D' {
                 if (Get-Command -Name 'Set-ToolkitDefaultApplication' -ErrorAction SilentlyContinue) {
@@ -3203,6 +3250,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Set-ToolkitDefaultApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
             }
         }
     }

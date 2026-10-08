@@ -19,7 +19,7 @@ function New-ToolkitDesktopShortcut {
 .PARAMETER Force
     Overwrite existing shortcut if already present.
 .OUTPUTS
-    [PSCustomObject] containing ShortcutPath, TargetExecutable, Created.
+    [PSCustomObject] containing ShortcutPath, TargetExecutable, Created, AlreadyExists.
 #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([PSCustomObject])]
@@ -44,6 +44,11 @@ function New-ToolkitDesktopShortcut {
     )
 
     process {
+        if (-not (Get-Command -Name 'Write-AppInstallerLog' -ErrorAction SilentlyContinue)) {
+            $privLog = Join-Path (Split-Path -Parent $PSScriptRoot) 'Private/Write-AppInstallerLog.ps1'
+            if (Test-Path -LiteralPath $privLog) { . $privLog }
+        }
+
         # 1. Resolve Desktop Directory
         $targetDesktop = $DesktopDirectory
         if ([string]::IsNullOrWhiteSpace($targetDesktop)) {
@@ -72,9 +77,7 @@ function New-ToolkitDesktopShortcut {
         # 3. Check existing shortcut
         $exists = Test-Path -LiteralPath $shortcutFullPath -ErrorAction SilentlyContinue
         if ($exists -and -not $Force) {
-            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                Write-ToolkitLog -Message "Shortcut already exists: $shortcutFullPath" -Level 'INFO' -Component 'New-ToolkitDesktopShortcut'
-            }
+            Write-AppInstallerLog -Message "Shortcut already exists: $shortcutFullPath" -Level 'INFO' -Component 'New-ToolkitDesktopShortcut'
             return [PSCustomObject]@{
                 ShortcutPath     = $shortcutFullPath
                 TargetExecutable = $TargetExecutable
@@ -128,9 +131,7 @@ function New-ToolkitDesktopShortcut {
             Set-Content -LiteralPath $shortcutFullPath -Value $shortcutContent -Encoding UTF8
         }
 
-        if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-            Write-ToolkitLog -Message "Created desktop shortcut: $shortcutFullPath -> $TargetExecutable" -Level 'INFO' -Component 'New-ToolkitDesktopShortcut'
-        }
+        Write-AppInstallerLog -Message "Created desktop shortcut: $shortcutFullPath -> $TargetExecutable" -Level 'INFO' -Component 'New-ToolkitDesktopShortcut'
 
         return [PSCustomObject]@{
             ShortcutPath     = $shortcutFullPath

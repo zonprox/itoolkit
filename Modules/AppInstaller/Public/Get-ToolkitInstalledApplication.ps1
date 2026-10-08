@@ -4,9 +4,9 @@ function Get-ToolkitInstalledApplication {
     Discovers installation status, executable path, and version for standard enterprise applications.
 .DESCRIPTION
     Checks standard 32-bit and 64-bit installation directories and registry uninstall keys
-    for UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome, Visual C++ Redistributable AIO, and Foxit Reader.
+    for UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome, Visual C++ Redistributable AIO, Foxit Reader, and Zalo PC.
 .PARAMETER AppName
-    Target application name. Valid values: 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', or 'All'. Default is 'All'.
+    Target application name. Valid values: 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', or 'All'. Default is 'All'.
 .OUTPUTS
     [PSCustomObject[]] containing AppName, DisplayName, Installed, ExecutablePath, Version.
 #>
@@ -14,11 +14,16 @@ function Get-ToolkitInstalledApplication {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory = $false, Position = 0)]
-        [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'All')]
+        [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'All')]
         [string]$AppName = 'All'
     )
 
     process {
+        if (-not (Get-Command -Name 'Write-AppInstallerLog' -ErrorAction SilentlyContinue)) {
+            $privLog = Join-Path (Split-Path -Parent $PSScriptRoot) 'Private/Write-AppInstallerLog.ps1'
+            if (Test-Path -LiteralPath $privLog) { . $privLog }
+        }
+
         if (-not (Get-PSDrive -Name 'C' -ErrorAction SilentlyContinue)) {
             New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
         }
@@ -82,10 +87,20 @@ function Get-ToolkitInstalledApplication {
                 )
                 RegistryPatterns = @('*Foxit*Reader*')
             }
+            'Zalo' = @{
+                DisplayName     = 'Zalo'
+                ExeCandidates   = @(
+                    (Join-Path $progFiles 'Zalo\Zalo.exe'),
+                    (Join-Path $progFilesX86 'Zalo\Zalo.exe'),
+                    (Join-Path $localAppData 'Programs\Zalo\Zalo.exe'),
+                    (Join-Path $localAppData 'Zalo\Zalo.exe')
+                )
+                RegistryPatterns = @('*Zalo*')
+            }
         }
 
         $targets = if ($AppName -eq 'All') {
-            @('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader')
+            @('VCRedistAIO', 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'FoxitReader', 'Zalo')
         } else {
             @($AppName)
         }
@@ -97,6 +112,8 @@ function Get-ToolkitInstalledApplication {
             $foundPath = $null
             $version = $null
             $installed = $false
+
+            Write-AppInstallerLog -Message "Detecting installation status for $($def.DisplayName) ($target)..." -Level 'DEBUG' -Component 'Get-ToolkitInstalledApplication'
 
             # Check candidate executable paths
             foreach ($candidate in $def.ExeCandidates) {
@@ -111,6 +128,7 @@ function Get-ToolkitInstalledApplication {
                     } catch {
                         $null = $_
                     }
+                    Write-AppInstallerLog -Message "Found $($def.DisplayName) executable at '$foundPath' (Version: $version)." -Level 'DEBUG' -Component 'Get-ToolkitInstalledApplication'
                     break
                 }
             }
@@ -132,6 +150,7 @@ function Get-ToolkitInstalledApplication {
                                 $installed = $true
                                 if ($match.DisplayVersion) { $version = $match.DisplayVersion }
                                 if ($match.InstallLocation -and -not $foundPath) { $foundPath = $match.InstallLocation }
+                                Write-AppInstallerLog -Message "Found $($def.DisplayName) in uninstall registry: $($match.DisplayName) (Version: $version)." -Level 'DEBUG' -Component 'Get-ToolkitInstalledApplication'
                                 break
                             }
                         } catch {
@@ -141,6 +160,9 @@ function Get-ToolkitInstalledApplication {
                     if ($installed) { break }
                 }
             }
+
+            $statusText = if ($installed) { "Installed (Path: $foundPath, Version: $version)" } else { "Not Installed" }
+            Write-AppInstallerLog -Message "Status for $($def.DisplayName): $statusText." -Level 'DEBUG' -Component 'Get-ToolkitInstalledApplication'
 
             $results.Add([PSCustomObject]@{
                 AppName        = $target

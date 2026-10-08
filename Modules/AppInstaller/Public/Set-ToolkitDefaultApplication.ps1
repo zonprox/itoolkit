@@ -4,8 +4,8 @@ function Set-ToolkitDefaultApplication {
     Configures default application associations for Google Chrome and Foxit PDF Reader.
 .DESCRIPTION
     Configures Google Chrome as the default web browser (HTTP, HTTPS, .html, .htm protocols and file types)
-    and Foxit Reader as the default PDF viewer (.pdf file extension). Uses both application registration switches
-    and current user registry associations.
+    and Foxit Reader as the default PDF viewer (.pdf file extension). Also enforces Chrome enterprise extension
+    deployment policies for uBlock Origin Lite. Uses both application registration switches and current user registry associations.
 .PARAMETER Application
     Target application to set as default. Valid values: 'Chrome', 'FoxitReader', 'All'. Default is 'All'.
 .PARAMETER ExecutablePath
@@ -30,6 +30,11 @@ function Set-ToolkitDefaultApplication {
     )
 
     process {
+        if (-not (Get-Command -Name 'Write-AppInstallerLog' -ErrorAction SilentlyContinue)) {
+            $privLog = Join-Path (Split-Path -Parent $PSScriptRoot) 'Private/Write-AppInstallerLog.ps1'
+            if (Test-Path -LiteralPath $privLog) { . $privLog }
+        }
+
         if (-not (Get-PSDrive -Name 'C' -ErrorAction SilentlyContinue)) {
             New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
         }
@@ -44,6 +49,8 @@ function Set-ToolkitDefaultApplication {
         foreach ($target in $targets) {
             switch ($target) {
                 'Chrome' {
+                    Write-AppInstallerLog -Message "Configuring default application handlers for Google Chrome..." -Level 'INFO' -Component 'Set-ToolkitDefaultApplication'
+
                     # 1. Discover chrome.exe
                     $chromeExe = $ExecutablePath
                     if ([string]::IsNullOrWhiteSpace($chromeExe) -or -not (Test-Path -LiteralPath $chromeExe -ErrorAction SilentlyContinue)) {
@@ -61,6 +68,7 @@ function Set-ToolkitDefaultApplication {
                     }
 
                     if (-not $PSCmdlet.ShouldProcess("Google Chrome ($chromeExe)", "Set as default browser for HTTP, HTTPS, .html, .htm")) {
+                        Write-AppInstallerLog -Message "ShouldProcess: Skipping Chrome default browser configuration (WhatIf mode)." -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                         $results.Add([PSCustomObject]@{
                             Application = 'Chrome'
                             DefaultSet  = $false
@@ -74,10 +82,11 @@ function Set-ToolkitDefaultApplication {
                     # 2. Invoke Chrome registration command if executable is available
                     if (-not [string]::IsNullOrWhiteSpace($chromeExe) -and (Test-Path -LiteralPath $chromeExe -ErrorAction SilentlyContinue)) {
                         try {
+                            Write-AppInstallerLog -Message "Invoking Chrome registration: $chromeExe --make-default-browser" -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                             Start-Process -FilePath $chromeExe -ArgumentList "--make-default-browser" -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
                             $configured = $true
                         } catch {
-                            $null = $_
+                            Write-AppInstallerLog -Message "Chrome process registration switch error: $($_.Exception.Message)" -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                         }
                     }
 
@@ -94,13 +103,21 @@ function Set-ToolkitDefaultApplication {
                             Set-ItemProperty -Path $reg.Path -Name $reg.Name -Value $reg.Value -Force -ErrorAction SilentlyContinue | Out-Null
                             $configured = $true
                         } catch {
-                            $null = $_
+                            Write-AppInstallerLog -Message "Failed to set registry property $($reg.Path): $($_.Exception.Message)" -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                         }
                     }
 
-                    if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                        Write-ToolkitLog -Message "Configured Google Chrome as default web browser." -Level 'INFO' -Component 'Set-ToolkitDefaultApplication'
+                    # 4. Configure Chrome Extension Policy (uBlock Origin Lite)
+                    if (Get-Command -Name 'Set-ToolkitChromeExtensionPolicy' -ErrorAction SilentlyContinue) {
+                        try {
+                            Set-ToolkitChromeExtensionPolicy | Out-Null
+                            Write-AppInstallerLog -Message "Applied Chrome enterprise extension policy for uBlock Origin Lite." -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
+                        } catch {
+                            Write-AppInstallerLog -Message "Failed to apply extension policy: $($_.Exception.Message)" -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
+                        }
                     }
+
+                    Write-AppInstallerLog -Message "Configured Google Chrome as default web browser." -Level 'INFO' -Component 'Set-ToolkitDefaultApplication'
 
                     $results.Add([PSCustomObject]@{
                         Application = 'Chrome'
@@ -111,6 +128,8 @@ function Set-ToolkitDefaultApplication {
                 }
 
                 'FoxitReader' {
+                    Write-AppInstallerLog -Message "Configuring default application handlers for Foxit PDF Reader..." -Level 'INFO' -Component 'Set-ToolkitDefaultApplication'
+
                     # 1. Discover Foxit executable
                     $foxitExe = $ExecutablePath
                     if ([string]::IsNullOrWhiteSpace($foxitExe) -or -not (Test-Path -LiteralPath $foxitExe -ErrorAction SilentlyContinue)) {
@@ -129,6 +148,7 @@ function Set-ToolkitDefaultApplication {
                     }
 
                     if (-not $PSCmdlet.ShouldProcess("Foxit Reader ($foxitExe)", "Set as default PDF viewer for .pdf")) {
+                        Write-AppInstallerLog -Message "ShouldProcess: Skipping Foxit default viewer configuration (WhatIf mode)." -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                         $results.Add([PSCustomObject]@{
                             Application = 'FoxitReader'
                             DefaultSet  = $false
@@ -142,10 +162,11 @@ function Set-ToolkitDefaultApplication {
                     # 2. Invoke Foxit registration switch if executable is available
                     if (-not [string]::IsNullOrWhiteSpace($foxitExe) -and (Test-Path -LiteralPath $foxitExe -ErrorAction SilentlyContinue)) {
                         try {
+                            Write-AppInstallerLog -Message "Invoking Foxit registration: $foxitExe /register" -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                             Start-Process -FilePath $foxitExe -ArgumentList "/register" -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
                             $configured = $true
                         } catch {
-                            $null = $_
+                            Write-AppInstallerLog -Message "Foxit process registration switch error: $($_.Exception.Message)" -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                         }
                     }
 
@@ -158,12 +179,10 @@ function Set-ToolkitDefaultApplication {
                         Set-ItemProperty -Path $pdfPath -Name '(default)' -Value 'FoxitPDFReader.Document' -Force -ErrorAction SilentlyContinue | Out-Null
                         $configured = $true
                     } catch {
-                        $null = $_
+                        Write-AppInstallerLog -Message "Failed to set registry property for .pdf: $($_.Exception.Message)" -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                     }
 
-                    if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                        Write-ToolkitLog -Message "Configured Foxit Reader as default PDF viewer." -Level 'INFO' -Component 'Set-ToolkitDefaultApplication'
-                    }
+                    Write-AppInstallerLog -Message "Configured Foxit Reader as default PDF viewer." -Level 'INFO' -Component 'Set-ToolkitDefaultApplication'
 
                     $results.Add([PSCustomObject]@{
                         Application = 'FoxitReader'
@@ -178,6 +197,7 @@ function Set-ToolkitDefaultApplication {
         # 4. Optional launch of Windows Settings app
         if ($OpenSettings) {
             try {
+                Write-AppInstallerLog -Message "Launching Windows default apps settings dialog..." -Level 'DEBUG' -Component 'Set-ToolkitDefaultApplication'
                 Start-Process -FilePath "explorer.exe" -ArgumentList "ms-settings:defaultapps" -ErrorAction SilentlyContinue | Out-Null
             } catch {
                 $null = $_
