@@ -85,6 +85,14 @@ Describe 'Unit: AppInstaller Module' {
             $res.ExecutablePath | Should -Match 'Zalo\.exe$'
             $res.Version | Should -Be '24.10.1'
         }
+
+        It 'Queries multiple applications when AppName array is provided' -Skip:(-not $isAppInstallerAvailable) {
+            $res = Get-ToolkitInstalledApplication -AppName 'Chrome', 'Zalo'
+            $res.Count | Should -Be 2
+            $names = $res | ForEach-Object { $_.AppName }
+            $names | Should -Contain 'Chrome'
+            $names | Should -Contain 'Zalo'
+        }
     }
 
     Context 'New-ToolkitDesktopShortcut' {
@@ -216,6 +224,23 @@ Describe 'Unit: AppInstaller Module' {
         It 'Supports -WhatIf mode for Chrome extension policy' -Skip:(-not $isAppInstallerAvailable) {
             $res = Set-ToolkitChromeExtensionPolicy -WhatIf
             $res.Configured | Should -BeFalse
+        }
+
+        It 'Gracefully falls back to HKCU when HKLM write encounters permission denial' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true }
+            Mock Get-ItemProperty { return $null }
+            Mock Set-ItemProperty {
+                param($Path, $Name, $Value)
+                if ($Path -like 'HKLM:*') {
+                    throw "Access to registry key HKLM is denied."
+                }
+                return $null
+            }
+
+            $res = Set-ToolkitChromeExtensionPolicy
+            $res.Configured | Should -BeTrue
+            $res.RegistryPaths | Should -Contain 'HKCU:\Software\Policies\Google\Chrome\ExtensionInstallForcelist'
+            $res.RegistryPaths | Should -Not -Contain 'HKLM:\Software\Policies\Google\Chrome\ExtensionInstallForcelist'
         }
     }
 
@@ -369,6 +394,11 @@ Describe 'Unit: AppInstaller Module' {
                 param($Name)
                 $script:killedProcessName = $Name
             }
+            Mock Get-Command {
+                param($Name)
+                if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
+                return $null
+            }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
             Mock Get-ToolkitInstalledApplication {
                 return [PSCustomObject]@{
@@ -405,6 +435,66 @@ Describe 'Unit: AppInstaller Module' {
             $res = Install-ToolkitApplication -AppName 'All'
             $script:evaluationOrder.Count | Should -BeGreaterThan 1
             $script:evaluationOrder[0] | Should -Be 'VCRedistAIO'
+        }
+
+        It 'Sequences VCRedistAIO first when installing custom array of applications' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+            $script:customOrder = [System.Collections.Generic.List[string]]::new()
+            Mock Get-ToolkitInstalledApplication {
+                param($AppName)
+                $script:customOrder.Add($AppName)
+                return [PSCustomObject]@{
+                    AppName        = $AppName
+                    DisplayName    = $AppName
+                    Installed      = $true
+                    ExecutablePath = "C:\Tools\$AppName\$AppName.exe"
+                    Version        = '1.0'
+                }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'Chrome', 'VCRedistAIO'
+            $res.Count | Should -Be 2
+            $script:customOrder[0] | Should -Be 'VCRedistAIO'
+            $script:customOrder[1] | Should -Be 'Chrome'
+        }
+
+        It 'Falls back to alternate Winget ID when primary ID returns non-zero exit code' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command {
+                param($Name)
+                if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
+                return $null
+            }
+            $script:attemptedWingetArgs = [System.Collections.Generic.List[string]]::new()
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget') {
+                    $script:attemptedWingetArgs.Add($ArgumentList)
+                    if ($ArgumentList -like '*--id VNG.Zalo*') {
+                        return [PSCustomObject]@{ ExitCode = 1 } # Primary ID fails
+                    }
+                    if ($ArgumentList -like '*--id VNGCorp.Zalo*') {
+                        return [PSCustomObject]@{ ExitCode = 0 } # Alternate ID succeeds
+                    }
+                }
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+            $script:zaloCheck = 0
+            Mock Get-ToolkitInstalledApplication {
+                param($AppName)
+                $script:zaloCheck++
+                if ($script:zaloCheck -eq 1) {
+                    return [PSCustomObject]@{ AppName = 'Zalo'; DisplayName = 'Zalo'; Installed = $false; ExecutablePath = $null }
+                }
+                return [PSCustomObject]@{ AppName = 'Zalo'; DisplayName = 'Zalo'; Installed = $true; ExecutablePath = 'C:\Zalo\Zalo.exe' }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'Zalo' -Force
+            $res.Installed | Should -BeTrue
+            $script:attemptedWingetArgs.Count | Should -BeGreaterThan 1
+            ($script:attemptedWingetArgs | Where-Object { $_ -like '*VNG.Zalo*' }) | Should -Not -BeNullOrEmpty
+            ($script:attemptedWingetArgs | Where-Object { $_ -like '*VNGCorp.Zalo*' }) | Should -Not -BeNullOrEmpty
         }
 
         It 'Falls back to direct URL download installer when winget returns non-zero exit code' -Skip:(-not $isAppInstallerAvailable) {

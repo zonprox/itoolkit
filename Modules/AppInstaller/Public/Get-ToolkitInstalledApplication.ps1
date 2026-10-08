@@ -13,9 +13,9 @@ function Get-ToolkitInstalledApplication {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param(
-        [Parameter(Mandatory = $false, Position = 0)]
+        [Parameter(Mandatory = $false, Position = 0, ValueFromPipeline = $true)]
         [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'All')]
-        [string]$AppName = 'All'
+        [string[]]$AppName = @('All')
     )
 
     process {
@@ -99,7 +99,7 @@ function Get-ToolkitInstalledApplication {
             }
         }
 
-        $targets = if ($AppName -eq 'All') {
+        $targets = if ($AppName -contains 'All') {
             @('VCRedistAIO', 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'FoxitReader', 'Zalo')
         } else {
             @($AppName)

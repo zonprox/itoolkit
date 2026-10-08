@@ -48,7 +48,7 @@ function Set-ToolkitChromeExtensionPolicy {
 
             try {
                 if (-not (Test-Path -LiteralPath $keyPath -ErrorAction SilentlyContinue)) {
-                    New-Item -Path $keyPath -Force -ErrorAction SilentlyContinue | Out-Null
+                    New-Item -Path $keyPath -Force -ErrorAction Stop | Out-Null
                 }
 
                 $existing = Get-ItemProperty -Path $keyPath -ErrorAction SilentlyContinue
@@ -68,7 +68,7 @@ function Set-ToolkitChromeExtensionPolicy {
                     while ($existing -and ($null -ne $existing."$index")) {
                         $index++
                     }
-                    Set-ItemProperty -Path $keyPath -Name "$index" -Value $policyEntry -Force -ErrorAction SilentlyContinue | Out-Null
+                    Set-ItemProperty -Path $keyPath -Name "$index" -Value $policyEntry -Force -ErrorAction Stop | Out-Null
                     $configuredCount++
                     $appliedPaths.Add($keyPath)
                     Write-AppInstallerLog -Message "Configured Chrome ExtensionInstallForcelist in $keyPath ($index = $policyEntry)." -Level 'INFO' -Component 'Set-ToolkitChromeExtensionPolicy'

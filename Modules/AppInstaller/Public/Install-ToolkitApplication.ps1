@@ -26,9 +26,9 @@ function Install-ToolkitApplication {
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([PSCustomObject])]
     param(
-        [Parameter(Mandatory = $false, Position = 0)]
+        [Parameter(Mandatory = $false, Position = 0, ValueFromPipeline = $true)]
         [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'All')]
-        [string]$AppName = 'All',
+        [string[]]$AppName = @('All'),
 
         [Parameter(Mandatory = $false)]
         [switch]$CreateShortcut = $true,
@@ -121,18 +121,20 @@ function Install-ToolkitApplication {
                 ProcessNames    = @('FoxitPDFReader', 'FoxitReader')
             }
             'Zalo' = @{
-                DisplayName     = 'Zalo'
-                WingetId        = 'VNG.Zalo'
-                FallbackUrl     = 'https://res-download-pc-te-vnso-zn-31.zadn.vn/win/ZaloSetup.exe'
-                SilentArgs      = '/VERYSILENT /NORESTART /S'
-                ShortcutName    = 'Zalo.lnk'
-                CanSetDefault   = $false
-                ProcessNames    = @('Zalo')
+                DisplayName          = 'Zalo'
+                WingetId             = 'VNG.Zalo'
+                AlternateWingetId    = 'VNGCorp.Zalo'
+                FallbackUrl          = 'https://res-download-pc.zadn.vn/win/ZaloSetup-26.10.10.exe'
+                AlternateFallbackUrl = 'https://res-zaloapp-aka-jpt.zdn.vn/win/ZaloSetup-26.10.10.exe'
+                SilentArgs           = '/VERYSILENT /NORESTART /S'
+                ShortcutName         = 'Zalo.lnk'
+                CanSetDefault        = $false
+                ProcessNames         = @('Zalo')
             }
         }
 
         # 3. Dependency Sequencing & Target Resolution
-        $targets = if ($AppName -eq 'All') {
+        $targets = if ($AppName -contains 'All') {
             @('VCRedistAIO', 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'FoxitReader', 'Zalo')
         } else {
             @($AppName)
@@ -195,8 +197,12 @@ function Install-ToolkitApplication {
                         if ($runningList) {
                             $procCount = if ($runningList -is [System.Array]) { $runningList.Count } else { 1 }
                             Write-AppInstallerLog -Message "Conflicting process '$procName' detected ($procCount active instance(s)) for $($meta.DisplayName). Terminating process to prevent installer locks..." -Level 'WARN' -Component 'Install-ToolkitApplication'
-                            Stop-Process -Name $procName -Force -ErrorAction SilentlyContinue
-                            Write-AppInstallerLog -Message "Successfully terminated conflicting process '$procName'." -Level 'INFO' -Component 'Install-ToolkitApplication'
+                            try {
+                                Stop-Process -Name $procName -Force -ErrorAction Stop
+                                Write-AppInstallerLog -Message "Successfully terminated conflicting process '$procName'." -Level 'INFO' -Component 'Install-ToolkitApplication'
+                            } catch {
+                                Write-AppInstallerLog -Message "Could not terminate conflicting process '$procName': $($_.Exception.Message)" -Level 'WARN' -Component 'Install-ToolkitApplication'
+                            }
                             Start-Sleep -Milliseconds 250
                         }
                     } catch {
@@ -211,43 +217,66 @@ function Install-ToolkitApplication {
 
             # Method A: Try Windows Package Manager (winget) first
             if ($hasWinget -and -not [string]::IsNullOrWhiteSpace($meta.WingetId)) {
-                try {
-                    $wingetArgs = "install --id $($meta.WingetId) -e --silent --accept-package-agreements --accept-source-agreements $(if ($Force) { '--force' } else { '' })".Trim()
-                    Write-AppInstallerLog -Message "Invoking winget: winget $wingetArgs" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
-                    $proc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru -ErrorAction Stop
-                    $exitCode = if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
-                    Write-AppInstallerLog -Message "winget process exited with code $exitCode." -Level $(if ($exitCode -eq 0) { 'DEBUG' } else { 'WARN' }) -Component 'Install-ToolkitApplication'
-                    if ($exitCode -eq 0) {
-                        $installedSuccess = $true
-                    } else {
-                        Write-AppInstallerLog -Message "winget installation for $($meta.DisplayName) returned non-zero code $exitCode. Falling back to direct URL resolution..." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                $candidateWingetIds = @($meta.WingetId)
+                if (-not [string]::IsNullOrWhiteSpace($meta.AlternateWingetId)) {
+                    $candidateWingetIds += $meta.AlternateWingetId
+                }
+                foreach ($wId in $candidateWingetIds) {
+                    try {
+                        $wingetArgs = "install --id $wId -e --silent --accept-package-agreements --accept-source-agreements $(if ($Force) { '--force' } else { '' })".Trim()
+                        Write-AppInstallerLog -Message "Invoking winget: winget $wingetArgs" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                        $proc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru -ErrorAction Stop
+                        $exitCode = if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
+                        Write-AppInstallerLog -Message "winget process exited with code $exitCode." -Level $(if ($exitCode -eq 0) { 'DEBUG' } else { 'WARN' }) -Component 'Install-ToolkitApplication'
+                        if ($exitCode -eq 0) {
+                            $installedSuccess = $true
+                            break
+                        } else {
+                            Write-AppInstallerLog -Message "winget installation for $($meta.DisplayName) (id: $wId) returned non-zero code $exitCode." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                        }
+                    } catch {
+                        Write-AppInstallerLog -Message "winget execution error for $($meta.DisplayName) (id: $wId): $($_.Exception.Message)." -Level 'WARN' -Component 'Install-ToolkitApplication'
                     }
-                } catch {
-                    Write-AppInstallerLog -Message "winget execution error for $($meta.DisplayName): $($_.Exception.Message). Falling back to direct URL resolution..." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                }
+                if (-not $installedSuccess) {
+                    Write-AppInstallerLog -Message "winget installation unsuccessful for $($meta.DisplayName). Falling back to direct URL resolution..." -Level 'WARN' -Component 'Install-ToolkitApplication'
                 }
             }
 
             # Method B: Direct URL download and execute if winget was unavailable or unsuccessful
-            if (-not $installedSuccess -and -not [string]::IsNullOrWhiteSpace($meta.FallbackUrl) -and $meta.FallbackUrl.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
-                Write-AppInstallerLog -Message "Attempting direct download fallback for $($meta.DisplayName) from $($meta.FallbackUrl)..." -Level 'INFO' -Component 'Install-ToolkitApplication'
+            $fallbackUrls = [System.Collections.Generic.List[string]]::new()
+            if (-not [string]::IsNullOrWhiteSpace($meta.FallbackUrl) -and $meta.FallbackUrl.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $fallbackUrls.Add($meta.FallbackUrl)
+            }
+            if (-not [string]::IsNullOrWhiteSpace($meta.AlternateFallbackUrl) -and $meta.AlternateFallbackUrl.EndsWith('.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $fallbackUrls.Add($meta.AlternateFallbackUrl)
+            }
+
+            if (-not $installedSuccess -and $fallbackUrls.Count -gt 0) {
                 $tempDir = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { [System.IO.Path]::GetTempPath() }
                 $tempInstaller = Join-Path $tempDir "$target-installer.exe"
                 $downloadSuccess = $false
                 $maxRetries = 2
 
-                for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
-                    try {
-                        Write-AppInstallerLog -Message "Downloading $($meta.DisplayName) installer (attempt $attempt of $maxRetries)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
-                        Invoke-WebRequest -Uri $meta.FallbackUrl -OutFile $tempInstaller -UseBasicParsing -ErrorAction Stop
-                        $downloadSuccess = $true
-                        Write-AppInstallerLog -Message "Successfully downloaded $($meta.DisplayName) installer." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
-                        break
-                    } catch {
-                        Write-AppInstallerLog -Message "Download attempt $attempt failed for $($meta.DisplayName): $($_.Exception.Message)" -Level 'WARN' -Component 'Install-ToolkitApplication'
-                        if ($attempt -lt $maxRetries) {
-                            Start-Sleep -Milliseconds 500
+                foreach ($currentUrl in $fallbackUrls) {
+                    Write-AppInstallerLog -Message "Attempting direct download fallback for $($meta.DisplayName) from $currentUrl..." -Level 'INFO' -Component 'Install-ToolkitApplication'
+
+                    for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+                        try {
+                            Write-AppInstallerLog -Message "Downloading $($meta.DisplayName) installer (attempt $attempt of $maxRetries)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                            Invoke-WebRequest -Uri $currentUrl -OutFile $tempInstaller -UseBasicParsing -ErrorAction Stop
+                            $downloadSuccess = $true
+                            Write-AppInstallerLog -Message "Successfully downloaded $($meta.DisplayName) installer." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                            break
+                        } catch {
+                            Write-AppInstallerLog -Message "Download attempt $attempt failed for $($meta.DisplayName): $($_.Exception.Message)" -Level 'WARN' -Component 'Install-ToolkitApplication'
+                            if ($attempt -lt $maxRetries) {
+                                Start-Sleep -Milliseconds 500
+                            }
                         }
                     }
+
+                    if ($downloadSuccess) { break }
                 }
 
                 if ($downloadSuccess) {
@@ -265,7 +294,7 @@ function Install-ToolkitApplication {
                         Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
                     }
                 } else {
-                    Write-AppInstallerLog -Message "Direct download failed for $($meta.DisplayName) after $maxRetries attempts." -Level 'ERROR' -Component 'Install-ToolkitApplication'
+                    Write-AppInstallerLog -Message "Direct download failed for $($meta.DisplayName) after $maxRetries attempts across available endpoints." -Level 'ERROR' -Component 'Install-ToolkitApplication'
                 }
             }
 
@@ -334,11 +363,13 @@ function Install-ToolkitApplication {
                 # Disable unwanted startup launch entries in Run keys
                 try {
                     $runKeys = @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Run', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run')
+                    $ignoredProps = @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')
                     foreach ($rk in $runKeys) {
                         if (Test-Path -LiteralPath $rk -ErrorAction SilentlyContinue) {
                             $props = Get-ItemProperty -Path $rk -ErrorAction SilentlyContinue
                             if ($props) {
                                 foreach ($prop in $props.PSObject.Properties) {
+                                    if ($prop.Name -in $ignoredProps) { continue }
                                     if ($prop.Name -like "*$target*" -or $prop.Name -like "*$($meta.DisplayName)*") {
                                         Remove-ItemProperty -Path $rk -Name $prop.Name -Force -ErrorAction SilentlyContinue | Out-Null
                                         Write-AppInstallerLog -Message "Post-install optimization: Disabled startup launch entry '$($prop.Name)' in $rk." -Level 'INFO' -Component 'Install-ToolkitApplication'
