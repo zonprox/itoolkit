@@ -1,8 +1,8 @@
 # ==============================================================================
-# IToolkit .gitignore — PowerShell IT Administration Toolkit
+# IToolkit .gitignore - PowerShell IT Administration Toolkit
 # ==============================================================================
 
-# ─── Codebase Memory & AI Agent Tooling ───────────────────────────────────────
+# --- Codebase Memory & AI Agent Tooling ---------------------------------------
 .codebase-memory/
 .agents/
 .claude/
@@ -13,7 +13,7 @@
 scratch/
 .scratch/
 
-# ─── Planning, Specification & AI Handoff Documents ─────────────────────────
+# --- Planning, Specification & AI Handoff Documents ---------------------------
 ORIGINAL_REQUEST.md
 .continue-here.md
 PROJECT.md
@@ -23,7 +23,7 @@ TEST_*.md
 *.handoff.md
 .planning/
 
-# ─── Execution Logs & Registry Backup Artifacts ──────────────────────────────
+# --- Execution Logs & Registry Backup Artifacts -------------------------------
 Logs/*.log
 *.log
 *.log.*
@@ -35,27 +35,27 @@ RegistryBackup_*.reg
 *.reg.bak
 !Logs/.gitkeep
 
-# ─── Packaging, Distribution & Build Output ──────────────────────────────────
+# --- Packaging, Distribution & Build Output -----------------------------------
 *.zip
 IToolkit.zip
 dist/
 out/
 artifacts/
 
-# ─── Test & Pester Execution Artifacts ────────────────────────────────────────
+# --- Test & Pester Execution Artifacts -----------------------------------------
 TestResults/
 TestResults.xml
 Pester*.xml
 coverage/
 *.lcov
 
-# ─── PowerShell Temporary & CLI Artifacts ─────────────────────────────────────
+# --- PowerShell Temporary & CLI Artifacts --------------------------------------
 *.ps1~
 *.psm1~
 *.psd1~
 *.clixml
 
-# ─── IDE & Editor Settings ───────────────────────────────────────────────────
+# --- IDE & Editor Settings ----------------------------------------------------
 .idea/
 .vscode/*
 !.vscode/settings.json
@@ -66,7 +66,7 @@ coverage/
 *~
 .history/
 
-# ─── Operating System Metadata ────────────────────────────────────────────────
+# --- Operating System Metadata ------------------------------------------------
 .DS_Store
 .DS_Store?
 ._*

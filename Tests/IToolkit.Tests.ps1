@@ -68,7 +68,7 @@ if ($validPaths.Count -eq 0) {
 }
 
 Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "           IToolkit Test Framework — Enterprise Test Execution Engine           " -ForegroundColor Cyan
+Write-Host "           IToolkit Test Framework - Enterprise Test Execution Engine           " -ForegroundColor Cyan
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "  Project Root : $ProjectRoot"
 Write-Host "  Target Suite : $Suite"

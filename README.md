@@ -1,4 +1,4 @@
-# IToolkit — PowerShell IT Support & Administration Toolkit
+# IToolkit - PowerShell IT Support & Administration Toolkit
 
 **IToolkit** is a modular, lightweight, terminal-based PowerShell administration and diagnostics toolkit designed for Windows 10 and Windows 11. It provides system administrators, desktop support technicians, and IT engineers with rapid diagnostics, repair, profile migration, and account management capabilities.
 
