@@ -58,5 +58,22 @@ else {
     Write-Warning "Modules directory not found at: $modulesFolder"
 }
 
+# Ensure WindowsCleanup nested module is imported via fallback if not already loaded
+if (-not (Get-Module -Name 'WindowsCleanup' -ErrorAction SilentlyContinue)) {
+    $windowsCleanupManifest = Join-Path -Path $modulesFolder -ChildPath 'WindowsCleanup/WindowsCleanup.psd1'
+    if (Test-Path -LiteralPath $windowsCleanupManifest) {
+        try {
+            Write-Verbose "Importing nested module via fallback: WindowsCleanup ($windowsCleanupManifest)"
+            Import-Module -Name $windowsCleanupManifest -Global -DisableNameChecking -ErrorAction Stop
+            if (-not ($script:LoadedSubModules -contains 'WindowsCleanup')) {
+                $script:LoadedSubModules += 'WindowsCleanup'
+            }
+        }
+        catch {
+            Write-Warning "Failed to import fallback module 'WindowsCleanup': $($_.Exception.Message)"
+        }
+    }
+}
+
 # Export functions defined in or imported through IToolkit
 Export-ModuleMember -Function * -Variable @()

@@ -213,6 +213,23 @@ Describe 'Unit: Core Module Services' {
             }
         }
 
+        It 'Write-ToolkitLog suppresses DEBUG messages from console while writing to log file' -Skip:(-not $isCoreAvailable) {
+            $tempLogDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+            try {
+                Mock Write-Host {}
+                Write-ToolkitLog -Message 'Diagnostic debug detail' -Level 'DEBUG' -Component 'Core' -LogDirectory $tempLogDir
+                Assert-MockCalled Write-Host -Times 0 -Scope It
+                $logFiles = Get-ChildItem -Path $tempLogDir -Filter '*.log'
+                $logFiles.Count | Should -BeGreaterThan 0
+                $content = Get-Content -Path $logFiles[0].FullName -Raw
+                $content | Should -Match '\[DEBUG\]'
+                $content | Should -Match '\[Core\]'
+                $content | Should -Match 'Diagnostic debug detail'
+            } finally {
+                Remove-Item -Path $tempLogDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'Format-ToolkitSummary generates structured output table' -Skip:(-not $isCoreAvailable) {
             $items = @(
                 @{ Label = 'PST File Path'; Value = 'C:\Data\archive.pst'; Status = 'OK' },

@@ -220,6 +220,19 @@ if (Test-Path -LiteralPath $appInstallerManifest) {
     }
 }
 
+# Ensure WindowsCleanup module is imported if not loaded via root manifest
+$windowsCleanupManifest = Join-Path -Path $scriptDir -ChildPath 'Modules/WindowsCleanup/WindowsCleanup.psd1'
+if (Test-Path -LiteralPath $windowsCleanupManifest) {
+    if (-not (Get-Module -Name 'WindowsCleanup' -ErrorAction SilentlyContinue)) {
+        try {
+            Write-Verbose "Importing WindowsCleanup module: $windowsCleanupManifest"
+            Import-Module -Name $windowsCleanupManifest -DisableNameChecking -ErrorAction SilentlyContinue
+        } catch {
+            Write-Verbose "Failed importing WindowsCleanup module directly: $($_.Exception.Message)"
+        }
+    }
+}
+
 # 4. Handle non-interactive execution or immediate exit
 if ($ExitImmediately) {
     if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {

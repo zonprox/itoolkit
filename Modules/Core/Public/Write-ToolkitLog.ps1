@@ -75,8 +75,8 @@ function Write-ToolkitLog {
         # 4. Format Structured Log Record
         $logLine = "[$timestamp] [$normalizedLevel] [$resolvedComponent] $Message"
 
-        # 5. Console Output with Color Mapping
-        if (-not $NoConsole) {
+        # 5. Console Output with Color Mapping (DEBUG is suppressed from console/UI output)
+        if (-not $NoConsole -and $normalizedLevel -ne 'DEBUG') {
             $foregroundColor = [System.ConsoleColor]::White
             $consolePrefix = '[INFO]   '
 
@@ -92,10 +92,6 @@ function Write-ToolkitLog {
                 'ERROR' {
                     $foregroundColor = [System.ConsoleColor]::Red
                     $consolePrefix   = '[FAIL]   '
-                }
-                'DEBUG' {
-                    $foregroundColor = [System.ConsoleColor]::DarkGray
-                    $consolePrefix   = '[DEBUG]  '
                 }
                 'SUCCESS' {
                     $foregroundColor = [System.ConsoleColor]::Green

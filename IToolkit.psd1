@@ -22,6 +22,7 @@
         'Modules/Backup/Backup.psd1',
         'Modules/Accounts/Accounts.psd1',
         'Modules/WindowsRepair/WindowsRepair.psd1',
+        'Modules/WindowsCleanup/WindowsCleanup.psd1',
         'Modules/ExternalTools/ExternalTools.psd1',
         'Modules/AppInstaller/AppInstaller.psd1'
     )
@@ -119,6 +120,14 @@
         'Reset-NetworkStack',
         'Repair-WmiRepository',
 
+        # Windows System Cleanup & Maintenance Services
+        'Invoke-WindowsComponentCleanup',
+        'Clear-WindowsUpdateCache',
+        'Clear-WindowsDeliveryOptimizationCache',
+        'Clear-WindowsSystemLogs',
+        'Clear-WindowsTempCache',
+        'Invoke-WindowsCleanup',
+
         # External Tools & Quick Launchers
         'Test-InternetConnectivity',
         'Invoke-BrowserDebloat',
@@ -138,6 +147,9 @@
         'Write-ToolkitMenuDivider',
         'Show-ToolkitHeader',
         'Show-ToolkitMenuOption',
+        'Show-ToolkitActionCatalog',
+        'Show-ToolkitDetailPanel',
+        'Show-ToolkitStatusPanel',
         'Show-ToolkitItemTable',
         'Read-ToolkitMenuChoice',
         'Read-ToolkitItemSelection',
@@ -148,7 +160,15 @@
         'Get-WindowsRepairContextInfoLines',
         'Invoke-ToolkitSubmenuWindowsRepair',
         'Get-AppInstallerContextInfoLines',
-        'Invoke-ToolkitSubmenuAppInstaller'
+        'Invoke-ToolkitSubmenuAppInstaller',
+        'Get-WindowsCleanupContextInfoLines',
+        'Invoke-ToolkitSubmenuWindowsCleanup',
+        'Invoke-ToolkitSubmenuAccounts',
+        'Invoke-ToolkitSubmenuBackup',
+        'Invoke-ToolkitSubmenuExternalTools',
+        'Invoke-ToolkitSubmenuOffice',
+        'Invoke-ToolkitSubmenuOutlook',
+        'Invoke-ToolkitSubmenuPrinters'
     )
 
     CmdletsToExport        = @()

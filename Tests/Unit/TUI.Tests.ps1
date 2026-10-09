@@ -203,6 +203,14 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         It 'Invoke-ToolkitSubmenuAppInstaller returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
             { Invoke-ToolkitSubmenuAppInstaller -ExitImmediately } | Should -Not -Throw
         }
+
+        It 'Invoke-ToolkitSubmenuWindowsCleanup renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuWindowsCleanup -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuWindowsCleanup returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuWindowsCleanup -ExitImmediately } | Should -Not -Throw
+        }
     }
 
     Context 'Headless Menu Invocation & Telemetry Extraction' {
@@ -213,7 +221,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Start-IToolkitMenu extracts category telemetry across all submenus in headless mode' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { throw "Read-Host should never be invoked in non-interactive headless mode" }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8')
+            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat -NonInteractive } | Should -Not -Throw
             }
@@ -744,12 +752,15 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
     Context 'Item-Centric Submenu Matrix Non-Interactive & Immediate Exit Verification' {
         $submenus = @(
-            @{ Name = 'Accounts';      Command = 'Invoke-ToolkitSubmenuAccounts' },
-            @{ Name = 'Printers';      Command = 'Invoke-ToolkitSubmenuPrinters' },
-            @{ Name = 'Outlook';       Command = 'Invoke-ToolkitSubmenuOutlook' },
-            @{ Name = 'Office';        Command = 'Invoke-ToolkitSubmenuOffice' },
-            @{ Name = 'Backup';        Command = 'Invoke-ToolkitSubmenuBackup' },
-            @{ Name = 'WindowsRepair'; Command = 'Invoke-ToolkitSubmenuWindowsRepair' }
+            @{ Name = 'Accounts';       Command = 'Invoke-ToolkitSubmenuAccounts' },
+            @{ Name = 'Printers';       Command = 'Invoke-ToolkitSubmenuPrinters' },
+            @{ Name = 'Outlook';        Command = 'Invoke-ToolkitSubmenuOutlook' },
+            @{ Name = 'Office';         Command = 'Invoke-ToolkitSubmenuOffice' },
+            @{ Name = 'Backup';         Command = 'Invoke-ToolkitSubmenuBackup' },
+            @{ Name = 'ExternalTools';  Command = 'Invoke-ToolkitSubmenuExternalTools' },
+            @{ Name = 'WindowsRepair';  Command = 'Invoke-ToolkitSubmenuWindowsRepair' },
+            @{ Name = 'AppInstaller';   Command = 'Invoke-ToolkitSubmenuAppInstaller' },
+            @{ Name = 'WindowsCleanup'; Command = 'Invoke-ToolkitSubmenuWindowsCleanup' }
         )
 
         It '<Name>: Terminates immediately without processing when -ExitImmediately is passed' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
@@ -997,6 +1008,15 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Start-IToolkitMenu -MenuOption '7' -NonInteractive } | Should -Not -Throw
             $script:windowsRepairCalled | Should -BeTrue
+        }
+
+        It 'Start-IToolkitMenu routes Option 9 to Invoke-ToolkitSubmenuWindowsCleanup' -Skip:(-not $isTUIAvailable) {
+            $script:windowsCleanupCalled = $false
+            Mock Invoke-ToolkitSubmenuWindowsCleanup {
+                $script:windowsCleanupCalled = $true
+            }
+            { Start-IToolkitMenu -MenuOption '9' -NonInteractive } | Should -Not -Throw
+            $script:windowsCleanupCalled | Should -BeTrue
         }
 
         It 'Invoke-ToolkitSubmenuOutlook action catalog exposes N (Create PST) and contextual 5 (Set Default)' -Skip:(-not $isTUIAvailable) {
@@ -1449,6 +1469,153 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
             $script:defaultAppTarget | Should -Be 'All'
+        }
+    }
+
+    Context 'Milestone M7: Windows Cleanup Submenu & Modernized Routing' {
+        It 'Invoke-ToolkitSubmenuWindowsCleanup renders item table for the 5 subsystems' -Skip:(-not $isTUIAvailable) {
+            $script:capturedItems = $null
+            Mock Show-ToolkitItemTable {
+                param($Items, $Columns, $Headers, $Title)
+                $script:capturedItems = $Items
+            }
+            { Invoke-ToolkitSubmenuWindowsCleanup -NonInteractive } | Should -Not -Throw
+            $script:capturedItems | Should -Not -BeNullOrEmpty
+            $script:capturedItems.Count | Should -Be 5
+            $subsystemNames = $script:capturedItems | ForEach-Object { $_.Subsystem }
+            $subsystemNames | Should -Contain 'Component Store (WinSxS)'
+            $subsystemNames | Should -Contain 'Windows Update Cache'
+            $subsystemNames | Should -Contain 'Delivery Optimization'
+            $subsystemNames | Should -Contain 'System Logs & Dumps'
+            $subsystemNames | Should -Contain 'Temporary Files'
+        }
+
+        It 'Invoke-ToolkitSubmenuWindowsCleanup renders action catalog exposing W, A, R, D, B, Q' -Skip:(-not $isTUIAvailable) {
+            $script:capturedActions = $null
+            $script:capturedNav = $null
+            Mock Show-ToolkitActionCatalog {
+                param($Actions, $NavActions, $Title)
+                $script:capturedActions = $Actions
+                $script:capturedNav = $NavActions
+            }
+            { Invoke-ToolkitSubmenuWindowsCleanup -NonInteractive } | Should -Not -Throw
+            $script:capturedActions | Should -Not -BeNullOrEmpty
+            $keys = $script:capturedActions | ForEach-Object { $_.Key }
+            $keys | Should -Contain 'W'
+            $keys | Should -Contain 'A'
+            $keys | Should -Contain 'R'
+            $keys | Should -Contain 'D'
+            $navKeys = $script:capturedNav | ForEach-Object { $_.Key }
+            $navKeys | Should -Contain 'B'
+            $navKeys | Should -Contain 'Q'
+        }
+
+        It 'Invoke-ToolkitSubmenuWindowsCleanup dispatches Quick Clean All [A] via Invoke-WindowsCleanup' -Skip:(-not $isTUIAvailable) {
+            $script:cleanupAllCalled = $false
+            Mock Invoke-WindowsCleanup {
+                $script:cleanupAllCalled = $true
+                return [PSCustomObject]@{
+                    Target         = 'MasterCleanup'
+                    ReclaimedBytes = [int64]104857600
+                    ItemCount      = 10
+                    SkippedCount   = 2
+                    Status         = 'Success'
+                    Success        = $true
+                }
+            }
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'A' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection {
+                    return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+                }
+            }
+            { Invoke-ToolkitSubmenuWindowsCleanup } | Should -Not -Throw
+            $script:cleanupAllCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuWindowsCleanup dispatches Refresh Space Estimates [D] via Invoke-WindowsCleanup' -Skip:(-not $isTUIAvailable) {
+            $script:estimatesCalled = $false
+            Mock Invoke-WindowsCleanup {
+                $script:estimatesCalled = $true
+                return [PSCustomObject]@{
+                    Target         = 'MasterCleanup'
+                    ReclaimedBytes = [int64]209715200
+                    ItemCount      = 25
+                    SkippedCount   = 0
+                    Status         = 'Simulated - WhatIf'
+                    Success        = $true
+                }
+            }
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'D' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection {
+                    return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+                }
+            }
+            { Invoke-ToolkitSubmenuWindowsCleanup } | Should -Not -Throw
+            $script:estimatesCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuWindowsCleanup dispatches contextual subsystem selections (indices 1-5)' -Skip:(-not $isTUIAvailable) {
+            $script:calledCmdlets = [System.Collections.Generic.List[string]]::new()
+            Mock Invoke-WindowsComponentCleanup {
+                $script:calledCmdlets.Add('ComponentStore')
+                return [PSCustomObject]@{ Target = 'ComponentStore'; Success = $true; Status = 'Success' }
+            }
+            Mock Clear-WindowsUpdateCache {
+                $script:calledCmdlets.Add('UpdateCache')
+                return [PSCustomObject]@{ Target = 'WindowsUpdateCache'; ReclaimedBytes = 1000; ItemCount = 5; Success = $true; Status = 'Success' }
+            }
+            Mock Clear-WindowsDeliveryOptimizationCache {
+                $script:calledCmdlets.Add('DeliveryOptimization')
+                return [PSCustomObject]@{ Target = 'DeliveryOptimization'; ReclaimedBytes = 2000; ItemCount = 3; Success = $true; Status = 'Success' }
+            }
+            Mock Clear-WindowsSystemLogs {
+                $script:calledCmdlets.Add('SystemLogs')
+                return [PSCustomObject]@{ Target = 'SystemLogs'; ReclaimedBytes = 3000; ItemCount = 8; Success = $true; Status = 'Success' }
+            }
+            Mock Clear-WindowsTempCache {
+                $script:calledCmdlets.Add('TempCache')
+                return [PSCustomObject]@{ Target = 'TemporaryFiles'; ReclaimedBytes = 4000; ItemCount = 12; SkippedCount = 1; Success = $true; Status = 'Success' }
+            }
+
+            for ($idx = 1; $idx -le 5; $idx++) {
+                $currentIdx = $idx
+                Mock Read-ToolkitItemSelection {
+                    return [PSCustomObject]@{ Type = 'Index'; Value = $currentIdx }
+                }
+                Mock Wait-UserAcknowledge {
+                    Mock Read-ToolkitItemSelection {
+                        return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+                    }
+                }
+                { Invoke-ToolkitSubmenuWindowsCleanup } | Should -Not -Throw
+            }
+
+            $script:calledCmdlets | Should -Contain 'ComponentStore'
+            $script:calledCmdlets | Should -Contain 'UpdateCache'
+            $script:calledCmdlets | Should -Contain 'DeliveryOptimization'
+            $script:calledCmdlets | Should -Contain 'SystemLogs'
+            $script:calledCmdlets | Should -Contain 'TempCache'
+        }
+
+        It 'Start-IToolkitMenu interactive choice 9 dispatches to Invoke-ToolkitSubmenuWindowsCleanup' -Skip:(-not $isTUIAvailable) {
+            $script:cleanupDispatched = $false
+            Mock Invoke-ToolkitSubmenuWindowsCleanup {
+                $script:cleanupDispatched = $true
+            }
+            $script:choiceCount = 0
+            Mock Read-ToolkitMenuChoice {
+                $script:choiceCount++
+                if ($script:choiceCount -eq 1) { return '9' }
+                return 'Q'
+            }
+            { Start-IToolkitMenu } | Should -Not -Throw
+            $script:cleanupDispatched | Should -BeTrue
         }
     }
 }

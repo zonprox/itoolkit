@@ -588,6 +588,22 @@ Describe 'Unit: AppInstaller Module' {
             }
         }
 
+        It 'Suppresses DEBUG log messages from console output while recording to daily log file' -Skip:(-not $isAppInstallerAvailable) {
+            $testLogDir = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_LogTest_" + [System.Guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $testLogDir -Force | Out-Null
+            try {
+                Mock Write-Host {}
+                Write-AppInstallerLog -Message "Diagnostic trace details" -Level 'DEBUG' -Component 'AppInstaller' -LogDirectory $testLogDir
+                Assert-MockCalled Write-Host -Times 0 -Scope It
+                $logFiles = Get-ChildItem -Path $testLogDir -Filter "*.log"
+                $logFiles.Count | Should -BeGreaterThan 0
+                $content = Get-Content -LiteralPath $logFiles[0].FullName -Raw
+                $content | Should -Match '\[DEBUG\] \[AppInstaller\] Diagnostic trace details'
+            } finally {
+                Remove-Item -LiteralPath $testLogDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'Batch installs All 7 applications' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command { return $null }

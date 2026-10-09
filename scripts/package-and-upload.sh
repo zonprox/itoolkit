@@ -100,7 +100,7 @@ for f in IToolkit.psd1 IToolkit.psm1 Start-IToolkit.ps1 Run-IToolkit.bat README.
 done
 
 # Whitelist production modules
-MODULES=(Core Outlook Office Printers Backup Accounts ExternalTools WindowsRepair AppInstaller TUI)
+MODULES=(Core Outlook Office Printers Backup Accounts ExternalTools WindowsRepair WindowsCleanup AppInstaller TUI)
 for mod in "${MODULES[@]}"; do
     if [ -d "$REPO_ROOT/Modules/$mod" ]; then
         cp -r "$REPO_ROOT/Modules/$mod" "$CONTENT_DIR/Modules/"

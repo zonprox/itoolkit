@@ -151,6 +151,7 @@ try {
         'Accounts',
         'ExternalTools',
         'WindowsRepair',
+        'WindowsCleanup',
         'AppInstaller',
         'TUI'
     )

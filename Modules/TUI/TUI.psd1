@@ -24,7 +24,16 @@
         'Public/Read-ToolkitMenuChoice.ps1',
         'Public/Read-ToolkitItemSelection.ps1',
         'Public/Write-ToolkitStatus.ps1',
-        'Public/Start-IToolkitMenu.ps1'
+        'Public/Start-IToolkitMenu.ps1',
+        'Public/Invoke-ToolkitSubmenuAccounts.ps1',
+        'Public/Invoke-ToolkitSubmenuAppInstaller.ps1',
+        'Public/Invoke-ToolkitSubmenuBackup.ps1',
+        'Public/Invoke-ToolkitSubmenuExternalTools.ps1',
+        'Public/Invoke-ToolkitSubmenuOffice.ps1',
+        'Public/Invoke-ToolkitSubmenuOutlook.ps1',
+        'Public/Invoke-ToolkitSubmenuPrinters.ps1',
+        'Public/Invoke-ToolkitSubmenuWindowsRepair.ps1',
+        'Public/Invoke-ToolkitSubmenuWindowsCleanup.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -46,7 +55,15 @@
         'Get-WindowsRepairContextInfoLines',
         'Invoke-ToolkitSubmenuWindowsRepair',
         'Get-AppInstallerContextInfoLines',
-        'Invoke-ToolkitSubmenuAppInstaller'
+        'Invoke-ToolkitSubmenuAppInstaller',
+        'Get-WindowsCleanupContextInfoLines',
+        'Invoke-ToolkitSubmenuWindowsCleanup',
+        'Invoke-ToolkitSubmenuAccounts',
+        'Invoke-ToolkitSubmenuBackup',
+        'Invoke-ToolkitSubmenuExternalTools',
+        'Invoke-ToolkitSubmenuOffice',
+        'Invoke-ToolkitSubmenuOutlook',
+        'Invoke-ToolkitSubmenuPrinters'
     )
 
     CmdletsToExport        = @()

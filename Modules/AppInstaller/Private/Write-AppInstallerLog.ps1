@@ -55,16 +55,17 @@ function Write-AppInstallerLog {
                 Write-Verbose "Could not append log entry: $($_.Exception.Message)"
             }
 
-            # Console output
-            $prefix = switch ($normalizedLevel) {
-                'INFO'    { '[INFO]   ' }
-                'WARN'    { '[WARN]   ' }
-                'ERROR'   { '[FAIL]   ' }
-                'DEBUG'   { '[DEBUG]  ' }
-                'SUCCESS' { '[OK]     ' }
-                default   { '[INFO]   ' }
+            # Console output (DEBUG is suppressed from console/UI output)
+            if ($normalizedLevel -ne 'DEBUG') {
+                $prefix = switch ($normalizedLevel) {
+                    'INFO'    { '[INFO]   ' }
+                    'WARN'    { '[WARN]   ' }
+                    'ERROR'   { '[FAIL]   ' }
+                    'SUCCESS' { '[OK]     ' }
+                    default   { '[INFO]   ' }
+                }
+                Write-Host "$prefix$Message"
             }
-            Write-Host "$prefix$Message"
         }
     }
 }
