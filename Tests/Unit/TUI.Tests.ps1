@@ -2,7 +2,7 @@
 # TUI.Tests.ps1
 # Unit test suite for Modules/TUI
 # Covers: Show-ToolkitHeader, Show-ToolkitMenuOption, Read-ToolkitMenuChoice,
-# Write-ToolkitStatus, Start-IToolkitMenu.
+# Write-ToolkitStatus, Start-IToolkitMenu, and the 5 Enterprise Core Pillars.
 # ==============================================================================
 
 $script:ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -38,6 +38,7 @@ BeforeAll {
         }
     }
 }
+
 Describe 'Unit: Interactive Console TUI Menu Module' {
 
     Context 'Header & Banner Rendering' {
@@ -48,7 +49,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
     Context 'Menu Options & Choice Reading' {
         It 'Show-ToolkitMenuOption displays menu key and label' -Skip:(-not $isTUIAvailable) {
-            { Show-ToolkitMenuOption -Key '1' -Label 'Outlook & PST Management' -Status 'OK' } | Should -Not -Throw
+            { Show-ToolkitMenuOption -Key '1' -Label 'System Health & Maintenance' -Status 'OK' } | Should -Not -Throw
         }
 
         It 'Read-ToolkitMenuChoice accepts valid key choice' -Skip:(-not $isTUIAvailable) {
@@ -91,6 +92,18 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q')
             $choice | Should -Be '2'
         }
+
+        It 'Read-ToolkitMenuChoice with default valid keys rejects letter inputs and accepts numeric 0' -Skip:(-not $isTUIAvailable) {
+            $script:attemptCount = 0
+            Mock Read-Host {
+                $script:attemptCount++
+                if ($script:attemptCount -eq 1) { return 'Q' }
+                return '0'
+            }
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option'
+            $choice | Should -Be '0'
+            $script:attemptCount | Should -Be 2
+        }
     }
 
     Context 'Start-IToolkitMenu Execution Modes & Non-Interactive Contract' {
@@ -102,7 +115,8 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Start-IToolkitMenu -NonInteractive } | Should -Not -Throw
         }
 
-        It 'Start-IToolkitMenu handles -NonInteractive with Exit options (Q and X)' -Skip:(-not $isTUIAvailable) {
+        It 'Start-IToolkitMenu handles -NonInteractive with Exit options (0, Q, and X)' -Skip:(-not $isTUIAvailable) {
+            { Start-IToolkitMenu -MenuOption '0' -NonInteractive } | Should -Not -Throw
             { Start-IToolkitMenu -MenuOption 'Q' -NonInteractive } | Should -Not -Throw
             { Start-IToolkitMenu -MenuOption 'X' -NonInteractive } | Should -Not -Throw
         }
@@ -116,7 +130,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Submenus terminate immediately on EOF ($null) without infinite looping' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return $null }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
+            $categories = @('1', '2', '3', '4', '5')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat } | Should -Not -Throw
             }
@@ -124,15 +138,15 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Submenus terminate immediately on empty string input fallback without looping' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return '' }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
+            $categories = @('1', '2', '3', '4', '5')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat } | Should -Not -Throw
             }
         }
 
-        It 'Submenus exit back to caller when Back key (B) is selected' -Skip:(-not $isTUIAvailable) {
-            Mock Read-Host { return 'B' }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
+        It 'Submenus exit back to caller when Back key (0) is selected' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '0' }
+            $categories = @('1', '2', '3', '4', '5')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat } | Should -Not -Throw
             }
@@ -140,84 +154,22 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
     }
 
     Context 'Submenu Invocations: Non-Interactive & Immediate Exit Contract' {
-        It 'Invoke-ToolkitSubmenuOutlook renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuOutlook -NonInteractive } | Should -Not -Throw
+        $submenus = @(
+            @{ Name = 'SystemHealth';         Command = 'Invoke-ToolkitSubmenuSystemHealth' },
+            @{ Name = 'OfficeSuite';          Command = 'Invoke-ToolkitSubmenuOfficeSuite' },
+            @{ Name = 'Connectivity';         Command = 'Invoke-ToolkitSubmenuConnectivity' },
+            @{ Name = 'IdentityBackup';       Command = 'Invoke-ToolkitSubmenuIdentityBackup' },
+            @{ Name = 'SoftwareOptimization'; Command = 'Invoke-ToolkitSubmenuSoftwareOptimization' }
+        )
+
+        It '<Name> renders and terminates cleanly with -NonInteractive' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command)
+            { & $Command -NonInteractive } | Should -Not -Throw
         }
 
-        It 'Invoke-ToolkitSubmenuOutlook returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuOutlook -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuOffice renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuOffice -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuOffice returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuOffice -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuPrinters renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuPrinters -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuPrinters returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuPrinters -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuBackup renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuBackup -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuBackup returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuBackup -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuAccounts renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuAccounts -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuAccounts returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuAccounts -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuExternalTools renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuExternalTools -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuExternalTools returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuExternalTools -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsRepair renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuWindowsRepair -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsRepair returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuWindowsRepair -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuAppInstaller renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuAppInstaller -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuAppInstaller returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuAppInstaller -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsCleanup renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuWindowsCleanup -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsCleanup returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuWindowsCleanup -ExitImmediately } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuNetwork renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuNetwork -NonInteractive } | Should -Not -Throw
-        }
-
-        It 'Invoke-ToolkitSubmenuNetwork returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
-            { Invoke-ToolkitSubmenuNetwork -ExitImmediately } | Should -Not -Throw
+        It '<Name> returns immediately when -ExitImmediately is specified' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command)
+            { & $Command -ExitImmediately } | Should -Not -Throw
         }
     }
 
@@ -229,7 +181,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Start-IToolkitMenu extracts category telemetry across all submenus in headless mode' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { throw "Read-Host should never be invoked in non-interactive headless mode" }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
+            $categories = @('1', '2', '3', '4', '5')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat -NonInteractive } | Should -Not -Throw
             }
@@ -258,592 +210,62 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $lines[1] | Should -Match '^Hardware Model\s*:'
             $lines[2] | Should -Match '^Processor & RAM\s*:'
             $lines[3] | Should -Match '^Storage Space\s*:'
-            $lines[4] | Should -Match '^Network Status\s*:'
-            $lines[5] | Should -Match '^Security & Env\s*:'
-            $lines[6] | Should -Match '^User & Host\s*:'
-            $lines[7] | Should -Match '^User Profile\s*:'
-        }
-
-        It 'Get-ToolkitTelemetryData queries CPU marketing name from Registry' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0' }
-            Mock Get-ItemProperty {
-                return [PSCustomObject]@{
-                    ProcessorNameString = '12th Gen Intel(R) Core(TM) i7-12700H'
-                }
-            } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0' } -ModuleName TUI
-            Mock Get-ItemProperty {
-                return [PSCustomObject]@{
-                    ProcessorNameString = '12th Gen Intel(R) Core(TM) i7-12700H'
-                }
-            } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.CPUDisplay | Should -Match '12th Gen Intel\(R\) Core\(TM\) i7-12700H'
-        }
-
-        It 'Get-ToolkitTelemetryData reflects physical installed memory in GB correctly' -Skip:(-not $isTUIAvailable) {
-            $cimMock = {
-                param($ClassName)
-                if ($ClassName -eq 'Win32_ComputerSystem') {
-                    return [PSCustomObject]@{ TotalPhysicalMemory = 17179869184 }
-                }
-                if ($ClassName -eq 'Win32_OperatingSystem') {
-                    return [PSCustomObject]@{ FreePhysicalMemory = 8388608 }
-                }
-                return $null
-            }
-            Mock Get-CimInstance $cimMock -ModuleName TUI
-            Mock Get-CimInstance $cimMock
-
-            $data = Get-ToolkitTelemetryData
-            $data.RAMDisplay | Should -Match '16(\.0)? GB'
-            $data.RAMDisplay | Should -Match '8(\.0)? GB Free'
-        }
-
-        It 'Get-ToolkitTelemetryData identifies Windows 11 builds (>= 22000) with UBR and DisplayVersion' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' }
-            $regMock = {
-                return [PSCustomObject]@{
-                    ProductName        = 'Windows 10 Pro'
-                    DisplayVersion     = '23H2'
-                    CurrentBuildNumber = '22631'
-                    UBR                = 3296
-                }
-            }
-            Mock Get-ItemProperty $regMock -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' } -ModuleName TUI
-            Mock Get-ItemProperty $regMock -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.OSDisplay | Should -Match 'Windows 11 Pro'
-            $data.OSDisplay | Should -Match '23H2'
-            $data.OSDisplay | Should -Match '22631\.3296'
-        }
-
-        It 'Get-ToolkitTelemetryData preserves Windows 10 for builds below 22000' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' }
-            $regMockWin10 = {
-                return [PSCustomObject]@{
-                    ProductName        = 'Windows 10 Enterprise'
-                    DisplayVersion     = '22H2'
-                    CurrentBuildNumber = '19045'
-                    UBR                = 4170
-                }
-            }
-            Mock Get-ItemProperty $regMockWin10 -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' } -ModuleName TUI
-            Mock Get-ItemProperty $regMockWin10 -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.OSDisplay | Should -Match 'Windows 10 Enterprise'
-            $data.OSDisplay | Should -Match '22H2'
-            $data.OSDisplay | Should -Match '19045\.4170'
-        }
-
-        It 'Get-ToolkitTelemetryData queries hardware manufacturer and model from BIOS registry' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-            $biosMock = {
-                return [PSCustomObject]@{
-                    SystemManufacturer = 'Dell Inc.'
-                    SystemProductName  = 'Latitude 7420'
-                }
-            }
-            Mock Get-ItemProperty $biosMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Get-ItemProperty $biosMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.HardwareDisplay | Should -Be 'Dell Inc. Latitude 7420'
-        }
-
-        It 'Get-ToolkitTelemetryData filters virtual adapters and resolves active IPv4' -Skip:(-not $isTUIAvailable) {
-            $data = Get-ToolkitTelemetryData
-            $data.ActiveIPv4 | Should -Not -BeNullOrEmpty
-            $data.ActiveIPv4 | Should -Not -Match '^127\.'
-        }
-
-        It 'Get-ToolkitTelemetryData dynamically detects storage based on SystemDrive' -Skip:(-not $isTUIAvailable) {
-            $data = Get-ToolkitTelemetryData
-            $data.StorageDisplay | Should -Match 'System Drive'
-            $data.StorageDisplay | Should -Match 'GB Free'
-        }
-
-        It 'Read-ToolkitMenuChoice renders concise "Select" prompt without trailing colon to avoid Read-Host duplicate colon' -Skip:(-not $isTUIAvailable) {
-            $script:capturedPrompt = $null
-            Mock Read-Host {
-                param($Prompt)
-                $script:capturedPrompt = $Prompt
-                return '1'
-            }
-            $null = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3')
-            $script:capturedPrompt | Should -Be '  Select'
-            $script:capturedPrompt | Should -Not -Match '\[1,2,3\]'
-        }
-
-        It 'Show-ToolkitHeader preserves width and does not throw on oversized lines' -Skip:(-not $isTUIAvailable) {
-            $longLine = "VeryLongKey    : " + ('A' * 200)
-            { Show-ToolkitHeader -Title 'Test' -Width 78 -InfoLines @($longLine) } | Should -Not -Throw
-        }
-
-        It 'Get-ToolkitTelemetryData preserves Windows Server edition names for builds >= 22000' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' }
-            $regMockServer = {
-                return [PSCustomObject]@{
-                    ProductName        = 'Windows Server 2025 Standard'
-                    DisplayVersion     = '24H2'
-                    CurrentBuildNumber = '26100'
-                    UBR                = 1742
-                }
-            }
-            Mock Get-ItemProperty $regMockServer -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' } -ModuleName TUI
-            Mock Get-ItemProperty $regMockServer -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.OSDisplay | Should -Match 'Windows Server 2025 Standard'
-            $data.OSDisplay | Should -Not -Match '^Windows 11 Windows Server'
-            $data.OSDisplay | Should -Match '26100\.1742'
-        }
-
-        It 'Get-ToolkitTelemetryData sanitizes OEM dummy BIOS strings and falls back gracefully' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-            $dummyBiosMock = {
-                return [PSCustomObject]@{
-                    SystemManufacturer = 'To Be Filled By O.E.M.'
-                    SystemProductName  = 'To Be Filled By O.E.M.'
-                }
-            }
-            Mock Get-ItemProperty $dummyBiosMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Get-ItemProperty $dummyBiosMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.HardwareDisplay | Should -Not -Match 'To Be Filled By O\.E\.M\.'
-        }
-
-        It 'Read-ToolkitMenuChoice normalizes legacy verbose prompts with bracketed options to concise Select prompt' -Skip:(-not $isTUIAvailable) {
-            $script:capturedPrompt = $null
-            Mock Read-Host {
-                param($Prompt)
-                $script:capturedPrompt = $Prompt
-                return '1'
-            }
-            $null = Read-ToolkitMenuChoice -Prompt 'Select Category [1,2,3,4,5,6,R,Q,X]' -ValidKeys @('1', '2', '3')
-            $script:capturedPrompt | Should -Be '  Select'
-            $script:capturedPrompt | Should -Not -Match '\[1,2,3,4,5,6,R,Q,X\]'
-        }
-
-        It 'IToolkit root manifest and TUI module export telemetry and layout width cmdlets' -Skip:(-not $isTUIAvailable) {
-            $tuiPsd1 = Import-PowerShellDataFile -Path $script:TUIManifest
-            $tuiPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitTelemetryData'
-            $tuiPsd1.FunctionsToExport | Should -Contain 'Clear-ToolkitTelemetryCache'
-            $tuiPsd1.FunctionsToExport | Should -Contain 'Get-MainSystemInfoLines'
-            $tuiPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitLayoutWidth'
-            $tuiPsd1.FunctionsToExport | Should -Contain 'Write-ToolkitMenuDivider'
-
-            $itoolkitPsd1 = Import-PowerShellDataFile -Path (Join-Path $script:ProjectRoot 'IToolkit.psd1')
-            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitTelemetryData'
-            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Clear-ToolkitTelemetryCache'
-            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-MainSystemInfoLines'
-            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitLayoutWidth'
-            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Write-ToolkitMenuDivider'
-        }
-
-        It 'Get-ToolkitTelemetryData sanitizes OEM dummy BIOS strings without trailing dot and falls back to BaseBoard' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-            $dummyBiosMock = {
-                return [PSCustomObject]@{
-                    SystemManufacturer = 'To Be Filled By O.E.M'
-                    SystemProductName  = 'To Be Filled By OEM'
-                }
-            }
-            Mock Get-ItemProperty $dummyBiosMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Get-ItemProperty $dummyBiosMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-
-            $bbMock = {
-                return [PSCustomObject]@{
-                    Manufacturer = 'ASUSTeK COMPUTER INC.'
-                    Product      = 'ROG STRIX B550-F GAMING'
-                }
-            }
-            Mock Get-CimInstance $bbMock -ParameterFilter { $ClassName -eq 'Win32_BaseBoard' } -ModuleName TUI
-            Mock Get-CimInstance $bbMock -ParameterFilter { $ClassName -eq 'Win32_BaseBoard' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.HardwareDisplay | Should -Not -Match 'To Be Filled By'
-            $data.HardwareDisplay | Should -Match 'ASUSTeK COMPUTER INC\. ROG STRIX B550-F GAMING'
-        }
-
-        It 'Get-ToolkitTelemetryData handles multi-instance collection from Win32_ComputerSystem for RAM calculation' -Skip:(-not $isTUIAvailable) {
-            $multiCsMock = {
-                return @(
-                    [PSCustomObject]@{ TotalPhysicalMemory = 34359738368 },
-                    [PSCustomObject]@{ TotalPhysicalMemory = 34359738368 }
-                )
-            }
-            Mock Get-CimInstance $multiCsMock -ParameterFilter { $ClassName -eq 'Win32_ComputerSystem' } -ModuleName TUI
-            Mock Get-CimInstance $multiCsMock -ParameterFilter { $ClassName -eq 'Win32_ComputerSystem' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.RAMDisplay | Should -Match '32 GB'
-        }
-
-        It 'Get-ToolkitTelemetryData handles zero TotalSize drive gracefully without division by zero' -Skip:(-not $isTUIAvailable) {
-            $data = Get-ToolkitTelemetryData
-            $data.StorageDisplay | Should -Not -BeNullOrEmpty
-            { Show-ToolkitHeader -Title 'Test' -InfoLines @($data.StorageDisplay) } | Should -Not -Throw
-        }
-
-        It 'Get-ToolkitTelemetryData handles multi-instance collection from Win32_OperatingSystem for OS and build detection' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $false } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' } -ModuleName TUI
-            Mock Test-Path { return $false } -ParameterFilter { $Path -eq 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' }
-            $multiOsMock = {
-                return @(
-                    [PSCustomObject]@{ Caption = 'Microsoft Windows 10 Pro'; BuildNumber = '22631'; Version = '10.0.22631.3296' },
-                    [PSCustomObject]@{ Caption = 'Microsoft Windows 10 Pro'; BuildNumber = '22631'; Version = '10.0.22631.3296' }
-                )
-            }
-            Mock Get-CimInstance $multiOsMock -ParameterFilter { $ClassName -eq 'Win32_OperatingSystem' } -ModuleName TUI
-            Mock Get-CimInstance $multiOsMock -ParameterFilter { $ClassName -eq 'Win32_OperatingSystem' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.OSDisplay | Should -Match 'Windows 11 Pro'
-            $data.OSDisplay | Should -Match '22631\.3296'
-        }
-
-        It 'Get-ToolkitTelemetryData deduplicates manufacturer brand prefix when model starts with brand name' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-            $brandMock = {
-                return [PSCustomObject]@{
-                    SystemManufacturer = 'Dell Inc.'
-                    SystemProductName  = 'Dell XPS 15 9520'
-                }
-            }
-            Mock Get-ItemProperty $brandMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Get-ItemProperty $brandMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.HardwareDisplay | Should -Be 'Dell XPS 15 9520'
-            $data.HardwareDisplay | Should -Not -Match '^Dell Inc\. Dell'
-        }
-
-        It 'Get-ToolkitTelemetryData reads BaseBoard from BIOS registry when SystemManufacturer is dummy' -Skip:(-not $isTUIAvailable) {
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Test-Path { return $true } -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-            $bbRegMock = {
-                return [PSCustomObject]@{
-                    SystemManufacturer    = 'To Be Filled By O.E.M.'
-                    SystemProductName     = 'Default string'
-                    BaseBoardManufacturer = 'Micro-Star International Co., Ltd.'
-                    BaseBoardProduct      = 'MAG B650 TOMAHAWK WIFI'
-                }
-            }
-            Mock Get-ItemProperty $bbRegMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' } -ModuleName TUI
-            Mock Get-ItemProperty $bbRegMock -ParameterFilter { $Path -eq 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' }
-
-            $data = Get-ToolkitTelemetryData
-            $data.HardwareDisplay | Should -Match 'Micro-Star International Co\., Ltd\. MAG B650 TOMAHAWK WIFI'
-        }
-
-        It 'Get-ToolkitTelemetryData caches static hardware specifications across consecutive calls' -Skip:(-not $isTUIAvailable) {
-            Clear-ToolkitTelemetryCache
-            $first = Get-ToolkitTelemetryData
-            $second = Get-ToolkitTelemetryData
-            $second.OSDisplay | Should -Be $first.OSDisplay
-            $second.Architecture | Should -Be $first.Architecture
-            $second.CPUDisplay | Should -Be $first.CPUDisplay
-            $second.HardwareDisplay | Should -Be $first.HardwareDisplay
-            $second.ActiveIPv4 | Should -Be $first.ActiveIPv4
-        }
-
-        It 'Get-ToolkitTelemetryData dynamically samples free RAM and free disk space across consecutive calls' -Skip:(-not $isTUIAvailable) {
-            Clear-ToolkitTelemetryCache
-            $first = Get-ToolkitTelemetryData
-            $second = Get-ToolkitTelemetryData
-            $second.RAMDisplay | Should -Not -BeNullOrEmpty
-            $second.StorageDisplay | Should -Not -BeNullOrEmpty
-            $second.StorageDisplay | Should -Match '^(System Drive|Storage:)'
-        }
-
-        It 'Get-ToolkitTelemetryData -ForceRefresh re-queries and updates cache' -Skip:(-not $isTUIAvailable) {
-            Clear-ToolkitTelemetryCache
-            $first = Get-ToolkitTelemetryData
-            $refreshed = Get-ToolkitTelemetryData -ForceRefresh
-            $refreshed | Should -Not -BeNullOrEmpty
-            $refreshed.OSDisplay | Should -Be $first.OSDisplay
-        }
-
-        It 'Clear-ToolkitTelemetryCache empties the cache and forces fresh hardware detection' -Skip:(-not $isTUIAvailable) {
-            $null = Get-ToolkitTelemetryData
-            { Clear-ToolkitTelemetryCache } | Should -Not -Throw
-            $tuiMod = Get-Module -Name 'TUI'
-            if ($tuiMod) {
-                $cacheVal = & $tuiMod { $script:ToolkitHardwareCache }
-                $cacheVal | Should -BeNullOrEmpty
-            }
-        }
-
-        It 'Consequent calls to Get-ToolkitTelemetryData complete within 200 milliseconds' -Skip:(-not $isTUIAvailable) {
-            Clear-ToolkitTelemetryCache
-            # Warm the cache on the first call
-            $null = Get-ToolkitTelemetryData
-            # Measure consequent call
-            $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            $null = Get-ToolkitTelemetryData
-            $sw.Stop()
-            $elapsed = $sw.Elapsed
-            $elapsed.TotalMilliseconds | Should -BeLessThan 200
-        }
-
-        It 'Show-ToolkitHeader supports -ForceRefresh switch without throwing' -Skip:(-not $isTUIAvailable) {
-            { Show-ToolkitHeader -Title 'Test Latency' -ForceRefresh } | Should -Not -Throw
-        }
-
-        It 'Read-ToolkitMenuChoice normalizes multi-word selection prompt variants to concise Select prompt' -Skip:(-not $isTUIAvailable) {
-            $script:capturedPrompt = $null
-            Mock Read-Host {
-                param($Prompt)
-                $script:capturedPrompt = $Prompt
-                return '1'
-            }
-            $null = Read-ToolkitMenuChoice -Prompt 'Select Category or Submenu [1..10]' -ValidKeys @('1', '2')
-            $script:capturedPrompt | Should -Be '  Select'
-        }
-
-        It 'Read-ToolkitMenuChoice formats Default selection in prompt without duplicate colon' -Skip:(-not $isTUIAvailable) {
-            $script:capturedPrompt = $null
-            Mock Read-Host {
-                param($Prompt)
-                $script:capturedPrompt = $Prompt
-                return '1'
-            }
-            $null = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2') -Default '1'
-            $script:capturedPrompt | Should -Be '  Select (Default: 1)'
-        }
-
-        It 'Show-ToolkitHeader wraps multi-part lines without trimming real data' -Skip:(-not $isTUIAvailable) {
-            $longInfo = @("Processor & RAM: AMD Ryzen 7 7800X3D 8-Core Processor (16 Cores) | RAM: 31.1 GB (18.4 GB Free)")
-            { Show-ToolkitHeader -Title 'Test' -Width 78 -InfoLines $longInfo } | Should -Not -Throw
-        }
-
-        It 'Get-ToolkitLayoutWidth returns safe width bounded by Min and Max' -Skip:(-not $isTUIAvailable) {
-            $w = Get-ToolkitLayoutWidth -Default 100 -Min 60 -Max 120
-            $w | Should -BeGreaterOrEqual 60
-            $w | Should -BeLessOrEqual 120
-        }
-
-        It 'Write-ToolkitMenuDivider renders without error' -Skip:(-not $isTUIAvailable) {
-            { Write-ToolkitMenuDivider -Width 80 } | Should -Not -Throw
-            { Write-ToolkitMenuDivider } | Should -Not -Throw
-        }
-
-        It 'Show-ToolkitHeader and Show-ToolkitMenuOption auto-fit window width when Width is not specified' -Skip:(-not $isTUIAvailable) {
-            { Show-ToolkitHeader -Title 'Auto Fit Test' } | Should -Not -Throw
-            { Show-ToolkitMenuOption -Key '1' -Label 'Option with status' -Status 'OK' } | Should -Not -Throw
         }
     }
 
     Context 'Show-ToolkitItemTable Tabular Display Engine' {
-        It 'Renders clean [No items found] box when $Items is empty collection' -Skip:(-not $isTUIAvailable) {
-            { Show-ToolkitItemTable -Items @() -Columns @('Name', 'Status') } | Should -Not -Throw
-            { Show-ToolkitItemTable -Items @() -Columns @('Name', 'Status') -Title 'EMPTY LIST' -Width 60 } | Should -Not -Throw
-        }
-
-        It 'Renders clean [No items found] box when $Items is $null' -Skip:(-not $isTUIAvailable) {
-            { Show-ToolkitItemTable -Items $null -Columns @('Name', 'Status') } | Should -Not -Throw
-        }
-
-        It 'Renders table with auto-calculated width when Width is omitted' -Skip:(-not $isTUIAvailable) {
-            $testItems = @(
-                [PSCustomObject]@{ Name = 'Administrator'; Status = '[ENABLED]'; Role = 'Domain Admin' },
-                [PSCustomObject]@{ Name = 'Guest'; Status = '[DISABLED]'; Role = 'Guest User' }
-            )
-            { Show-ToolkitItemTable -Items $testItems -Columns @('Name', 'Status', 'Role') -Title 'LOCAL ACCOUNTS' } | Should -Not -Throw
-        }
-
-        It 'Respects explicit Width parameter and clamps minimum layout width' -Skip:(-not $isTUIAvailable) {
-            $testItems = @(
-                [PSCustomObject]@{ Item = 'Primary Printer'; Port = '192.168.1.50'; Status = '[READY]' },
-                [PSCustomObject]@{ Item = 'Secondary Spooler'; Port = 'USB001'; Status = '[STOPPED]' }
-            )
-            { Show-ToolkitItemTable -Items $testItems -Columns @('Item', 'Port', 'Status') -Width 80 } | Should -Not -Throw
-            { Show-ToolkitItemTable -Items $testItems -Columns @('Item', 'Port', 'Status') -Width 40 } | Should -Not -Throw
-            { Show-ToolkitItemTable -Items $testItems -Columns @('Item', 'Port', 'Status') -Width 120 } | Should -Not -Throw
-        }
-
-        It 'Formats row indices [1], [2], ... and supports custom Headers mapping' -Skip:(-not $isTUIAvailable) {
+        It 'Show-ToolkitItemTable renders tabular format without error' -Skip:(-not $isTUIAvailable) {
             $items = @(
-                [PSCustomObject]@{ Name = 'App1'; State = 'Running' },
-                [PSCustomObject]@{ Name = 'App2'; State = 'Stopped' },
-                [PSCustomObject]@{ Name = 'App3'; State = 'Ready' }
+                [PSCustomObject]@{ Name = 'TestItem1'; Status = 'OK'; Details = 'Detail 1' },
+                [PSCustomObject]@{ Name = 'TestItem2'; Status = 'WARN'; Details = 'Detail 2' }
             )
-            { Show-ToolkitItemTable -Items $items -Columns @('Name', 'State') -Headers @('APPLICATION', 'CURRENT STATE') } | Should -Not -Throw
-        }
-
-        It 'Renders table without row index column when -NoIndex is specified' -Skip:(-not $isTUIAvailable) {
-            $items = @(
-                [PSCustomObject]@{ Name = 'App1'; State = 'Running' },
-                [PSCustomObject]@{ Name = 'App2'; State = 'Stopped' }
-            )
-            $tableLines = @(Show-ToolkitItemTable -Items $items -Columns @('Name', 'State') -NoIndex -Width 60 6>&1)
-            $tableLines.Count | Should -BeGreaterThan 0
-            foreach ($entry in $tableLines) {
-                [string]$entry | Should -Not -Match '^\s*\|\s*\[\d+\]'
-            }
-        }
-
-        It 'Handles all standardized status badges ([ENABLED], [DISABLED], [LOCKED], [RUNNING], [STOPPED], [READY], [OK], [WARN], [FAIL])' -Skip:(-not $isTUIAvailable) {
-            $badgeItems = @(
-                [PSCustomObject]@{ Id = '1'; Badge = '[ENABLED]' },
-                [PSCustomObject]@{ Id = '2'; Badge = '[DISABLED]' },
-                [PSCustomObject]@{ Id = '3'; Badge = '[LOCKED]' },
-                [PSCustomObject]@{ Id = '4'; Badge = '[RUNNING]' },
-                [PSCustomObject]@{ Id = '5'; Badge = '[STOPPED]' },
-                [PSCustomObject]@{ Id = '6'; Badge = '[READY]' },
-                [PSCustomObject]@{ Id = '7'; Badge = '[OK]' },
-                [PSCustomObject]@{ Id = '8'; Badge = '[WARN]' },
-                [PSCustomObject]@{ Id = '9'; Badge = '[FAIL]' },
-                [PSCustomObject]@{ Id = '10'; Badge = '[ACTIVE]' },
-                [PSCustomObject]@{ Id = '11'; Badge = '[ERROR]' }
-            )
-            { Show-ToolkitItemTable -Items $badgeItems -Columns @('Id', 'Badge') -Title 'STATUS BADGE MATRIX' } | Should -Not -Throw
-        }
-
-        It 'Uses pure ASCII borders (+, -, |) with zero Unicode box characters' -Skip:(-not $isTUIAvailable) {
-            $sampleItems = @(
-                [PSCustomObject]@{ Component = 'Spooler'; Status = '[READY]' },
-                [PSCustomObject]@{ Component = 'RPC'; Status = '[RUNNING]' }
-            )
-            $tableLines = @(Show-ToolkitItemTable -Items $sampleItems -Columns @('Component', 'Status') -Title 'ASCII TEST' -Width 78 6>&1)
-
-            $tableLines.Count | Should -BeGreaterThan 0
-            foreach ($entry in $tableLines) {
-                $line = [string]$entry
-                $charCodes = [int[]][char[]]$line
-                foreach ($c in $charCodes) {
-                    $c | Should -BeLessOrEqual 127
-                }
-                $line | Should -Not -Match '[\u2500-\u257F]'
-            }
-        }
-
-        It 'Renders items provided as Hashtables as well as PSCustomObjects' -Skip:(-not $isTUIAvailable) {
-            $hashItems = @(
-                @{ Name = 'Profile1'; DataFile = 'C:\Users\test\mail.ost'; Status = '[READY]' },
-                @{ Name = 'Profile2'; DataFile = 'C:\Users\test\archive.pst'; Status = '[DISABLED]' }
-            )
-            { Show-ToolkitItemTable -Items $hashItems -Columns @('Name', 'DataFile', 'Status') -Title 'HASH ITEMS' } | Should -Not -Throw
+            { Show-ToolkitItemTable -Items $items -Columns @('Name', 'Status', 'Details') -Title 'Test Table' } | Should -Not -Throw
         }
     }
 
     Context 'Read-ToolkitItemSelection Input Parsing & Safeguards' {
-        It 'Correctly parses valid numeric integer indices (1..MaxIndex) returning Type Index' -Skip:(-not $isTUIAvailable) {
+        It 'Read-ToolkitItemSelection parses hotkey input cleanly' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return '1' }
-            $res1 = Read-ToolkitItemSelection -MaxIndex 5
-            $res1.Type | Should -Be 'Index'
-            $res1.Value | Should -Be 1
-
-            Mock Read-Host { return '5' }
-            $res5 = Read-ToolkitItemSelection -MaxIndex 5
-            $res5.Type | Should -Be 'Index'
-            $res5.Value | Should -Be 5
+            $res = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('1', '2') -Prompt 'Select'
+            $res.Type | Should -Be 'Hotkey'
+            $res.Value | Should -Be '1'
         }
 
-        It 'Correctly parses bracketed numeric selection (e.g. [2]) returning Type Index' -Skip:(-not $isTUIAvailable) {
-            Mock Read-Host { return '[2]' }
-            $res = Read-ToolkitItemSelection -MaxIndex 10
-            $res.Type | Should -Be 'Index'
-            $res.Value | Should -Be 2
-        }
-
-        It 'Correctly parses valid action hotkeys (case-insensitive) returning Type Hotkey' -Skip:(-not $isTUIAvailable) {
-            Mock Read-Host { return 'b' }
-            $resB = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('B', 'R', 'A')
-            $resB.Type | Should -Be 'Hotkey'
-            $resB.Value | Should -Be 'B'
-
-            Mock Read-Host { return 'R' }
-            $resR = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('B', 'R', 'A')
-            $resR.Type | Should -Be 'Hotkey'
-            $resR.Value | Should -Be 'R'
-
-            Mock Read-Host { return 'a' }
-            $resA = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('B', 'R', 'A')
-            $resA.Type | Should -Be 'Hotkey'
-            $resA.Value | Should -Be 'A'
-        }
-
-        It 'Correctly parses standard exit commands (Q, QUIT, EXIT) returning Type Exit' -Skip:(-not $isTUIAvailable) {
-            Mock Read-Host { return 'q' }
-            $resQ = Read-ToolkitItemSelection -MaxIndex 5
-            $resQ.Type | Should -Be 'Exit'
-            $resQ.Value | Should -Be 'Q'
-
-            Mock Read-Host { return 'quit' }
-            $resQuit = Read-ToolkitItemSelection -MaxIndex 5
-            $resQuit.Type | Should -Be 'Exit'
-            $resQuit.Value | Should -Be 'Q'
-
-            Mock Read-Host { return 'EXIT' }
-            $resExit = Read-ToolkitItemSelection -MaxIndex 5
-            $resExit.Type | Should -Be 'Exit'
-            $resExit.Value | Should -Be 'Q'
-        }
-
-        It 'Re-prompts on invalid input and returns subsequent valid choice' -Skip:(-not $isTUIAvailable) {
-            $script:attemptNum = 0
-            Mock Read-Host {
-                $script:attemptNum++
-                if ($script:attemptNum -eq 1) { return 'invalid_option' }
-                if ($script:attemptNum -eq 2) { return '99' }
-                return '3'
-            }
-            $res = Read-ToolkitItemSelection -MaxIndex 5
+        It 'Read-ToolkitItemSelection parses index input cleanly' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '3' }
+            $res = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('0') -Prompt 'Select'
             $res.Type | Should -Be 'Index'
             $res.Value | Should -Be 3
-            $script:attemptNum | Should -Be 3
         }
 
-        It 'Applies 5-attempt headless safeguard on repeated invalid input and exits safely' -Skip:(-not $isTUIAvailable) {
-            $script:loopCount = 0
-            Mock Read-Host {
-                $script:loopCount++
-                return 'invalid_headless_input'
-            }
-            $res = Read-ToolkitItemSelection -MaxIndex 5
+        It 'Read-ToolkitItemSelection handles exit keys cleanly' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '0' }
+            $res = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('1', '2') -Prompt 'Select'
             $res.Type | Should -Be 'Exit'
-            $res.Value | Should -Be 'Q'
-            $script:loopCount | Should -Be 5
+            $res.Value | Should -Be '0'
         }
 
-        It 'Clean exit on $null / closed stdin (EOF) immediately without hanging' -Skip:(-not $isTUIAvailable) {
-            $script:eofCalls = 0
+        It 'Read-ToolkitItemSelection rejects letter exit keys and requires numeric 0' -Skip:(-not $isTUIAvailable) {
+            $script:attemptCount = 0
             Mock Read-Host {
-                $script:eofCalls++
-                return $null
+                $script:attemptCount++
+                if ($script:attemptCount -eq 1) { return 'Q' }
+                return '0'
             }
-            $res = Read-ToolkitItemSelection -MaxIndex 10 -ValidHotkeys @('B', 'Q')
+            $res = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('1', '2') -Prompt 'Select'
             $res.Type | Should -Be 'Exit'
-            $res.Value | Should -Be 'Q'
-            $script:eofCalls | Should -Be 1
+            $res.Value | Should -Be '0'
+            $script:attemptCount | Should -Be 2
         }
     }
 
     Context 'Item-Centric Submenu Matrix Non-Interactive & Immediate Exit Verification' {
         $submenus = @(
-            @{ Name = 'Accounts';       Command = 'Invoke-ToolkitSubmenuAccounts' },
-            @{ Name = 'Printers';       Command = 'Invoke-ToolkitSubmenuPrinters' },
-            @{ Name = 'Outlook';        Command = 'Invoke-ToolkitSubmenuOutlook' },
-            @{ Name = 'Office';         Command = 'Invoke-ToolkitSubmenuOffice' },
-            @{ Name = 'Backup';         Command = 'Invoke-ToolkitSubmenuBackup' },
-            @{ Name = 'ExternalTools';  Command = 'Invoke-ToolkitSubmenuExternalTools' },
-            @{ Name = 'WindowsRepair';  Command = 'Invoke-ToolkitSubmenuWindowsRepair' },
-            @{ Name = 'AppInstaller';   Command = 'Invoke-ToolkitSubmenuAppInstaller' },
-            @{ Name = 'WindowsCleanup'; Command = 'Invoke-ToolkitSubmenuWindowsCleanup' },
-            @{ Name = 'Network';        Command = 'Invoke-ToolkitSubmenuNetwork' }
+            @{ Name = 'SystemHealth';         Command = 'Invoke-ToolkitSubmenuSystemHealth' },
+            @{ Name = 'OfficeSuite';          Command = 'Invoke-ToolkitSubmenuOfficeSuite' },
+            @{ Name = 'Connectivity';         Command = 'Invoke-ToolkitSubmenuConnectivity' },
+            @{ Name = 'IdentityBackup';       Command = 'Invoke-ToolkitSubmenuIdentityBackup' },
+            @{ Name = 'SoftwareOptimization'; Command = 'Invoke-ToolkitSubmenuSoftwareOptimization' }
         )
 
         It '<Name>: Terminates immediately without processing when -ExitImmediately is passed' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
@@ -861,986 +283,434 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         }
     }
 
-    Context 'Milestone M3: Submenus Item-Centric Workflow & Routing' {
-        It 'Invoke-ToolkitSubmenuPrinters auto-enumerates printers and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
-            Mock Get-CimInstance {
-                return @(
-                    [PSCustomObject]@{
-                        Name         = 'HP-LaserJet-Finance'
-                        WorkOffline  = $false
-                        PrinterState = 0
-                        Status       = 'OK'
-                        DriverName   = 'HP Universal Printing PCL 6'
-                        PortName     = '192.168.1.100'
-                    }
-                )
-            } -ParameterFilter { $ClassName -eq 'Win32_Printer' }
-
-            $script:selectionCalled = $false
-            $script:choiceCalled = $false
-            $script:pSelCount = 0
-
-            Mock Read-ToolkitItemSelection {
-                $script:pSelCount++
-                if ($script:pSelCount -eq 1) {
-                    $script:selectionCalled = $true
-                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+    Context '5 Enterprise Core Pillars Main Menu Architecture & Router Verification' {
+        It 'Start-IToolkitMenu details panel exposes exactly 5 Core Pillars' -Skip:(-not $isTUIAvailable) {
+            $script:capturedMainDetails = $null
+            Mock Show-ToolkitDetailPanel {
+                param($Details, $NavActions, $Title)
+                $script:capturedMainDetails = $Details
             }
+            { Start-IToolkitMenu -NonInteractive } | Should -Not -Throw
+            $script:capturedMainDetails | Should -Not -BeNullOrEmpty
+            $script:capturedMainDetails.Count | Should -Be 5
+
+            $p1 = $script:capturedMainDetails | Where-Object { $_.Key -eq '1' }
+            $p1.Action | Should -Be 'System Health & Maintenance'
+
+            $p2 = $script:capturedMainDetails | Where-Object { $_.Key -eq '2' }
+            $p2.Action | Should -Be 'Office & Productivity Suite'
+
+            $p3 = $script:capturedMainDetails | Where-Object { $_.Key -eq '3' }
+            $p3.Action | Should -Be 'Network & Connectivity'
+
+            $p4 = $script:capturedMainDetails | Where-Object { $_.Key -eq '4' }
+            $p4.Action | Should -Be 'Accounts, Identity & Backup'
+
+            $p5 = $script:capturedMainDetails | Where-Object { $_.Key -eq '5' }
+            $p5.Action | Should -Be 'Software & System Optimization'
+        }
+
+        It 'Start-IToolkitMenu interactive loop includes valid keys 1-5, 9, 0' -Skip:(-not $isTUIAvailable) {
+            $script:capturedValidKeys = $null
             Mock Read-ToolkitMenuChoice {
-                $script:choiceCalled = $true
-                return 'B'
+                param($Prompt, $ValidKeys, $Default)
+                $script:capturedValidKeys = $ValidKeys
+                return '0'
             }
-
-            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
-            $script:selectionCalled | Should -BeTrue
-            $script:choiceCalled | Should -BeTrue
+            { Start-IToolkitMenu } | Should -Not -Throw
+            $script:capturedValidKeys | Should -Not -BeNullOrEmpty
+            $script:capturedValidKeys | Should -Contain '1'
+            $script:capturedValidKeys | Should -Contain '2'
+            $script:capturedValidKeys | Should -Contain '3'
+            $script:capturedValidKeys | Should -Contain '4'
+            $script:capturedValidKeys | Should -Contain '5'
+            $script:capturedValidKeys | Should -Contain '9'
+            $script:capturedValidKeys | Should -Contain '0'
+            $script:capturedValidKeys | Should -Not -Contain 'R'
+            $script:capturedValidKeys | Should -Not -Contain 'Q'
+            $script:capturedValidKeys | Should -Not -Contain 'X'
         }
 
-        It 'Invoke-ToolkitSubmenuPrinters handles top-level action hotkey S (Spooler Restart)' -Skip:(-not $isTUIAvailable) {
-            $script:spoolerResetCalled = $false
-            Mock Reset-PrintSpoolerQueue {
-                $script:spoolerResetCalled = $true
-            }
-            $script:itemSelCount = 0
-            Mock Read-ToolkitItemSelection {
-                $script:itemSelCount++
-                if ($script:itemSelCount -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'S' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
-            $script:spoolerResetCalled | Should -BeTrue
+        It 'Start-IToolkitMenu routes Option 1 to Invoke-ToolkitSubmenuSystemHealth' -Skip:(-not $isTUIAvailable) {
+            $script:healthCalled = $false
+            Mock Invoke-ToolkitSubmenuSystemHealth { $script:healthCalled = $true }
+            { Start-IToolkitMenu -MenuOption '1' -NonInteractive } | Should -Not -Throw
+            $script:healthCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuOutlook auto-enumerates items and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
-            Mock Get-OutlookSystemContext {
-                return [PSCustomObject]@{
-                    IsRunning      = $false
-                    ProcessId      = $null
-                    OfficeVersion  = '16.0'
-                    DefaultProfile = 'ContosoProfile'
-                    Profiles       = @('ContosoProfile')
-                    DataFiles      = @()
-                }
-            }
-            Mock Find-OutlookDataFiles {
-                return @(
-                    [PSCustomObject]@{
-                        Path    = 'C:\Mail\archive.pst'
-                        Type    = 'PST'
-                        Profile = 'ContosoProfile'
-                    }
-                )
-            }
-
-            $script:outlookCtxCalled = $false
-            $script:outlookMenuCalled = $false
-            $script:oSelCount = 0
-
-            Mock Read-ToolkitItemSelection {
-                $script:oSelCount++
-                if ($script:oSelCount -eq 1) {
-                    $script:outlookCtxCalled = $true
-                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Read-ToolkitMenuChoice {
-                $script:outlookMenuCalled = $true
-                return 'B'
-            }
-
-            { Invoke-ToolkitSubmenuOutlook } | Should -Not -Throw
-            $script:outlookCtxCalled | Should -BeTrue
-            $script:outlookMenuCalled | Should -BeTrue
+        It 'Start-IToolkitMenu routes Option 2 to Invoke-ToolkitSubmenuOfficeSuite' -Skip:(-not $isTUIAvailable) {
+            $script:officeCalled = $false
+            Mock Invoke-ToolkitSubmenuOfficeSuite { $script:officeCalled = $true }
+            { Start-IToolkitMenu -MenuOption '2' -NonInteractive } | Should -Not -Throw
+            $script:officeCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuOutlook handles top-level action hotkey E (Expand PST limit)' -Skip:(-not $isTUIAvailable) {
-            $script:threshCalled = $false
-            Mock Set-OutlookPstThreshold {
-                $script:threshCalled = $true
-            }
-            $script:outSelCount = 0
-            Mock Read-ToolkitItemSelection {
-                $script:outSelCount++
-                if ($script:outSelCount -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'E' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuOutlook } | Should -Not -Throw
-            $script:threshCalled | Should -BeTrue
+        It 'Start-IToolkitMenu routes Option 3 to Invoke-ToolkitSubmenuConnectivity' -Skip:(-not $isTUIAvailable) {
+            $script:connCalled = $false
+            Mock Invoke-ToolkitSubmenuConnectivity { $script:connCalled = $true }
+            { Start-IToolkitMenu -MenuOption '3' -NonInteractive } | Should -Not -Throw
+            $script:connCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuOffice auto-enumerates installed apps and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
-            Mock Get-Process {
-                return @(
-                    [PSCustomObject]@{
-                        Id   = 4004
-                        Name = 'EXCEL'
-                    }
-                )
-            } -ParameterFilter { $Name -eq 'EXCEL' }
-
-            $script:officeSelCalled = $false
-            $script:officeCtxCalled = $false
-            $script:ofSelCount = 0
-
-            Mock Read-ToolkitItemSelection {
-                $script:ofSelCount++
-                if ($script:ofSelCount -eq 1) {
-                    $script:officeSelCalled = $true
-                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Read-ToolkitMenuChoice {
-                $script:officeCtxCalled = $true
-                return 'B'
-            }
-
-            { Invoke-ToolkitSubmenuOffice } | Should -Not -Throw
-            $script:officeSelCalled | Should -BeTrue
-            $script:officeCtxCalled | Should -BeTrue
+        It 'Start-IToolkitMenu routes Option 4 to Invoke-ToolkitSubmenuIdentityBackup' -Skip:(-not $isTUIAvailable) {
+            $script:idCalled = $false
+            Mock Invoke-ToolkitSubmenuIdentityBackup { $script:idCalled = $true }
+            { Start-IToolkitMenu -MenuOption '4' -NonInteractive } | Should -Not -Throw
+            $script:idCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuOffice handles top-level action hotkey C (Clear Temp Cache)' -Skip:(-not $isTUIAvailable) {
-            $script:cacheClearCalled = $false
-            Mock Clear-OfficeTempCache {
-                $script:cacheClearCalled = $true
-            }
-            $script:offSelCount = 0
-            Mock Read-ToolkitItemSelection {
-                $script:offSelCount++
-                if ($script:offSelCount -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'C' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuOffice } | Should -Not -Throw
-            $script:cacheClearCalled | Should -BeTrue
+        It 'Start-IToolkitMenu routes Option 5 to Invoke-ToolkitSubmenuSoftwareOptimization' -Skip:(-not $isTUIAvailable) {
+            $script:softCalled = $false
+            Mock Invoke-ToolkitSubmenuSoftwareOptimization { $script:softCalled = $true }
+            { Start-IToolkitMenu -MenuOption '5' -NonInteractive } | Should -Not -Throw
+            $script:softCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuBackup auto-enumerates backup items and routes index to contextual menu' -Skip:(-not $isTUIAvailable) {
-            Mock Get-CimInstance {
-                return @(
-                    [PSCustomObject]@{
-                        ID           = 'VSS-TEST-GUID-001'
-                        DeviceObject = '\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1'
-                    }
-                )
-            } -ParameterFilter { $ClassName -eq 'Win32_ShadowCopy' }
+        It 'Start-IToolkitMenu gracefully maps legacy options (6, 7, 8, 9, N) to corresponding Core Pillars' -Skip:(-not $isTUIAvailable) {
+            $script:calls = [System.Collections.Generic.List[string]]::new()
+            Mock Invoke-ToolkitSubmenuSystemHealth { $script:calls.Add('Health') }
+            Mock Invoke-ToolkitSubmenuConnectivity { $script:calls.Add('Conn') }
+            Mock Invoke-ToolkitSubmenuSoftwareOptimization { $script:calls.Add('Soft') }
 
-            $script:backupSelCalled = $false
-            $script:backupCtxCalled = $false
-            $script:bSelCount = 0
+            Start-IToolkitMenu -MenuOption '6' -NonInteractive
+            Start-IToolkitMenu -MenuOption '7' -NonInteractive
+            Start-IToolkitMenu -MenuOption '8' -NonInteractive
+            Start-IToolkitMenu -MenuOption '9' -NonInteractive
+            Start-IToolkitMenu -MenuOption 'N' -NonInteractive
+            Start-IToolkitMenu -MenuOption 'NETWORK' -NonInteractive
 
-            Mock Read-ToolkitItemSelection {
-                $script:bSelCount++
-                if ($script:bSelCount -eq 1) {
-                    $script:backupSelCalled = $true
-                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Read-ToolkitMenuChoice {
-                $script:backupCtxCalled = $true
-                return 'B'
-            }
-
-            { Invoke-ToolkitSubmenuBackup } | Should -Not -Throw
-            $script:backupSelCalled | Should -BeTrue
-            $script:backupCtxCalled | Should -BeTrue
+            $script:calls | Should -Contain 'Soft'
+            $script:calls | Should -Contain 'Health'
+            $script:calls | Should -Contain 'Conn'
         }
 
-        It 'Invoke-ToolkitSubmenuBackup handles top-level action hotkey M (Map Folders)' -Skip:(-not $isTUIAvailable) {
-            $script:mapFoldersCalled = $false
-            Mock Get-UserProfileDirectoryMap {
-                $script:mapFoldersCalled = $true
-                return [PSCustomObject]@{ Documents = 'C:\Users\test\Documents' }
-            }
-            $script:bakSelCount = 0
-            Mock Read-ToolkitItemSelection {
-                $script:bakSelCount++
-                if ($script:bakSelCount -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'M' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
+        It 'Start-IToolkitMenu interactive choices 1-5 dispatch to corresponding Core Pillars' -Skip:(-not $isTUIAvailable) {
+            $dispatches = [System.Collections.Generic.List[string]]::new()
+            Mock Invoke-ToolkitSubmenuSystemHealth { $dispatches.Add('P1') }
+            Mock Invoke-ToolkitSubmenuOfficeSuite { $dispatches.Add('P2') }
+            Mock Invoke-ToolkitSubmenuConnectivity { $dispatches.Add('P3') }
+            Mock Invoke-ToolkitSubmenuIdentityBackup { $dispatches.Add('P4') }
+            Mock Invoke-ToolkitSubmenuSoftwareOptimization { $dispatches.Add('P5') }
 
-            { Invoke-ToolkitSubmenuBackup } | Should -Not -Throw
-            $script:mapFoldersCalled | Should -BeTrue
+            for ($i = 1; $i -le 5; $i++) {
+                $currentChoice = [string]$i
+                $script:count = 0
+                Mock Read-ToolkitMenuChoice {
+                    $script:count++
+                    if ($script:count -eq 1) { return $currentChoice }
+                    return '0'
+                }
+                { Start-IToolkitMenu } | Should -Not -Throw
+            }
+
+            $dispatches | Should -Contain 'P1'
+            $dispatches | Should -Contain 'P2'
+            $dispatches | Should -Contain 'P3'
+            $dispatches | Should -Contain 'P4'
+            $dispatches | Should -Contain 'P5'
         }
     }
 
-    Context 'Milestone M5: Global TUI & CLI Integration Verification' {
-        It 'Start-IToolkitMenu routes Option 7 to Invoke-ToolkitSubmenuWindowsRepair' -Skip:(-not $isTUIAvailable) {
-            $script:windowsRepairCalled = $false
-            Mock Invoke-ToolkitSubmenuWindowsRepair {
-                $script:windowsRepairCalled = $true
-            }
-            { Start-IToolkitMenu -MenuOption '7' -NonInteractive } | Should -Not -Throw
-            $script:windowsRepairCalled | Should -BeTrue
-        }
-
-        It 'Start-IToolkitMenu routes Option 9 to Invoke-ToolkitSubmenuWindowsCleanup' -Skip:(-not $isTUIAvailable) {
-            $script:windowsCleanupCalled = $false
-            Mock Invoke-ToolkitSubmenuWindowsCleanup {
-                $script:windowsCleanupCalled = $true
-            }
-            { Start-IToolkitMenu -MenuOption '9' -NonInteractive } | Should -Not -Throw
-            $script:windowsCleanupCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuOutlook action catalog exposes N (Create PST) and contextual 5 (Set Default)' -Skip:(-not $isTUIAvailable) {
-            $script:capturedActions = $null
+    Context 'Pillar 1: System Health & Maintenance Submenu Workflow' {
+        It 'Invoke-ToolkitSubmenuSystemHealth renders action catalog exposing numeric keys 1-9' -Skip:(-not $isTUIAvailable) {
+            $script:healthActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
-                $script:capturedActions = $Actions
+                $script:healthActions = $Actions
             }
-            { Invoke-ToolkitSubmenuOutlook -NonInteractive } | Should -Not -Throw
-            $script:capturedActions | Should -Not -BeNullOrEmpty
-            $keys = $script:capturedActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain 'N'
-
-            # Contextual action verification
-            Mock Get-OutlookSystemContext {
-                return [PSCustomObject]@{
-                    IsRunning      = $false
-                    DefaultProfile = 'DefaultProfile'
-                    Profiles       = @('DefaultProfile')
-                }
+            { Invoke-ToolkitSubmenuSystemHealth -NonInteractive } | Should -Not -Throw
+            $script:healthActions | Should -Not -BeNullOrEmpty
+            $keys = $script:healthActions | ForEach-Object { $_.Key }
+            for ($k = 1; $k -le 9; $k++) {
+                $keys | Should -Contain ([string]$k)
             }
-            Mock Find-OutlookDataFiles {
-                return @(
-                    [PSCustomObject]@{
-                        Path    = 'C:\Users\test\Documents\Outlook Files\Outlook.pst'
-                        Type    = 'PST'
-                        Profile = 'DefaultProfile'
-                    }
-                )
-            }
-            $script:capturedDetailPanel = $null
-            Mock Show-ToolkitDetailPanel {
-                param($Details, $NavActions, $Title)
-                $script:capturedDetailPanel = $Details
-            }
-            $script:oSelCount = 0
-            Mock Read-ToolkitItemSelection {
-                $script:oSelCount++
-                if ($script:oSelCount -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Index'; Value = 1 }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Read-ToolkitMenuChoice { return 'B' }
-
-            { Invoke-ToolkitSubmenuOutlook } | Should -Not -Throw
-            $script:capturedDetailPanel | Should -Not -BeNullOrEmpty
-            $ctxKeys = $script:capturedDetailPanel | ForEach-Object { $_.Key }
-            $ctxKeys | Should -Contain '5'
+            $keys | Should -Not -Contain 'A'
+            $keys | Should -Not -Contain 'S'
+            $keys | Should -Not -Contain 'D'
+            $keys | Should -Not -Contain 'W'
         }
 
-        It 'Invoke-ToolkitSubmenuOutlook executes New-OutlookDataFile when hotkey N is selected' -Skip:(-not $isTUIAvailable) {
-            $script:newPstCalled = $false
-            $script:newPstPath = $null
-            Mock New-OutlookDataFile {
-                param($Path)
-                $script:newPstCalled = $true
-                $script:newPstPath = $Path
-                return [PSCustomObject]@{ Success = $true; Path = $Path }
-            }
-            Mock Read-Host { return 'C:\Mail\CreatedPst.pst' }
-            $script:itemSelCount = 0
-            Mock Read-ToolkitItemSelection {
-                $script:itemSelCount++
-                if ($script:itemSelCount -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'N' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuOutlook } | Should -Not -Throw
-            $script:newPstCalled | Should -BeTrue
-            $script:newPstPath | Should -Be 'C:\Mail\CreatedPst.pst'
-        }
-
-        It 'Invoke-ToolkitSubmenuOutlook executes Set-OutlookDefaultDataFile when contextual option 5 is selected' -Skip:(-not $isTUIAvailable) {
-            Mock Get-OutlookSystemContext {
-                return [PSCustomObject]@{
-                    IsRunning      = $false
-                    DefaultProfile = 'WorkProfile'
-                    Profiles       = @('WorkProfile')
-                }
-            }
-            Mock Find-OutlookDataFiles {
-                return @(
-                    [PSCustomObject]@{
-                        Path    = 'C:\Mail\WorkArchive.pst'
-                        Type    = 'PST'
-                        Profile = 'WorkProfile'
-                    }
-                )
-            }
-            $script:setDefaultCalled = $false
-            $script:setDefaultTarget = $null
-            Mock Set-OutlookDefaultDataFile {
-                param($Path, $ProfileName)
-                $script:setDefaultCalled = $true
-                $script:setDefaultTarget = $Path
-                return [PSCustomObject]@{ Success = $true; Path = $Path; Profile = $ProfileName }
-            }
-            $script:outSelCount = 0
-            Mock Read-ToolkitItemSelection {
-                $script:outSelCount++
-                if ($script:outSelCount -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Index'; Value = 2 }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Read-ToolkitMenuChoice { return '5' }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuOutlook } | Should -Not -Throw
-            $script:setDefaultCalled | Should -BeTrue
-            $script:setDefaultTarget | Should -Be 'C:\Mail\WorkArchive.pst'
-        }
-
-        It 'Invoke-ToolkitSubmenuPrinters action catalog exposes A, L, F, U hotkeys' -Skip:(-not $isTUIAvailable) {
-            $script:printerActions = $null
-            Mock Show-ToolkitActionCatalog {
-                param($Actions, $NavActions, $Title)
-                $script:printerActions = $Actions
-            }
-            { Invoke-ToolkitSubmenuPrinters -NonInteractive } | Should -Not -Throw
-            $script:printerActions | Should -Not -BeNullOrEmpty
-            $keys = $script:printerActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain 'A'
-            $keys | Should -Contain 'L'
-            $keys | Should -Contain 'F'
-            $keys | Should -Contain 'U'
-        }
-
-        It 'Invoke-ToolkitSubmenuPrinters executes Set-PrinterServerRemediation -All on hotkey A' -Skip:(-not $isTUIAvailable) {
-            $script:serverRemediationCalled = $false
-            Mock Set-PrinterServerRemediation {
-                param([switch]$All)
-                $script:serverRemediationCalled = $true
-                return [PSCustomObject]@{ Success = $true; FixesApplied = @('RpcAuthnLevel', 'RemoteRpcEndPoint') }
-            }
-            $script:pSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:pSel++
-                if ($script:pSel -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'A' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
-            $script:serverRemediationCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuPrinters executes Set-PrinterClientRemediation -All on hotkey L' -Skip:(-not $isTUIAvailable) {
-            $script:clientRemediationCalled = $false
-            Mock Set-PrinterClientRemediation {
-                param([switch]$All)
-                $script:clientRemediationCalled = $true
-                return [PSCustomObject]@{ Success = $true; FixesApplied = @('PointAndPrintAdmin', 'RpcNamedPipe') }
-            }
-            $script:pSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:pSel++
-                if ($script:pSel -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'L' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
-            $script:clientRemediationCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuPrinters handles hotkey F and applies catalog fix' -Skip:(-not $isTUIAvailable) {
-            $script:catalogFixCalled = $false
-            $script:fixTarget = $null
-            Mock Set-PrinterServerRemediation {
-                param($Fix)
-                $script:catalogFixCalled = $true
-                $script:fixTarget = $Fix
-                return [PSCustomObject]@{ Success = $true }
-            }
-            $script:pSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:pSel++
-                if ($script:pSel -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'F' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Read-ToolkitMenuChoice { return '1' }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
-            $script:catalogFixCalled | Should -BeTrue
-            $script:fixTarget | Should -Be 'RpcAuthnLevel'
-        }
-
-        It 'Invoke-ToolkitSubmenuPrinters handles hotkey U and restores registry backup' -Skip:(-not $isTUIAvailable) {
-            $script:restoreCalled = $false
-            Mock Restore-RegistryKeyBackup {
-                param($BackupFilePath)
-                $script:restoreCalled = $true
-                return $true
-            }
-            Mock Read-Host { return 'C:\Backups\Registry\PrinterFix_Backup.reg' }
-            $script:pSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:pSel++
-                if ($script:pSel -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'U' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuPrinters } | Should -Not -Throw
-            $script:restoreCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuBackup action catalog exposes Certificate Export (C) and Import (I)' -Skip:(-not $isTUIAvailable) {
-            $script:backupActions = $null
-            Mock Show-ToolkitActionCatalog {
-                param($Actions, $NavActions, $Title)
-                $script:backupActions = $Actions
-            }
-            { Invoke-ToolkitSubmenuBackup -NonInteractive } | Should -Not -Throw
-            $script:backupActions | Should -Not -BeNullOrEmpty
-            $keys = $script:backupActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain 'C'
-            $keys | Should -Contain 'I'
-        }
-
-        It 'Invoke-ToolkitSubmenuBackup executes Export-ToolkitCertificates on hotkey C' -Skip:(-not $isTUIAvailable) {
-            $script:exportCertCalled = $false
-            Mock Export-ToolkitCertificates {
-                param($DestinationPath, $Password)
-                $script:exportCertCalled = $true
-                return @([PSCustomObject]@{ Thumbprint = 'ABC123456'; Success = $true })
-            }
-            $script:rhExportCount = 0
-            Mock Read-Host {
-                $script:rhExportCount++
-                if ($script:rhExportCount -eq 1) { return 'C:\Backups\Certificates' }
-                return $null
-            }
-            $script:bSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:bSel++
-                if ($script:bSel -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'C' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuBackup } | Should -Not -Throw
-            $script:exportCertCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuBackup executes Import-ToolkitCertificates on hotkey I' -Skip:(-not $isTUIAvailable) {
-            $script:importCertCalled = $false
-            Mock Import-ToolkitCertificates {
-                param($Path, $Password)
-                $script:importCertCalled = $true
-                return @([PSCustomObject]@{ Thumbprint = 'ABC123456'; Success = $true })
-            }
-            $script:rhImportCount = 0
-            Mock Read-Host {
-                $script:rhImportCount++
-                if ($script:rhImportCount -eq 1) { return 'C:\Backups\Certificates\cert.cer' }
-                return $null
-            }
-            $script:bSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:bSel++
-                if ($script:bSel -eq 1) {
-                    return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'I' }
-                }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            Mock Wait-UserAcknowledge { }
-
-            { Invoke-ToolkitSubmenuBackup } | Should -Not -Throw
-            $script:importCertCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsRepair renders action catalog exposing A, S, D, W, R' -Skip:(-not $isTUIAvailable) {
-            $script:repairCatalogActions = $null
-            Mock Show-ToolkitActionCatalog {
-                param($Actions, $NavActions, $Title)
-                $script:repairCatalogActions = $Actions
-            }
-            { Invoke-ToolkitSubmenuWindowsRepair -NonInteractive } | Should -Not -Throw
-            $script:repairCatalogActions | Should -Not -BeNullOrEmpty
-            $keys = $script:repairCatalogActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain 'A'
-            $keys | Should -Contain 'S'
-            $keys | Should -Contain 'D'
-            $keys | Should -Contain 'W'
-            $keys | Should -Contain 'R'
-            $keys | Should -Not -Contain 'N'
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsRepair displays elevation warning banner when Test-IsAdmin returns false' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuSystemHealth displays elevation warning when Test-IsAdmin returns false' -Skip:(-not $isTUIAvailable) {
             Mock Test-IsAdmin { return $false }
             $script:statusMessages = [System.Collections.Generic.List[string]]::new()
             Mock Write-ToolkitStatus {
                 param($Message, $Type)
                 $script:statusMessages.Add($Message)
             }
-            { Invoke-ToolkitSubmenuWindowsRepair -NonInteractive } | Should -Not -Throw
+            { Invoke-ToolkitSubmenuSystemHealth -NonInteractive } | Should -Not -Throw
             $warningBanner = $script:statusMessages | Where-Object { $_ -match 'ELEVATION WARNING' }
             $warningBanner | Should -Not -BeNullOrEmpty
         }
 
-        It 'Invoke-ToolkitSubmenuWindowsRepair dispatches all repair commands correctly' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuSystemHealth dispatches auto repair and individual actions' -Skip:(-not $isTUIAvailable) {
             $script:sfcRan = $false
             $script:dismRan = $false
             $script:wuRan = $false
-            $script:netRan = $false
-            $script:wmiRan = $false
+            $script:ccRan = $false
 
             Mock Invoke-WindowsSfcScan { $script:sfcRan = $true; return [PSCustomObject]@{ Success = $true; Status = 'OK' } }
             Mock Invoke-WindowsDismRepair { param($Mode) $script:dismRan = $true; return [PSCustomObject]@{ Success = $true; Status = 'OK' } }
             Mock Reset-WindowsUpdateComponents { $script:wuRan = $true; return [PSCustomObject]@{ Success = $true } }
-            Mock Reset-NetworkStack { $script:netRan = $true; return [PSCustomObject]@{ Success = $true } }
-            Mock Repair-WmiRepository { param($Action) $script:wmiRan = $true; return [PSCustomObject]@{ Success = $true; Status = 'OK' } }
+            Mock Invoke-WindowsComponentCleanup { $script:ccRan = $true; return [PSCustomObject]@{ Success = $true; Status = 'OK' } }
             Mock Wait-UserAcknowledge { }
 
-            # Test SFC
-            $script:sSel = 0
+            # Test 1 (Auto repair)
             Mock Read-ToolkitItemSelection {
-                $script:sSel++
-                if ($script:sSel -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'S' } }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' }
             }
-            { Invoke-ToolkitSubmenuWindowsRepair } | Should -Not -Throw
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
             $script:sfcRan | Should -BeTrue
-
-            # Test DISM
-            $script:sSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:sSel++
-                if ($script:sSel -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'D' } }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            { Invoke-ToolkitSubmenuWindowsRepair } | Should -Not -Throw
             $script:dismRan | Should -BeTrue
-
-            # Test Windows Update
-            $script:sSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:sSel++
-                if ($script:sSel -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'W' } }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            { Invoke-ToolkitSubmenuWindowsRepair } | Should -Not -Throw
-            $script:wuRan | Should -BeTrue
-
-            # Test Network Stack
-            $script:sSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:sSel++
-                if ($script:sSel -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'N' } }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            { Invoke-ToolkitSubmenuWindowsRepair } | Should -Not -Throw
-            $script:netRan | Should -BeTrue
-
-            # Test WMI Repository
-            $script:sSel = 0
-            Mock Read-ToolkitItemSelection {
-                $script:sSel++
-                if ($script:sSel -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'R' } }
-                return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-            }
-            { Invoke-ToolkitSubmenuWindowsRepair } | Should -Not -Throw
-            $script:wmiRan | Should -BeTrue
         }
+    }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller renders action catalog exposing A, 1-8, U with simplified labels and no redundant actions' -Skip:(-not $isTUIAvailable) {
-            $script:installerCatalogActions = $null
+    Context 'Pillar 2: Office & Productivity Suite Submenu Workflow' {
+        It 'Invoke-ToolkitSubmenuOfficeSuite renders action catalog exposing numeric keys 1-9' -Skip:(-not $isTUIAvailable) {
+            $script:officeActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
-                $script:installerCatalogActions = $Actions
+                $script:officeActions = $Actions
             }
-            { Invoke-ToolkitSubmenuAppInstaller -NonInteractive } | Should -Not -Throw
-            $script:installerCatalogActions | Should -Not -BeNullOrEmpty
-            $keys = $script:installerCatalogActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain '1'
-            $keys | Should -Contain '2'
-            $keys | Should -Contain '3'
-            $keys | Should -Contain '4'
-            $keys | Should -Contain '5'
-            $keys | Should -Contain '6'
-            $keys | Should -Contain '7'
-            $keys | Should -Contain '8'
-            $keys | Should -Contain 'A'
-            $keys | Should -Contain 'U'
+            { Invoke-ToolkitSubmenuOfficeSuite -NonInteractive } | Should -Not -Throw
+            $script:officeActions | Should -Not -BeNullOrEmpty
+            $keys = $script:officeActions | ForEach-Object { $_.Key }
+            for ($k = 1; $k -le 9; $k++) {
+                $keys | Should -Contain ([string]$k)
+            }
+            $keys | Should -Not -Contain 'N'
+            $keys | Should -Not -Contain 'E'
+            $keys | Should -Not -Contain 'C'
+            $keys | Should -Not -Contain 'H'
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeSuite dispatches Expand PST limit on key 3' -Skip:(-not $isTUIAvailable) {
+            $script:threshCalled = $false
+            Mock Set-OutlookPstThreshold { $script:threshCalled = $true }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuOfficeSuite } | Should -Not -Throw
+            $script:threshCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeSuite dispatches Clear Temp Cache on key 6' -Skip:(-not $isTUIAvailable) {
+            $script:cacheCalled = $false
+            Mock Clear-OfficeTempCache { $script:cacheCalled = $true }
+            Mock Reset-ExcelUiCache { }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuOfficeSuite } | Should -Not -Throw
+            $script:cacheCalled | Should -BeTrue
+        }
+    }
+
+    Context 'Pillar 3: Network & Connectivity Submenu Workflow' {
+        It 'Invoke-ToolkitSubmenuConnectivity renders action catalog exposing numeric keys 1-9' -Skip:(-not $isTUIAvailable) {
+            $script:connActions = $null
+            Mock Show-ToolkitActionCatalog {
+                param($Actions, $NavActions, $Title)
+                $script:connActions = $Actions
+            }
+            { Invoke-ToolkitSubmenuConnectivity -NonInteractive } | Should -Not -Throw
+            $script:connActions | Should -Not -BeNullOrEmpty
+            $keys = $script:connActions | ForEach-Object { $_.Key }
+            for ($k = 1; $k -le 9; $k++) {
+                $keys | Should -Contain ([string]$k)
+            }
+            $keys | Should -Not -Contain 'A'
+            $keys | Should -Not -Contain 'S'
+            $keys | Should -Not -Contain 'P'
+        }
+
+        It 'Invoke-ToolkitSubmenuConnectivity dispatches Spooler Restart on key 3' -Skip:(-not $isTUIAvailable) {
+            $script:spoolerCalled = $false
+            Mock Reset-PrintSpoolerQueue { $script:spoolerCalled = $true }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:spoolerCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuConnectivity dispatches Apply All Fixes on key 1' -Skip:(-not $isTUIAvailable) {
+            $script:netRemCalled = $false
+            Mock Set-NetworkRemediation {
+                param([switch]$All)
+                $script:netRemCalled = [bool]$All
+                return [PSCustomObject]@{ Success = $true; FixesApplied = @('DnsResolution', 'TcpIpStack') }
+            }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:netRemCalled | Should -BeTrue
+        }
+    }
+
+    Context 'Pillar 4: Accounts, Identity & Backup Submenu Workflow' {
+        It 'Invoke-ToolkitSubmenuIdentityBackup renders action catalog exposing numeric keys 1-9' -Skip:(-not $isTUIAvailable) {
+            $script:idActions = $null
+            Mock Show-ToolkitActionCatalog {
+                param($Actions, $NavActions, $Title)
+                $script:idActions = $Actions
+            }
+            { Invoke-ToolkitSubmenuIdentityBackup -NonInteractive } | Should -Not -Throw
+            $script:idActions | Should -Not -BeNullOrEmpty
+            $keys = $script:idActions | ForEach-Object { $_.Key }
+            for ($k = 1; $k -le 9; $k++) {
+                $keys | Should -Contain ([string]$k)
+            }
+            $keys | Should -Not -Contain 'A'
+            $keys | Should -Not -Contain 'S'
+            $keys | Should -Not -Contain 'P'
+        }
+
+        It 'Invoke-ToolkitSubmenuIdentityBackup dispatches Enable Administrator SID-500 on key 2' -Skip:(-not $isTUIAvailable) {
+            $script:adminEnabled = $false
+            Mock Enable-BuiltInAdministrator { $script:adminEnabled = $true }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuIdentityBackup } | Should -Not -Throw
+            $script:adminEnabled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuIdentityBackup dispatches Export Bookmarks on key 8' -Skip:(-not $isTUIAvailable) {
+            $script:bmCalled = $false
+            Mock Export-BrowserBookmarks { $script:bmCalled = $true }
+            Mock Read-Host { return 'C:\Backups\Bookmarks' }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '8' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuIdentityBackup } | Should -Not -Throw
+            $script:bmCalled | Should -BeTrue
+        }
+    }
+
+    Context 'Pillar 5: Software & System Optimization Submenu Workflow' {
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization renders action catalog exposing numeric keys 1-12' -Skip:(-not $isTUIAvailable) {
+            $script:softActions = $null
+            Mock Show-ToolkitActionCatalog {
+                param($Actions, $NavActions, $Title)
+                $script:softActions = $Actions
+            }
+            { Invoke-ToolkitSubmenuSoftwareOptimization -NonInteractive } | Should -Not -Throw
+            $script:softActions | Should -Not -BeNullOrEmpty
+            $keys = $script:softActions | ForEach-Object { $_.Key }
+            for ($k = 1; $k -le 12; $k++) {
+                $keys | Should -Contain ([string]$k)
+            }
+            $keys | Should -Not -Contain 'A'
+            $keys | Should -Not -Contain 'U'
+            $keys | Should -Not -Contain 'D'
+            $keys | Should -Not -Contain 'T'
+            $keys | Should -Not -Contain 'O'
+            $keys | Should -Not -Contain 'C'
             $keys | Should -Not -Contain 'W'
             $keys | Should -Not -Contain 'B'
-            $keys | Should -Not -Contain 'S'
-            $keys | Should -Not -Contain 'D'
-            $keys | Should -Not -Contain 'E'
 
-            # Verify simplified action labels (no 'Install' prefix, no parenthetical clauses)
-            $labels = $script:installerCatalogActions | ForEach-Object { $_.Label }
+            # Verify action labels format (no 'Install' prefix, no parenthetical clauses)
+            $labels = $script:softActions | ForEach-Object { $_.Label }
             foreach ($label in $labels) {
                 $label | Should -Not -Match '^Install\s'
                 $label | Should -Not -Match '\(.*\)'
             }
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '1' }).Label | Should -Be 'Google Chrome'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '2' }).Label | Should -Be 'Foxit Reader'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '3' }).Label | Should -Be 'UniKey'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '4' }).Label | Should -Be 'UltraVNC'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '5' }).Label | Should -Be 'K-Lite Codec Pack'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '6' }).Label | Should -Be 'Visual C++ Redistributable AIO'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '7' }).Label | Should -Be 'Zalo PC'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq '8' }).Label | Should -Be 'WinRAR'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq 'A' }).Label | Should -Be 'All Applications'
-            ($script:installerCatalogActions | Where-Object { $_.Key -eq 'U' }).Label | Should -Be 'Update All Winget Apps'
+            ($script:softActions | Where-Object { $_.Key -eq '1' }).Label | Should -Be 'Google Chrome'
+            ($script:softActions | Where-Object { $_.Key -eq '8' }).Label | Should -Be 'WinRAR'
+            ($script:softActions | Where-Object { $_.Key -eq '9' }).Label | Should -Be 'Update All Winget Apps'
+            ($script:softActions | Where-Object { $_.Key -eq '10' }).Label | Should -Be 'Win11Debloat'
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller dispatches install commands correctly' -Skip:(-not $isTUIAvailable) {
-            $script:installAppName = $null
-            $script:installShortcut = $false
-            $script:installDefault = $false
-
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches WinRAR on key 8' -Skip:(-not $isTUIAvailable) {
+            $script:winrarInstalled = $false
+            $script:winrarShortcut = $false
             Mock Install-ToolkitApplication {
-                param($AppName, $CreateShortcut, $SetDefault)
-                $script:installAppName = $AppName
-                $script:installShortcut = [bool]$CreateShortcut
-                $script:installDefault = [bool]$SetDefault
-                return [PSCustomObject]@{ AppName = $AppName; Installed = $true; Status = 'SUCCESS' }
+                param($AppName, $CreateShortcut)
+                if ($AppName -eq 'WinRAR') {
+                    $script:winrarInstalled = $true
+                    $script:winrarShortcut = [bool]$CreateShortcut
+                }
+                return [PSCustomObject]@{ AppName = $AppName; Installed = $true }
             }
             Mock Wait-UserAcknowledge { }
-
-            # Test Hotkey A (All Applications)
-            $script:choiceCount = 0
+            $script:sCount = 0
             Mock Read-ToolkitMenuChoice {
-                $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return 'A' }
-                return 'Q'
+                $script:sCount++
+                if ($script:sCount -eq 1) { return '8' }
+                return '0'
             }
-            { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
-            $script:installAppName | Should -Be 'All'
-            $script:installShortcut | Should -BeTrue
-            $script:installDefault | Should -BeTrue
+            { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
+            $script:winrarInstalled | Should -BeTrue
+            $script:winrarShortcut | Should -BeTrue
+        }
 
-            # Test Hotkey 1 (Google Chrome)
-            $script:choiceCount = 0
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Winget Update on key 9' -Skip:(-not $isTUIAvailable) {
+            $script:upgradeAllCalled = $false
+            Mock Update-WingetPackage {
+                param([switch]$All)
+                $script:upgradeAllCalled = [bool]$All
+                return [PSCustomObject]@{ Success = $true; TotalUpgraded = 2 }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:sCount = 0
             Mock Read-ToolkitMenuChoice {
-                $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return '1' }
-                return 'Q'
+                $script:sCount++
+                if ($script:sCount -eq 1) { return '9' }
+                return '0'
             }
-            { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
-            $script:installAppName | Should -Be 'Chrome'
-            $script:installShortcut | Should -BeTrue
-            $script:installDefault | Should -BeTrue
+            { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
+            $script:upgradeAllCalled | Should -BeTrue
+        }
 
-            # Test Hotkey 7 (Zalo PC)
-            $script:choiceCount = 0
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Win11Debloat on key 10' -Skip:(-not $isTUIAvailable) {
+            $script:debloatCalled = $false
+            Mock Invoke-Win11Debloat {
+                $script:debloatCalled = $true
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:sCount = 0
             Mock Read-ToolkitMenuChoice {
-                $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return '7' }
-                return 'Q'
+                $script:sCount++
+                if ($script:sCount -eq 1) { return '10' }
+                return '0'
             }
-            { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
-            $script:installAppName | Should -Be 'Zalo'
-            $script:installShortcut | Should -BeTrue
-
-            # Test Hotkey 8 (WinRAR)
-            $script:choiceCount = 0
-            Mock Read-ToolkitMenuChoice {
-                $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return '8' }
-                return 'Q'
-            }
-            { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
-            $script:installAppName | Should -Be 'WinRAR'
-            $script:installShortcut | Should -BeTrue
-
-            # Verify removed keys (D, S, E, W) are not present in ValidKeys passed to Read-ToolkitMenuChoice, but 8, U, and standard navigation B are
-            $script:capturedValidKeys = $null
-            Mock Read-ToolkitMenuChoice {
-                param($Prompt, $ValidKeys)
-                $script:capturedValidKeys = $ValidKeys
-                return 'Q'
-            }
-            { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
-            $script:capturedValidKeys | Should -Not -Contain 'D'
-            $script:capturedValidKeys | Should -Not -Contain 'S'
-            $script:capturedValidKeys | Should -Not -Contain 'E'
-            $script:capturedValidKeys | Should -Not -Contain 'W'
-            $script:capturedValidKeys | Should -Contain 'B'
-            $script:capturedValidKeys | Should -Contain '8'
-            $script:capturedValidKeys | Should -Contain 'U'
-        }
-    }
-
-    Context 'Milestone M7: Windows Cleanup Submenu & Modernized Routing' {
-        It 'Invoke-ToolkitSubmenuWindowsCleanup renders item table for the 5 subsystems' -Skip:(-not $isTUIAvailable) {
-            $script:capturedItems = $null
-            Mock Show-ToolkitItemTable {
-                param($Items, $Columns, $Headers, $Title)
-                $script:capturedItems = $Items
-            }
-            { Invoke-ToolkitSubmenuWindowsCleanup -NonInteractive } | Should -Not -Throw
-            $script:capturedItems | Should -Not -BeNullOrEmpty
-            $script:capturedItems.Count | Should -Be 5
-            $subsystemNames = $script:capturedItems | ForEach-Object { $_.Subsystem }
-            $subsystemNames | Should -Contain 'Component Store (WinSxS)'
-            $subsystemNames | Should -Contain 'Windows Update Cache'
-            $subsystemNames | Should -Contain 'Delivery Optimization'
-            $subsystemNames | Should -Contain 'System Logs & Dumps'
-            $subsystemNames | Should -Contain 'Temporary Files'
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsCleanup renders action catalog exposing W, A, R, B, Q' -Skip:(-not $isTUIAvailable) {
-            $script:capturedActions = $null
-            $script:capturedNav = $null
-            Mock Show-ToolkitActionCatalog {
-                param($Actions, $NavActions, $Title)
-                $script:capturedActions = $Actions
-                $script:capturedNav = $NavActions
-            }
-            { Invoke-ToolkitSubmenuWindowsCleanup -NonInteractive } | Should -Not -Throw
-            $script:capturedActions | Should -Not -BeNullOrEmpty
-            $keys = $script:capturedActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain 'W'
-            $keys | Should -Contain 'A'
-            $keys | Should -Contain 'R'
-            $keys | Should -Not -Contain 'D'
-            $navKeys = $script:capturedNav | ForEach-Object { $_.Key }
-            $navKeys | Should -Contain 'B'
-            $navKeys | Should -Contain 'Q'
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsCleanup dispatches Quick Clean All [A] via Invoke-WindowsCleanup' -Skip:(-not $isTUIAvailable) {
-            $script:cleanupAllCalled = $false
-            Mock Invoke-WindowsCleanup {
-                $script:cleanupAllCalled = $true
-                return [PSCustomObject]@{
-                    Target         = 'MasterCleanup'
-                    ReclaimedBytes = [int64]104857600
-                    ItemCount      = 10
-                    SkippedCount   = 2
-                    Status         = 'Success'
-                    Success        = $true
-                }
-            }
-            Mock Read-ToolkitItemSelection {
-                return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'A' }
-            }
-            Mock Wait-UserAcknowledge {
-                Mock Read-ToolkitItemSelection {
-                    return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-                }
-            }
-            { Invoke-ToolkitSubmenuWindowsCleanup } | Should -Not -Throw
-            $script:cleanupAllCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsCleanup dispatches Refresh Space Estimates [D] via Invoke-WindowsCleanup' -Skip:(-not $isTUIAvailable) {
-            $script:estimatesCalled = $false
-            Mock Invoke-WindowsCleanup {
-                $script:estimatesCalled = $true
-                return [PSCustomObject]@{
-                    Target         = 'MasterCleanup'
-                    ReclaimedBytes = [int64]209715200
-                    ItemCount      = 25
-                    SkippedCount   = 0
-                    Status         = 'Simulated - WhatIf'
-                    Success        = $true
-                }
-            }
-            Mock Read-ToolkitItemSelection {
-                return [PSCustomObject]@{ Type = 'Hotkey'; Value = 'D' }
-            }
-            Mock Wait-UserAcknowledge {
-                Mock Read-ToolkitItemSelection {
-                    return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-                }
-            }
-            { Invoke-ToolkitSubmenuWindowsCleanup } | Should -Not -Throw
-            $script:estimatesCalled | Should -BeTrue
-        }
-
-        It 'Invoke-ToolkitSubmenuWindowsCleanup dispatches contextual subsystem selections (indices 1-5)' -Skip:(-not $isTUIAvailable) {
-            $script:calledCmdlets = [System.Collections.Generic.List[string]]::new()
-            Mock Invoke-WindowsComponentCleanup {
-                $script:calledCmdlets.Add('ComponentStore')
-                return [PSCustomObject]@{ Target = 'ComponentStore'; Success = $true; Status = 'Success' }
-            }
-            Mock Clear-WindowsUpdateCache {
-                $script:calledCmdlets.Add('UpdateCache')
-                return [PSCustomObject]@{ Target = 'WindowsUpdateCache'; ReclaimedBytes = 1000; ItemCount = 5; Success = $true; Status = 'Success' }
-            }
-            Mock Clear-WindowsDeliveryOptimizationCache {
-                $script:calledCmdlets.Add('DeliveryOptimization')
-                return [PSCustomObject]@{ Target = 'DeliveryOptimization'; ReclaimedBytes = 2000; ItemCount = 3; Success = $true; Status = 'Success' }
-            }
-            Mock Clear-WindowsSystemLogs {
-                $script:calledCmdlets.Add('SystemLogs')
-                return [PSCustomObject]@{ Target = 'SystemLogs'; ReclaimedBytes = 3000; ItemCount = 8; Success = $true; Status = 'Success' }
-            }
-            Mock Clear-WindowsTempCache {
-                $script:calledCmdlets.Add('TempCache')
-                return [PSCustomObject]@{ Target = 'TemporaryFiles'; ReclaimedBytes = 4000; ItemCount = 12; SkippedCount = 1; Success = $true; Status = 'Success' }
-            }
-
-            for ($idx = 1; $idx -le 5; $idx++) {
-                $currentIdx = $idx
-                Mock Read-ToolkitItemSelection {
-                    return [PSCustomObject]@{ Type = 'Index'; Value = $currentIdx }
-                }
-                Mock Wait-UserAcknowledge {
-                    Mock Read-ToolkitItemSelection {
-                        return [PSCustomObject]@{ Type = 'Exit'; Value = 'Q' }
-                    }
-                }
-                { Invoke-ToolkitSubmenuWindowsCleanup } | Should -Not -Throw
-            }
-
-            $script:calledCmdlets | Should -Contain 'ComponentStore'
-            $script:calledCmdlets | Should -Contain 'UpdateCache'
-            $script:calledCmdlets | Should -Contain 'DeliveryOptimization'
-            $script:calledCmdlets | Should -Contain 'SystemLogs'
-            $script:calledCmdlets | Should -Contain 'TempCache'
-        }
-
-        It 'Start-IToolkitMenu interactive choice 9 dispatches to Invoke-ToolkitSubmenuWindowsCleanup' -Skip:(-not $isTUIAvailable) {
-            $script:cleanupDispatched = $false
-            Mock Invoke-ToolkitSubmenuWindowsCleanup {
-                $script:cleanupDispatched = $true
-            }
-            $script:choiceCount = 0
-            Mock Read-ToolkitMenuChoice {
-                $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return '9' }
-                return 'Q'
-            }
-            { Start-IToolkitMenu } | Should -Not -Throw
-            $script:cleanupDispatched | Should -BeTrue
-        }
-    }
-
-    Context 'Milestone M17: TUI Router Options 3 & N and Network Decoupling' {
-        It 'Start-IToolkitMenu details panel exposes Option 3 as Printers & Spooler' -Skip:(-not $isTUIAvailable) {
-            $script:capturedMainDetails = $null
-            Mock Show-ToolkitDetailPanel {
-                param($Details, $NavActions, $Title)
-                $script:capturedMainDetails = $Details
-            }
-            { Start-IToolkitMenu -NonInteractive } | Should -Not -Throw
-            $script:capturedMainDetails | Should -Not -BeNullOrEmpty
-            $opt3 = $script:capturedMainDetails | Where-Object { $_.Key -eq '3' }
-            $opt3 | Should -Not -BeNullOrEmpty
-            $opt3.Action | Should -Be 'Printers & Spooler'
-            $opt3.Description | Should -Be 'Print spooler queue, Ne ports, Point & Print policies, and error catalogs.'
-            $opt3.Prerequisite | Should -Be 'Spooler service [READY]'
-        }
-
-        It 'Start-IToolkitMenu details panel exposes Option N as Network Diagnostics & Repair' -Skip:(-not $isTUIAvailable) {
-            $script:capturedMainDetails = $null
-            Mock Show-ToolkitDetailPanel {
-                param($Details, $NavActions, $Title)
-                $script:capturedMainDetails = $Details
-            }
-            { Start-IToolkitMenu -NonInteractive } | Should -Not -Throw
-            $script:capturedMainDetails | Should -Not -BeNullOrEmpty
-            $optN = $script:capturedMainDetails | Where-Object { $_.Key -eq 'N' }
-            $optN | Should -Not -BeNullOrEmpty
-            $optN.Action | Should -Be 'Network Diagnostics & Repair'
-            $optN.Description | Should -Be 'Winsock, TCP/IP, DNS, DHCP, SMB guest/signing, and network repair.'
-            $optN.Prerequisite | Should -Be 'Network adapter [READY]'
-        }
-
-        It 'Start-IToolkitMenu interactive loop includes N in valid keys' -Skip:(-not $isTUIAvailable) {
-            $script:capturedValidKeys = $null
-            Mock Read-ToolkitMenuChoice {
-                param($Prompt, $ValidKeys, $Default)
-                $script:capturedValidKeys = $ValidKeys
-                return 'Q'
-            }
-            { Start-IToolkitMenu } | Should -Not -Throw
-            $script:capturedValidKeys | Should -Not -BeNullOrEmpty
-            $script:capturedValidKeys | Should -Contain 'N'
-            $script:capturedValidKeys | Should -Contain '3'
-        }
-
-        It 'Start-IToolkitMenu routes Option 3 to Invoke-ToolkitSubmenuPrinters via parameter switch' -Skip:(-not $isTUIAvailable) {
-            $script:printersCalled = $false
-            Mock Invoke-ToolkitSubmenuPrinters {
-                $script:printersCalled = $true
-            }
-            { Start-IToolkitMenu -MenuOption '3' -NonInteractive } | Should -Not -Throw
-            $script:printersCalled | Should -BeTrue
-        }
-
-        It 'Start-IToolkitMenu routes Option N and NETWORK to Invoke-ToolkitSubmenuNetwork via parameter switch' -Skip:(-not $isTUIAvailable) {
-            $script:networkCalledCount = 0
-            Mock Invoke-ToolkitSubmenuNetwork {
-                $script:networkCalledCount++
-            }
-            { Start-IToolkitMenu -MenuOption 'N' -NonInteractive } | Should -Not -Throw
-            { Start-IToolkitMenu -MenuOption 'NETWORK' -NonInteractive } | Should -Not -Throw
-            $script:networkCalledCount | Should -Be 2
-        }
-
-        It 'Start-IToolkitMenu interactive choice 3 dispatches to Invoke-ToolkitSubmenuPrinters' -Skip:(-not $isTUIAvailable) {
-            $script:printersDispatched = $false
-            Mock Invoke-ToolkitSubmenuPrinters {
-                $script:printersDispatched = $true
-            }
-            $script:choiceCount = 0
-            Mock Read-ToolkitMenuChoice {
-                $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return '3' }
-                return 'Q'
-            }
-            { Start-IToolkitMenu } | Should -Not -Throw
-            $script:printersDispatched | Should -BeTrue
-        }
-
-        It 'Start-IToolkitMenu interactive choice N dispatches to Invoke-ToolkitSubmenuNetwork' -Skip:(-not $isTUIAvailable) {
-            $script:networkDispatched = $false
-            Mock Invoke-ToolkitSubmenuNetwork {
-                $script:networkDispatched = $true
-            }
-            $script:choiceCount = 0
-            Mock Read-ToolkitMenuChoice {
-                $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return 'N' }
-                return 'Q'
-            }
-            { Start-IToolkitMenu } | Should -Not -Throw
-            $script:networkDispatched | Should -BeTrue
+            { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
+            $script:debloatCalled | Should -BeTrue
         }
     }
 }

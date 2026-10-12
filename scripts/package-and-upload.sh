@@ -108,12 +108,16 @@ for mod in "${MODULES[@]}"; do
     fi
 done
 
+# Ensure clean Logs directory exists in package for diagnostic log retention
+mkdir -p "$CONTENT_DIR/Logs"
+touch "$CONTENT_DIR/Logs/.gitkeep"
+
 # Sanitize staging: remove accidental logs, temps, or backups
 echo "[2/4] Sanitizing package contents..."
 find "$CONTENT_DIR" -type f \( -name "*.log" -o -name "*.tmp" -o -name "*.bak" -o -name "*.orig" -o -name "RegistryBackup_*.reg" -o -name ".DS_Store" -o -name "Thumbs.db" \) -delete 2>/dev/null || true
 
 # Assert no prohibited paths exist
-if find "$CONTENT_DIR" -type d \( -name ".git" -o -name ".agents" -o -name ".codebase-memory" -o -name "Tests" -o -name "Build" -o -name "scripts" -o -name "Logs" -o -name "Backups" \) | grep -q .; then
+if find "$CONTENT_DIR" -type d \( -name ".git" -o -name ".agents" -o -name ".codebase-memory" -o -name "Tests" -o -name "Build" -o -name "scripts" -o -name "Backups" \) | grep -q .; then
     echo "[Error] Security assertion failed: Disallowed development directory found in staging!" >&2
     exit 1
 fi

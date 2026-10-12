@@ -172,7 +172,7 @@ try {
     Write-Host "[2/4] Sanitizing staged package contents..." -ForegroundColor Green
     $stagedItems = Get-ChildItem -Path $targetStageRoot -Recurse -Force
 
-    $prohibitedRegex = '(?i)[\\/](?:\.git|\.agents|\.codebase-memory|Tests|Build|scripts|Logs|Backups|\.idea|\.vscode|\.claude|\.gemini|\.cursor|\.windsurf|\.antigravity|scratch)(?:[\\/]|$)'
+    $prohibitedRegex = '(?i)[\\/](?:\.git|\.agents|\.codebase-memory|Tests|Build|scripts|Backups|\.idea|\.vscode|\.claude|\.gemini|\.cursor|\.windsurf|\.antigravity|scratch)(?:[\\/]|$)'
     $prohibitedFileRegex = '(?i)\.(?:log|tmp|temp|bak|orig|swp|clixml)$|^RegistryBackup_.*\.reg$|^\.DS_Store$|^Thumbs\.db$|^desktop\.ini$'
 
     foreach ($item in $stagedItems) {
@@ -180,6 +180,16 @@ try {
             Write-Host "  - Removing disallowed item from staging: $($item.FullName)" -ForegroundColor Yellow
             Remove-Item -LiteralPath $item.FullName -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    # Ensure clean Logs directory exists in package for diagnostic log retention
+    $logsStageDir = Join-Path -Path $targetStageRoot -ChildPath 'Logs'
+    if (-not (Test-Path -LiteralPath $logsStageDir)) {
+        New-Item -ItemType Directory -Path $logsStageDir -Force | Out-Null
+    }
+    $logsPlaceholder = Join-Path -Path $logsStageDir -ChildPath '.gitkeep'
+    if (-not (Test-Path -LiteralPath $logsPlaceholder)) {
+        Set-Content -Path $logsPlaceholder -Value '' -NoNewline -Force
     }
 
     # Verify zero dev leaks

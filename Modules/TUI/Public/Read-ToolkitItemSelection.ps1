@@ -50,25 +50,22 @@ function Read-ToolkitItemSelection {
         if ($null -eq $rawInput) {
             return [PSCustomObject]@{
                 Type  = 'Exit'
-                Value = 'Q'
+                Value = '0'
             }
         }
 
         $trimmed = $rawInput.Trim()
 
-        # Handle numeric index selection (supports both '1' and bracketed '[1]')
-        $cleanNumber = $trimmed.Trim('[', ']').Trim()
-        $parsedIndex = 0
-        if ([int]::TryParse($cleanNumber, [ref]$parsedIndex)) {
-            if ($parsedIndex -ge 1 -and $parsedIndex -le $MaxIndex) {
-                return [PSCustomObject]@{
-                    Type  = 'Index'
-                    Value = $parsedIndex
-                }
+        # Handle numeric exit key '0' (strictly numeric navigation, no letter aliases)
+        if ($trimmed -eq '0') {
+            return [PSCustomObject]@{
+                Type  = 'Exit'
+                Value = '0'
             }
         }
 
-        # Handle registered action hotkeys (case-insensitive)
+        # Handle registered action hotkeys (purely numeric or alphanumeric)
+        $cleanNumber = $trimmed.Trim('[', ']').Trim()
         if ($null -ne $ValidHotkeys -and $ValidHotkeys.Count -gt 0) {
             $upperTrimmed = $trimmed.ToUpper()
             foreach ($k in $ValidHotkeys) {
@@ -78,20 +75,21 @@ function Read-ToolkitItemSelection {
                         $kStr.Equals($upperTrimmed, [System.StringComparison]::OrdinalIgnoreCase)) {
                         return [PSCustomObject]@{
                             Type  = 'Hotkey'
-                            Value = $upperTrimmed
+                            Value = $kStr
                         }
                     }
                 }
             }
         }
 
-        # Handle standard exit commands
-        if ($trimmed.Equals('Q', [System.StringComparison]::OrdinalIgnoreCase) -or
-            $trimmed.Equals('QUIT', [System.StringComparison]::OrdinalIgnoreCase) -or
-            $trimmed.Equals('EXIT', [System.StringComparison]::OrdinalIgnoreCase)) {
-            return [PSCustomObject]@{
-                Type  = 'Exit'
-                Value = 'Q'
+        # Handle numeric index selection (supports both '1' and bracketed '[1]')
+        $parsedIndex = 0
+        if ([int]::TryParse($cleanNumber, [ref]$parsedIndex)) {
+            if ($MaxIndex -gt 0 -and $parsedIndex -ge 1 -and $parsedIndex -le $MaxIndex) {
+                return [PSCustomObject]@{
+                    Type  = 'Index'
+                    Value = $parsedIndex
+                }
             }
         }
 
@@ -99,10 +97,13 @@ function Read-ToolkitItemSelection {
         if (-not [string]::IsNullOrWhiteSpace($trimmed)) {
             $hint = ''
             if ($null -ne $ValidHotkeys -and $ValidHotkeys.Count -gt 0) {
-                $hint = "1-$MaxIndex, $($ValidHotkeys -join ', ')"
+                $hint = ($ValidHotkeys -join ', ')
+            }
+            elseif ($MaxIndex -gt 0) {
+                $hint = "1-$MaxIndex, 0"
             }
             else {
-                $hint = "1-$MaxIndex, Q"
+                $hint = "0"
             }
             Write-Host "  Invalid selection '$trimmed'. Valid options: $hint" -ForegroundColor Yellow
         }
@@ -111,7 +112,7 @@ function Read-ToolkitItemSelection {
     # Safeguard fallback after 5 attempts
     return [PSCustomObject]@{
         Type  = 'Exit'
-        Value = 'Q'
+        Value = '0'
     }
 }
 

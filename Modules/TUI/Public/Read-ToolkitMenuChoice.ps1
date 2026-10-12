@@ -24,7 +24,7 @@ function Read-ToolkitMenuChoice {
         [string]$Prompt = 'Select',
 
         [Parameter(Mandatory = $false, Position = 1)]
-        [string[]]$ValidKeys = @('1', '2', '3', '4', '5', '6', 'Q'),
+        [string[]]$ValidKeys = @('1', '2', '3', '4', '5', '9', '0'),
 
         [Parameter(Mandatory = $false)]
         [string]$Default

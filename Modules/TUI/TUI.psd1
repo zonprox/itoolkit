@@ -25,16 +25,11 @@
         'Public/Read-ToolkitItemSelection.ps1',
         'Public/Write-ToolkitStatus.ps1',
         'Public/Start-IToolkitMenu.ps1',
-        'Public/Invoke-ToolkitSubmenuAccounts.ps1',
-        'Public/Invoke-ToolkitSubmenuAppInstaller.ps1',
-        'Public/Invoke-ToolkitSubmenuBackup.ps1',
-        'Public/Invoke-ToolkitSubmenuExternalTools.ps1',
-        'Public/Invoke-ToolkitSubmenuOffice.ps1',
-        'Public/Invoke-ToolkitSubmenuOutlook.ps1',
-        'Public/Invoke-ToolkitSubmenuPrinters.ps1',
-        'Public/Invoke-ToolkitSubmenuWindowsRepair.ps1',
-        'Public/Invoke-ToolkitSubmenuWindowsCleanup.ps1',
-        'Public/Invoke-ToolkitSubmenuNetwork.ps1'
+        'Public/Invoke-ToolkitSubmenuSystemHealth.ps1',
+        'Public/Invoke-ToolkitSubmenuOfficeSuite.ps1',
+        'Public/Invoke-ToolkitSubmenuConnectivity.ps1',
+        'Public/Invoke-ToolkitSubmenuIdentityBackup.ps1',
+        'Public/Invoke-ToolkitSubmenuSoftwareOptimization.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -54,6 +49,16 @@
         'Get-ToolkitTelemetryData',
         'Clear-ToolkitTelemetryCache',
         'Get-MainSystemInfoLines',
+        'Get-SystemHealthContextInfoLines',
+        'Invoke-ToolkitSubmenuSystemHealth',
+        'Get-OfficeSuiteContextInfoLines',
+        'Invoke-ToolkitSubmenuOfficeSuite',
+        'Get-ConnectivityContextInfoLines',
+        'Invoke-ToolkitSubmenuConnectivity',
+        'Get-IdentityBackupContextInfoLines',
+        'Invoke-ToolkitSubmenuIdentityBackup',
+        'Get-SoftwareOptimizationContextInfoLines',
+        'Invoke-ToolkitSubmenuSoftwareOptimization',
         'Get-WindowsRepairContextInfoLines',
         'Invoke-ToolkitSubmenuWindowsRepair',
         'Get-AppInstallerContextInfoLines',
@@ -62,11 +67,17 @@
         'Invoke-ToolkitSubmenuWindowsCleanup',
         'Get-NetworkContextInfoLines',
         'Invoke-ToolkitSubmenuNetwork',
+        'Get-AccountsContextInfoLines',
         'Invoke-ToolkitSubmenuAccounts',
+        'Get-BackupContextInfoLines',
         'Invoke-ToolkitSubmenuBackup',
+        'Get-ExternalToolsContextInfoLines',
         'Invoke-ToolkitSubmenuExternalTools',
+        'Get-OfficeContextInfoLines',
         'Invoke-ToolkitSubmenuOffice',
+        'Get-OutlookContextInfoLines',
         'Invoke-ToolkitSubmenuOutlook',
+        'Get-PrintersContextInfoLines',
         'Invoke-ToolkitSubmenuPrinters'
     )
 

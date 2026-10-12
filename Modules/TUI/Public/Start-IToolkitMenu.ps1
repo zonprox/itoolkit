@@ -125,23 +125,16 @@ if (Get-Command -Name 'Write-ToolkitMenuDivider' -CommandType Function -ErrorAct
 function Start-IToolkitMenu {
 <#
 .SYNOPSIS
-    Launches the interactive keyboard-driven main console menu for IToolkit with Tri-Panel UI/UX.
+    Launches the interactive keyboard-driven main console menu for IToolkit with 5 Core Pillars.
 .DESCRIPTION
-    Main console menu engine orchestrating category navigation across all toolkit modules
-    using the standardized Tri-Panel layout (Header Banner, Concise Action Matrix, Details & Prerequisites
-    Panel, and Live Contextual Status & Telemetry Panel):
-    1. Outlook & PST
-    2. Office & Excel
-    3. Printers & Spooler
-    4. User Profile Backup
-    5. Account Admin
-    6. External Tools
-    7. Windows Repair
-    8. Quick App Installer
-    9. Windows Cleanup
-    N. Network Diagnostics & Repair
-    R. Refresh Screen
-    Q. Exit Console
+    Main console menu engine orchestrating category navigation across the 5 Enterprise Core Pillars:
+    1. System Health & Maintenance (Windows Repair & Cleanup)
+    2. Office & Productivity Suite (Office & Outlook Administration)
+    3. Network & Connectivity (Network Diagnostics & Printers)
+    4. Accounts, Identity & Backup (User Accounts, SID -500 & Profile Protection)
+    5. Software & System Optimization (64-Bit App Deployment & Debloat)
+    9. Refresh Screen
+    0. Exit Console
 .PARAMETER ExitImmediately
     Switch to bypass interactive loop and return immediately (used for automated testing).
 .PARAMETER NonInteractive
@@ -175,20 +168,15 @@ function Start-IToolkitMenu {
     }
 
     $mainNav = @(
-        @{ Key = 'R'; Label = 'Refresh Screen' },
-        @{ Key = 'Q'; Label = 'Exit Console' }
+        @{ Key = '9'; Label = 'Refresh Screen' },
+        @{ Key = '0'; Label = 'Exit Console' }
     )
     $mainDetails = @(
-        @{ Key = '1'; Action = 'Outlook & PST'; Description = 'PST/OST discovery, relocation, profile repoints & limits.'; Prerequisite = 'Outlook installed [READY]' },
-        @{ Key = '2'; Action = 'Office & Excel'; Description = 'Hardware acceleration, cache reset, add-ins, GDI audit.'; Prerequisite = 'Office 2013-365 [READY]' },
-        @{ Key = '3'; Action = 'Printers & Spooler'; Description = 'Print spooler queue, Ne ports, Point & Print policies, and error catalogs.'; Prerequisite = 'Spooler service [READY]' },
-        @{ Key = '4'; Action = 'User Profile Backup'; Description = 'User folder sync, Chromium bookmarks, certs & manifests.'; Prerequisite = 'Local drive space [READY]' },
-        @{ Key = '5'; Action = 'Account Admin'; Description = 'Local/domain account management, SID -500, domain health.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '6'; Action = 'External Tools'; Description = 'Browser Debloat, Win11Debloat, network testing.'; Prerequisite = 'Internet access [READY]' },
-        @{ Key = '7'; Action = 'Windows Repair'; Description = 'SFC scan, DISM RestoreHealth, Windows Update & network reset.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
-        @{ Key = '8'; Action = 'Quick App Installer'; Description = 'Silent install UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit, Zalo.'; Prerequisite = 'Internet access [READY]' },
-        @{ Key = '9'; Action = 'Windows Cleanup'; Description = 'Component store, update cache, dumps, DO cache & temp files.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
-        @{ Key = 'N'; Action = 'Network Diagnostics & Repair'; Description = 'Winsock, TCP/IP, DNS, DHCP, SMB guest/signing, and network repair.'; Prerequisite = 'Network adapter [READY]' }
+        @{ Key = '1'; Action = 'System Health & Maintenance'; Description = 'Unified Windows repair, SFC/DISM servicing, update reset, and component store cleanup.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
+        @{ Key = '2'; Action = 'Office & Productivity Suite'; Description = 'Unified Office and Outlook administration, hardware acceleration, add-ins, and PST/OST repair.'; Prerequisite = 'Office installed [READY]' },
+        @{ Key = '3'; Action = 'Network & Connectivity'; Description = 'Unified network configuration, Winsock/DNS reset, SMB policies, print spooler, and printer repair.'; Prerequisite = 'Network adapter [READY]' },
+        @{ Key = '4'; Action = 'Accounts, Identity & Backup'; Description = 'Unified local and domain account administration, SID -500 activation, profile backup, and certs.'; Prerequisite = 'Administrator rights [READY]' },
+        @{ Key = '5'; Action = 'Software & System Optimization'; Description = 'Unified 64-bit silent application deployment, WinRAR, UniKey, winget update, and system debloat.'; Prerequisite = 'Internet access [READY]' }
     )
 
     # If NonInteractive flag is set without MenuOption, display main menu once and return
@@ -212,17 +200,83 @@ function Start-IToolkitMenu {
         }
 
         switch ($MenuOption.ToUpperInvariant()) {
-            '1' { Invoke-ToolkitSubmenuOutlook @subParams }
-            '2' { Invoke-ToolkitSubmenuOffice @subParams }
-            '3' { Invoke-ToolkitSubmenuPrinters @subParams }
-            '4' { Invoke-ToolkitSubmenuBackup @subParams }
-            '5' { Invoke-ToolkitSubmenuAccounts @subParams }
-            '6' { Invoke-ToolkitSubmenuExternalTools @subParams }
-            '7' { Invoke-ToolkitSubmenuWindowsRepair @subParams }
-            '8' { Invoke-ToolkitSubmenuAppInstaller @subParams }
-            '9' { Invoke-ToolkitSubmenuWindowsCleanup @subParams }
-            'N' { Invoke-ToolkitSubmenuNetwork @subParams }
-            'NETWORK' { Invoke-ToolkitSubmenuNetwork @subParams }
+            '1' { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            '2' { Invoke-ToolkitSubmenuOfficeSuite @subParams }
+            '3' {
+                if (Get-Command -Name 'Invoke-ToolkitSubmenuPrinters' -ErrorAction SilentlyContinue) {
+                    Invoke-ToolkitSubmenuPrinters @subParams
+                } else {
+                    Invoke-ToolkitSubmenuConnectivity @subParams
+                }
+            }
+            '4' { Invoke-ToolkitSubmenuIdentityBackup @subParams }
+            '5' { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
+            # Legacy numeric switches
+            '6' { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
+            '7' { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            '8' {
+                if (Get-Command -Name 'Invoke-ToolkitSubmenuAppInstaller' -ErrorAction SilentlyContinue) {
+                    Invoke-ToolkitSubmenuAppInstaller @subParams
+                } else {
+                    Invoke-ToolkitSubmenuSoftwareOptimization @subParams
+                }
+            }
+            '9' { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            'N' {
+                if (Get-Command -Name 'Invoke-ToolkitSubmenuNetwork' -ErrorAction SilentlyContinue) {
+                    Invoke-ToolkitSubmenuNetwork @subParams
+                } else {
+                    Invoke-ToolkitSubmenuConnectivity @subParams
+                }
+            }
+            # Named option aliases
+            'NETWORK'              {
+                if (Get-Command -Name 'Invoke-ToolkitSubmenuNetwork' -ErrorAction SilentlyContinue) {
+                    Invoke-ToolkitSubmenuNetwork @subParams
+                } else {
+                    Invoke-ToolkitSubmenuConnectivity @subParams
+                }
+            }
+            'HEALTH'               { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            'SYSTEMHEALTH'         { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            'REPAIR'               { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            'CLEANUP'              { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            'WINDOWSREPAIR'        { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            'WINDOWSCLEANUP'       { Invoke-ToolkitSubmenuSystemHealth @subParams }
+            'OFFICE'               { Invoke-ToolkitSubmenuOfficeSuite @subParams }
+            'OUTLOOK'              { Invoke-ToolkitSubmenuOfficeSuite @subParams }
+            'OFFICESUITE'          { Invoke-ToolkitSubmenuOfficeSuite @subParams }
+            'CONNECTIVITY'         { Invoke-ToolkitSubmenuConnectivity @subParams }
+            'PRINTERS'             {
+                if (Get-Command -Name 'Invoke-ToolkitSubmenuPrinters' -ErrorAction SilentlyContinue) {
+                    Invoke-ToolkitSubmenuPrinters @subParams
+                } else {
+                    Invoke-ToolkitSubmenuConnectivity @subParams
+                }
+            }
+            'IDENTITY'             { Invoke-ToolkitSubmenuIdentityBackup @subParams }
+            'BACKUP'               { Invoke-ToolkitSubmenuIdentityBackup @subParams }
+            'ACCOUNTS'             { Invoke-ToolkitSubmenuIdentityBackup @subParams }
+            'IDENTITYBACKUP'       { Invoke-ToolkitSubmenuIdentityBackup @subParams }
+            'SOFTWARE'             { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
+            'APPS'                 {
+                if (Get-Command -Name 'Invoke-ToolkitSubmenuAppInstaller' -ErrorAction SilentlyContinue) {
+                    Invoke-ToolkitSubmenuAppInstaller @subParams
+                } else {
+                    Invoke-ToolkitSubmenuSoftwareOptimization @subParams
+                }
+            }
+            'APPINSTALLER'         {
+                if (Get-Command -Name 'Invoke-ToolkitSubmenuAppInstaller' -ErrorAction SilentlyContinue) {
+                    Invoke-ToolkitSubmenuAppInstaller @subParams
+                } else {
+                    Invoke-ToolkitSubmenuSoftwareOptimization @subParams
+                }
+            }
+            'EXTERNALTOOLS'        { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
+            'DEBLOAT'              { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
+            'OPTIMIZATION'         { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
+            'SOFTWAREOPTIMIZATION' { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
             'R' {
                 if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
                     Clear-ToolkitTelemetryCache
@@ -234,6 +288,9 @@ function Start-IToolkitMenu {
                     Clear-ToolkitTelemetryCache
                 }
                 Write-ToolkitStatus -Message "Telemetry cache cleared." -Type 'OK'
+            }
+            '0' {
+                Write-ToolkitStatus -Message "Exiting IToolkit." -Type 'OK'
             }
             'Q' {
                 Write-ToolkitStatus -Message "Exiting IToolkit." -Type 'OK'
@@ -255,41 +312,25 @@ function Start-IToolkitMenu {
         Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -InfoLines $sysInfo
         Show-ToolkitDetailPanel -Details $mainDetails -NavActions $mainNav -Title 'ACTIONS & COMMANDS'
 
-        $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N', 'R', 'Q', 'X') -Default $DefaultSelection
+        $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '9', '0') -Default $DefaultSelection
 
         if ([string]::IsNullOrWhiteSpace($choice)) {
             break
         }
 
-        switch ($choice.ToUpperInvariant()) {
-            '1' { Invoke-ToolkitSubmenuOutlook }
-            '2' { Invoke-ToolkitSubmenuOffice }
-            '3' { Invoke-ToolkitSubmenuPrinters }
-            '4' { Invoke-ToolkitSubmenuBackup }
-            '5' { Invoke-ToolkitSubmenuAccounts }
-            '6' { Invoke-ToolkitSubmenuExternalTools }
-            '7' { Invoke-ToolkitSubmenuWindowsRepair }
-            '8' { Invoke-ToolkitSubmenuAppInstaller }
-            '9' { Invoke-ToolkitSubmenuWindowsCleanup }
-            'N' { Invoke-ToolkitSubmenuNetwork }
-            'R' {
+        switch ($choice) {
+            '1' { Invoke-ToolkitSubmenuSystemHealth }
+            '2' { Invoke-ToolkitSubmenuOfficeSuite }
+            '3' { Invoke-ToolkitSubmenuConnectivity }
+            '4' { Invoke-ToolkitSubmenuIdentityBackup }
+            '5' { Invoke-ToolkitSubmenuSoftwareOptimization }
+            '9' {
                 if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
                     Clear-ToolkitTelemetryCache
                 }
                 continue
             }
-            'REFRESH' {
-                if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
-                    Clear-ToolkitTelemetryCache
-                }
-                continue
-            }
-            'Q' {
-                Write-Host ""
-                Write-ToolkitStatus -Message "Exiting IToolkit. Goodbye!" -Type 'OK'
-                $running = $false
-            }
-            'X' {
+            '0' {
                 Write-Host ""
                 Write-ToolkitStatus -Message "Exiting IToolkit. Goodbye!" -Type 'OK'
                 $running = $false

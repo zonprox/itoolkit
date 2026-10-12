@@ -1686,7 +1686,7 @@ Describe 'Unit: AppInstaller Module' {
             $engineLine | Should -Match '\[STANDALONE DIRECT DOWNLOAD\]'
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller exposes 8, U and removes manual W, B from action catalog' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller exposes 8, 9 and removes manual W, B, U from action catalog' -Skip:(-not $isAppInstallerAvailable) {
             $script:capturedActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
@@ -1696,12 +1696,14 @@ Describe 'Unit: AppInstaller Module' {
             $script:capturedActions | Should -Not -BeNullOrEmpty
             $keys = $script:capturedActions | ForEach-Object { $_.Key }
             $keys | Should -Contain '8'
-            $keys | Should -Contain 'U'
+            $keys | Should -Contain '9'
             $keys | Should -Not -Contain 'W'
             $keys | Should -Not -Contain 'B'
+            $keys | Should -Not -Contain 'U'
+            $keys | Should -Not -Contain 'A'
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller dispatches Update-WingetPackage -All on hotkey U' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller dispatches Update-WingetPackage -All on key 9' -Skip:(-not $isAppInstallerAvailable) {
             $script:upgradeAllCalled = $false
             Mock Update-WingetPackage {
                 param([switch]$All)
@@ -1712,15 +1714,15 @@ Describe 'Unit: AppInstaller Module' {
             $script:uCount = 0
             Mock Read-ToolkitMenuChoice {
                 $script:uCount++
-                if ($script:uCount -eq 1) { return 'U' }
-                return 'Q'
+                if ($script:uCount -eq 1) { return '9' }
+                return '0'
             }
 
             Invoke-ToolkitSubmenuAppInstaller
             $script:upgradeAllCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller dispatches WinRAR installation on hotkey 8' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller dispatches WinRAR installation on key 8' -Skip:(-not $isAppInstallerAvailable) {
             $script:winrarInstalled = $false
             $script:winrarShortcut = $false
             Mock Install-ToolkitApplication {
@@ -1736,7 +1738,7 @@ Describe 'Unit: AppInstaller Module' {
             Mock Read-ToolkitMenuChoice {
                 $script:keyCount++
                 if ($script:keyCount -eq 1) { return '8' }
-                return 'Q'
+                return '0'
             }
 
             Invoke-ToolkitSubmenuAppInstaller
@@ -1744,18 +1746,21 @@ Describe 'Unit: AppInstaller Module' {
             $script:winrarShortcut | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller rejects manual W hotkey from valid keys and includes standard navigation' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller rejects manual W, B hotkeys from valid keys and enforces numeric navigation' -Skip:(-not $isAppInstallerAvailable) {
             $script:capturedValidKeys = $null
             Mock Read-ToolkitMenuChoice {
                 param($Prompt, $ValidKeys)
                 $script:capturedValidKeys = $ValidKeys
-                return 'Q'
+                return '0'
             }
 
             Invoke-ToolkitSubmenuAppInstaller
             $script:capturedValidKeys | Should -Not -Contain 'W'
-            $script:capturedValidKeys | Should -Contain 'B'
+            $script:capturedValidKeys | Should -Not -Contain 'B'
+            $script:capturedValidKeys | Should -Not -Contain 'U'
             $script:capturedValidKeys | Should -Contain '8'
+            $script:capturedValidKeys | Should -Contain '9'
+            $script:capturedValidKeys | Should -Contain '0'
         }
     }
 }

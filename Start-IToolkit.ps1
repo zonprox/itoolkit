@@ -70,6 +70,16 @@ if ([string]::IsNullOrEmpty($scriptDir)) {
     }
 }
 
+# Ensure runtime Logs directory exists for session execution logs
+$runtimeLogDir = Join-Path -Path $scriptDir -ChildPath 'Logs'
+if (-not (Test-Path -LiteralPath $runtimeLogDir)) {
+    try {
+        New-Item -ItemType Directory -Path $runtimeLogDir -Force | Out-Null
+    } catch {
+        $null = $_
+    }
+}
+
 # Helper: Detect administrative privileges
 function Test-IsAdminLocal {
     # If Test-IsAdmin cmdlet is already available in session, use it
