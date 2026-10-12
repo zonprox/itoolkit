@@ -139,7 +139,12 @@ function New-OutlookDataFile {
         }
 
         # 6. Attempt COM Automation
+        $outlookRunningBefore = [bool](Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
         $comApp = $null
+        $ns = $null
+        $stores = $null
+        $store = $null
+        $rootFolder = $null
         $comSuccess = $false
         $comError = $null
 
@@ -174,13 +179,17 @@ function New-OutlookDataFile {
                     if (-not [string]::IsNullOrWhiteSpace($DisplayName)) {
                         try {
                             if ($ns.PSObject.Properties['Stores']) {
-                                foreach ($store in $ns.Stores) {
-                                    if ($store.FilePath -eq $resolvedPath) {
-                                        $rootFolder = $store.GetRootFolder()
-                                        if ($null -ne $rootFolder) {
-                                            $rootFolder.Name = $DisplayName
+                                $stores = $ns.Stores
+                                if ($null -ne $stores) {
+                                    foreach ($s in $stores) {
+                                        if ($s.FilePath -eq $resolvedPath) {
+                                            $store = $s
+                                            $rootFolder = $store.GetRootFolder()
+                                            if ($null -ne $rootFolder) {
+                                                $rootFolder.Name = $DisplayName
+                                            }
+                                            break
                                         }
-                                        break
                                     }
                                 }
                             }
@@ -196,10 +205,26 @@ function New-OutlookDataFile {
             Write-Verbose "COM store addition failed: $comError"
         }
         finally {
-            if ($null -ne $comApp -and [System.Runtime.InteropServices.Marshal]::IsComObject($comApp)) {
+            if ($null -ne $comApp -and -not $outlookRunningBefore) {
                 try {
-                    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($comApp) | Out-Null
+                    $comApp.Quit()
                 } catch { $null = $_ }
+            }
+
+            $objectsToRelease = @($rootFolder, $store, $stores, $ns, $comApp)
+            if (Get-Command -Name 'Remove-ToolkitComObject' -ErrorAction SilentlyContinue) {
+                Remove-ToolkitComObject -ComObjects $objectsToRelease
+            }
+            else {
+                foreach ($obj in $objectsToRelease) {
+                    if ($null -ne $obj -and [System.Runtime.InteropServices.Marshal]::IsComObject($obj)) {
+                        try {
+                            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($obj) | Out-Null
+                        } catch { $null = $_ }
+                    }
+                }
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
             }
         }
 

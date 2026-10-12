@@ -4,7 +4,7 @@ function Write-AppInstallerLog {
     Writes structured log entries for AppInstaller operations.
 .DESCRIPTION
     Delegates to Write-ToolkitLog if available, or appends structured, timestamped
-    log entries to daily log files (logs/IToolkit_yyyyMMdd.log) and emits console output.
+    log entries to daily log files (Logs/IToolkit_yyyyMMdd.log) and emits console output.
 #>
     [CmdletBinding()]
     param(
@@ -31,13 +31,21 @@ function Write-AppInstallerLog {
             if ($null -ne $script:ToolkitLogDirectory -and -not [string]::IsNullOrWhiteSpace($script:ToolkitLogDirectory)) {
                 $targetDir = $script:ToolkitLogDirectory
             } else {
-                $targetDir = Join-Path -Path (Get-Location).Path -ChildPath 'logs'
+                $targetDir = Join-Path -Path (Get-Location).Path -ChildPath 'Logs'
             }
         }
 
         # If Write-ToolkitLog is available, prioritize standard project logger
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-            Write-ToolkitLog -Message $Message -Level $normalizedLevel -Component $Component -LogDirectory $targetDir
+            $logParams = @{
+                Message   = $Message
+                Level     = $normalizedLevel
+                Component = $Component
+            }
+            if (-not [string]::IsNullOrWhiteSpace($LogDirectory)) {
+                $logParams['LogDirectory'] = $targetDir
+            }
+            Write-ToolkitLog @logParams
         } else {
             # Resilient fallback logging directly to persistent daily log file
             $now = Get-Date

@@ -237,6 +237,12 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
     }
 
     Context 'Deep Hardware & System Telemetry Collection & UI/UX' {
+        BeforeEach {
+            if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
+                Clear-ToolkitTelemetryCache
+            }
+        }
+
         It 'Get-MainSystemInfoLines returns formatted array containing all required telemetry sections' -Skip:(-not $isTUIAvailable) {
             $lines = Get-MainSystemInfoLines
             $lines.Count | Should -BeGreaterOrEqual 8
@@ -423,12 +429,14 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         It 'IToolkit root manifest and TUI module export telemetry and layout width cmdlets' -Skip:(-not $isTUIAvailable) {
             $tuiPsd1 = Import-PowerShellDataFile -Path $script:TUIManifest
             $tuiPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitTelemetryData'
+            $tuiPsd1.FunctionsToExport | Should -Contain 'Clear-ToolkitTelemetryCache'
             $tuiPsd1.FunctionsToExport | Should -Contain 'Get-MainSystemInfoLines'
             $tuiPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitLayoutWidth'
             $tuiPsd1.FunctionsToExport | Should -Contain 'Write-ToolkitMenuDivider'
 
             $itoolkitPsd1 = Import-PowerShellDataFile -Path (Join-Path $script:ProjectRoot 'IToolkit.psd1')
             $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitTelemetryData'
+            $itoolkitPsd1.FunctionsToExport | Should -Contain 'Clear-ToolkitTelemetryCache'
             $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-MainSystemInfoLines'
             $itoolkitPsd1.FunctionsToExport | Should -Contain 'Get-ToolkitLayoutWidth'
             $itoolkitPsd1.FunctionsToExport | Should -Contain 'Write-ToolkitMenuDivider'
@@ -532,6 +540,60 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $data.HardwareDisplay | Should -Match 'Micro-Star International Co\., Ltd\. MAG B650 TOMAHAWK WIFI'
         }
 
+        It 'Get-ToolkitTelemetryData caches static hardware specifications across consecutive calls' -Skip:(-not $isTUIAvailable) {
+            Clear-ToolkitTelemetryCache
+            $first = Get-ToolkitTelemetryData
+            $second = Get-ToolkitTelemetryData
+            $second.OSDisplay | Should -Be $first.OSDisplay
+            $second.Architecture | Should -Be $first.Architecture
+            $second.CPUDisplay | Should -Be $first.CPUDisplay
+            $second.HardwareDisplay | Should -Be $first.HardwareDisplay
+            $second.ActiveIPv4 | Should -Be $first.ActiveIPv4
+        }
+
+        It 'Get-ToolkitTelemetryData dynamically samples free RAM and free disk space across consecutive calls' -Skip:(-not $isTUIAvailable) {
+            Clear-ToolkitTelemetryCache
+            $first = Get-ToolkitTelemetryData
+            $second = Get-ToolkitTelemetryData
+            $second.RAMDisplay | Should -Not -BeNullOrEmpty
+            $second.StorageDisplay | Should -Not -BeNullOrEmpty
+            $second.StorageDisplay | Should -Match '^(System Drive|Storage:)'
+        }
+
+        It 'Get-ToolkitTelemetryData -ForceRefresh re-queries and updates cache' -Skip:(-not $isTUIAvailable) {
+            Clear-ToolkitTelemetryCache
+            $first = Get-ToolkitTelemetryData
+            $refreshed = Get-ToolkitTelemetryData -ForceRefresh
+            $refreshed | Should -Not -BeNullOrEmpty
+            $refreshed.OSDisplay | Should -Be $first.OSDisplay
+        }
+
+        It 'Clear-ToolkitTelemetryCache empties the cache and forces fresh hardware detection' -Skip:(-not $isTUIAvailable) {
+            $null = Get-ToolkitTelemetryData
+            { Clear-ToolkitTelemetryCache } | Should -Not -Throw
+            $tuiMod = Get-Module -Name 'TUI'
+            if ($tuiMod) {
+                $cacheVal = & $tuiMod { $script:ToolkitHardwareCache }
+                $cacheVal | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'Consequent calls to Get-ToolkitTelemetryData complete within 200 milliseconds' -Skip:(-not $isTUIAvailable) {
+            Clear-ToolkitTelemetryCache
+            # Warm the cache on the first call
+            $null = Get-ToolkitTelemetryData
+            # Measure consequent call
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            $null = Get-ToolkitTelemetryData
+            $sw.Stop()
+            $elapsed = $sw.Elapsed
+            $elapsed.TotalMilliseconds | Should -BeLessThan 200
+        }
+
+        It 'Show-ToolkitHeader supports -ForceRefresh switch without throwing' -Skip:(-not $isTUIAvailable) {
+            { Show-ToolkitHeader -Title 'Test Latency' -ForceRefresh } | Should -Not -Throw
+        }
+
         It 'Read-ToolkitMenuChoice normalizes multi-word selection prompt variants to concise Select prompt' -Skip:(-not $isTUIAvailable) {
             $script:capturedPrompt = $null
             Mock Read-Host {
@@ -611,6 +673,18 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 [PSCustomObject]@{ Name = 'App3'; State = 'Ready' }
             )
             { Show-ToolkitItemTable -Items $items -Columns @('Name', 'State') -Headers @('APPLICATION', 'CURRENT STATE') } | Should -Not -Throw
+        }
+
+        It 'Renders table without row index column when -NoIndex is specified' -Skip:(-not $isTUIAvailable) {
+            $items = @(
+                [PSCustomObject]@{ Name = 'App1'; State = 'Running' },
+                [PSCustomObject]@{ Name = 'App2'; State = 'Stopped' }
+            )
+            $tableLines = @(Show-ToolkitItemTable -Items $items -Columns @('Name', 'State') -NoIndex -Width 60 6>&1)
+            $tableLines.Count | Should -BeGreaterThan 0
+            foreach ($entry in $tableLines) {
+                [string]$entry | Should -Not -Match '^\s*\|\s*\[\d+\]'
+            }
         }
 
         It 'Handles all standardized status badges ([ENABLED], [DISABLED], [LOCKED], [RUNNING], [STOPPED], [READY], [OK], [WARN], [FAIL])' -Skip:(-not $isTUIAvailable) {
@@ -1398,7 +1472,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:wmiRan | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller renders action catalog exposing A, 1-6, S, D' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller renders action catalog exposing A, 1-7 with simplified labels and no redundant actions' -Skip:(-not $isTUIAvailable) {
             $script:installerCatalogActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
@@ -1407,22 +1481,38 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitSubmenuAppInstaller -NonInteractive } | Should -Not -Throw
             $script:installerCatalogActions | Should -Not -BeNullOrEmpty
             $keys = $script:installerCatalogActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain 'A'
             $keys | Should -Contain '1'
             $keys | Should -Contain '2'
             $keys | Should -Contain '3'
             $keys | Should -Contain '4'
             $keys | Should -Contain '5'
             $keys | Should -Contain '6'
-            $keys | Should -Contain 'S'
-            $keys | Should -Contain 'D'
+            $keys | Should -Contain '7'
+            $keys | Should -Contain 'A'
+            $keys | Should -Not -Contain 'S'
+            $keys | Should -Not -Contain 'D'
+            $keys | Should -Not -Contain 'E'
+
+            # Verify simplified action labels (no 'Install' prefix, no parenthetical clauses)
+            $labels = $script:installerCatalogActions | ForEach-Object { $_.Label }
+            foreach ($label in $labels) {
+                $label | Should -Not -Match '^Install\s'
+                $label | Should -Not -Match '\(.*\)'
+            }
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '1' }).Label | Should -Be 'Google Chrome'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '2' }).Label | Should -Be 'Foxit Reader'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '3' }).Label | Should -Be 'UniKey'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '4' }).Label | Should -Be 'UltraVNC'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '5' }).Label | Should -Be 'K-Lite Codec Pack'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '6' }).Label | Should -Be 'Visual C++ Redistributable AIO'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '7' }).Label | Should -Be 'Zalo PC'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq 'A' }).Label | Should -Be 'All Applications'
         }
 
         It 'Invoke-ToolkitSubmenuAppInstaller dispatches install commands correctly' -Skip:(-not $isTUIAvailable) {
             $script:installAppName = $null
             $script:installShortcut = $false
             $script:installDefault = $false
-            $script:defaultAppTarget = $null
 
             Mock Install-ToolkitApplication {
                 param($AppName, $CreateShortcut, $SetDefault)
@@ -1431,14 +1521,9 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 $script:installDefault = [bool]$SetDefault
                 return [PSCustomObject]@{ AppName = $AppName; Installed = $true; Status = 'SUCCESS' }
             }
-            Mock Set-ToolkitDefaultApplication {
-                param($Application)
-                $script:defaultAppTarget = $Application
-                return @([PSCustomObject]@{ Application = $Application; DefaultSet = $true })
-            }
             Mock Wait-UserAcknowledge { }
 
-            # Test Hotkey A (Install All)
+            # Test Hotkey A (All Applications)
             $script:choiceCount = 0
             Mock Read-ToolkitMenuChoice {
                 $script:choiceCount++
@@ -1450,7 +1535,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:installShortcut | Should -BeTrue
             $script:installDefault | Should -BeTrue
 
-            # Test Hotkey 1 (Install Chrome)
+            # Test Hotkey 1 (Google Chrome)
             $script:choiceCount = 0
             Mock Read-ToolkitMenuChoice {
                 $script:choiceCount++
@@ -1459,16 +1544,31 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
             $script:installAppName | Should -Be 'Chrome'
+            $script:installShortcut | Should -BeTrue
+            $script:installDefault | Should -BeTrue
 
-            # Test Hotkey D (Set Defaults)
+            # Test Hotkey 7 (Zalo PC)
             $script:choiceCount = 0
             Mock Read-ToolkitMenuChoice {
                 $script:choiceCount++
-                if ($script:choiceCount -eq 1) { return 'D' }
+                if ($script:choiceCount -eq 1) { return '7' }
                 return 'Q'
             }
             { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
-            $script:defaultAppTarget | Should -Be 'All'
+            $script:installAppName | Should -Be 'Zalo'
+            $script:installShortcut | Should -BeTrue
+
+            # Verify removed keys (D, S, E) are not present in ValidKeys passed to Read-ToolkitMenuChoice
+            $script:capturedValidKeys = $null
+            Mock Read-ToolkitMenuChoice {
+                param($Prompt, $ValidKeys)
+                $script:capturedValidKeys = $ValidKeys
+                return 'Q'
+            }
+            { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
+            $script:capturedValidKeys | Should -Not -Contain 'D'
+            $script:capturedValidKeys | Should -Not -Contain 'S'
+            $script:capturedValidKeys | Should -Not -Contain 'E'
         }
     }
 

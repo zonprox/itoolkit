@@ -116,6 +116,21 @@ function Write-ToolkitLog {
             }
         }
 
+        # Normalize leaf casing: ensure any path ending with 'logs' (case-insensitive) resolves to 'Logs'
+        if (-not [string]::IsNullOrWhiteSpace($targetLogDir)) {
+            $trimmed = $targetLogDir.TrimEnd('\', '/')
+            $leaf = Split-Path -Path $trimmed -Leaf
+            if ($leaf -eq 'logs') {
+                $parent = Split-Path -Path $trimmed -Parent
+                if ([string]::IsNullOrWhiteSpace($parent)) {
+                    $targetLogDir = 'Logs'
+                }
+                else {
+                    $targetLogDir = Join-Path -Path $parent -ChildPath 'Logs'
+                }
+            }
+        }
+
         # 7. Ensure Directory Exists and Write to File Resiliently
         try {
             if (-not (Test-Path -LiteralPath $targetLogDir)) {

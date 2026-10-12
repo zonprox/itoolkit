@@ -50,6 +50,7 @@
         'Write-ToolkitLog',
         'Format-ToolkitSummary',
         'Show-ToolkitConfirmation',
+        'Remove-ToolkitComObject',
 
         # Outlook & PST/OST Management Services
         'Find-OutlookDataFiles',
@@ -156,6 +157,7 @@
         'Write-ToolkitStatus',
         'Start-IToolkitMenu',
         'Get-ToolkitTelemetryData',
+        'Clear-ToolkitTelemetryCache',
         'Get-MainSystemInfoLines',
         'Get-WindowsRepairContextInfoLines',
         'Invoke-ToolkitSubmenuWindowsRepair',

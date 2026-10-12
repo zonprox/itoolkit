@@ -87,7 +87,14 @@ function Resolve-ToolkitApplicationDownloadUrl {
                 }
 
                 if (-not $primaryUrl) {
-                    $primaryUrl = $stableUrls[$arch]
+                    $key = if ($arch -like '*arm64*') {
+                        'arm64'
+                    } elseif ($arch -like '*32*' -or $arch -like '*86*' -or $arch -eq 'win32') {
+                        'win32'
+                    } else {
+                        'win64'
+                    }
+                    $primaryUrl = $stableUrls[$key]
                     if (-not $primaryUrl) {
                         $primaryUrl = $stableUrls['win64']
                     }
@@ -166,13 +173,26 @@ function Resolve-ToolkitApplicationDownloadUrl {
             }
 
             'UltraVNC' {
-                $primaryUrl = $null
-                $resolvedDynamically = $false
+                $is32 = ($arch -eq 'win32' -or $arch -eq 'x86' -or $arch -like '*32*' -or $arch -like '*86*')
+                if ($is32) {
+                    $primaryUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe'
+                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe')
+                    $fallbacks.Add('https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe')
+                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe')
+                } else {
+                    $primaryUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
+                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe')
+                    $fallbacks.Add('https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe')
+                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe')
+                }
+                $resolvedDynamically = $true
             }
 
             'KLiteCodec' {
-                $primaryUrl = $null
-                $resolvedDynamically = $false
+                $primaryUrl = 'https://files3.codecguide.com/K-Lite_Codec_Pack_1880_Standard.exe'
+                $fallbacks.Add('https://files2.codecguide.com/K-Lite_Codec_Pack_1880_Standard.exe')
+                $fallbacks.Add('https://files1.codecguide.com/K-Lite_Codec_Pack_1880_Standard.exe')
+                $resolvedDynamically = $true
             }
         }
 

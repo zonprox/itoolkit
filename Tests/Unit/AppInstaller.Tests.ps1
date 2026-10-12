@@ -86,6 +86,373 @@ Describe 'Unit: AppInstaller Module' {
             $res.Version | Should -Be '24.10.1'
         }
 
+        It 'Detects Zalo version authoritatively from user uninstall registry DisplayVersion' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo.exe' }
+            Mock Get-Item {
+                return [PSCustomObject]@{
+                    VersionInfo = [PSCustomObject]@{ ProductVersion = '1.0.0' }
+                }
+            } -ParameterFilter { $LiteralPath -like '*Zalo.exe' }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    DisplayName    = 'Zalo'
+                    DisplayVersion = '26.10.10'
+                    PSChildName    = 'Zalo'
+                }
+            } -ParameterFilter { $Path -like 'HKCU:\*' }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Installed | Should -BeTrue
+            $res.Version | Should -Be '26.10.10'
+        }
+
+        It 'Detects Zalo version from FileVersion metadata when ProductVersion is empty' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo.exe' }
+            Mock Get-Item {
+                return [PSCustomObject]@{
+                    VersionInfo = [PSCustomObject]@{
+                        ProductVersion = $null
+                        FileVersion    = '24.10.1.0'
+                    }
+                }
+            } -ParameterFilter { $LiteralPath -like '*Zalo.exe' }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Installed | Should -BeTrue
+            $res.Version | Should -Be '24.10.1.0'
+        }
+
+        It 'Detects Zalo version from active version-specific subdirectory when executable has no version' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo.exe' -or $LiteralPath -like '*Programs*Zalo*' }
+            Mock Get-Item {
+                return [PSCustomObject]@{
+                    VersionInfo = [PSCustomObject]@{ ProductVersion = $null; FileVersion = $null }
+                }
+            }
+            Mock Get-ChildItem {
+                return @(
+                    [PSCustomObject]@{
+                        Name          = 'Zalo-24.10.1'
+                        FullName      = 'C:\Users\User\AppData\Local\Programs\Zalo\Zalo-24.10.1'
+                        LastWriteTime = [DateTime]::UtcNow
+                    }
+                )
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Installed | Should -BeTrue
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Detects Zalo from machine uninstall registry when executable is not present on disk' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    DisplayName     = 'Zalo PC'
+                    DisplayVersion  = '24.10.1'
+                    InstallLocation = 'C:\Program Files\Zalo'
+                    PSChildName     = 'Zalo'
+                }
+            } -ParameterFilter { $Path -like 'HKLM:\*' }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Installed | Should -BeTrue
+            $res.Version | Should -Be '24.10.1'
+            $res.ExecutablePath | Should -Be 'C:\Program Files\Zalo'
+        }
+
+        It 'Picks Zalo version from active version-specific subdirectory over launcher stub version' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo*' }
+            Mock Get-Item {
+                if ($LiteralPath -like '*Zalo-24.10.1*') {
+                    return [PSCustomObject]@{ VersionInfo = [PSCustomObject]@{ ProductVersion = '24.10.1' } }
+                }
+                return [PSCustomObject]@{ VersionInfo = [PSCustomObject]@{ ProductVersion = '1.0.0' } }
+            }
+            Mock Get-ChildItem {
+                return @(
+                    [PSCustomObject]@{
+                        Name          = 'Zalo-24.10.1'
+                        FullName      = 'C:\Users\User\AppData\Local\Programs\Zalo\Zalo-24.10.1'
+                        LastWriteTime = [DateTime]::UtcNow
+                    }
+                )
+            }
+            Mock Get-ItemProperty { return $null }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Selects highest semantic version directory when multiple Zalo version folders exist regardless of timestamp' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo*' }
+            Mock Get-Item {
+                if ($LiteralPath -like '*Zalo-24.10.1*') {
+                    return [PSCustomObject]@{ VersionInfo = [PSCustomObject]@{ ProductVersion = '24.10.1' } }
+                }
+                if ($LiteralPath -like '*Zalo-24.9.2*') {
+                    return [PSCustomObject]@{ VersionInfo = [PSCustomObject]@{ ProductVersion = '24.9.2' } }
+                }
+                return [PSCustomObject]@{ VersionInfo = [PSCustomObject]@{ ProductVersion = $null } }
+            }
+            Mock Get-ChildItem {
+                return @(
+                    [PSCustomObject]@{
+                        Name          = 'Zalo-24.9.2'
+                        FullName      = 'C:\Users\User\AppData\Local\Programs\Zalo\Zalo-24.9.2'
+                        LastWriteTime = (Get-Date).AddDays(1)
+                    },
+                    [PSCustomObject]@{
+                        Name          = 'Zalo-24.10.1'
+                        FullName      = 'C:\Users\User\AppData\Local\Programs\Zalo\Zalo-24.10.1'
+                        LastWriteTime = (Get-Date).AddDays(-5)
+                    }
+                )
+            }
+            Mock Get-ItemProperty { return $null }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Checks machine uninstall registry when user uninstall key has empty DisplayVersion' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                if ($Path -like 'HKCU:\*') {
+                    return [PSCustomObject]@{
+                        DisplayName    = 'Zalo'
+                        DisplayVersion = $null
+                        PSChildName    = 'Zalo'
+                    }
+                }
+                if ($Path -like 'HKLM:\*') {
+                    return [PSCustomObject]@{
+                        DisplayName     = 'Zalo'
+                        DisplayVersion  = '24.10.1'
+                        InstallLocation = 'C:\Program Files\Zalo'
+                        PSChildName     = 'Zalo'
+                    }
+                }
+                return $null
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Extracts version from directory name when executable metadata is 0.0.0.0' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo*' }
+            Mock Get-Item {
+                return [PSCustomObject]@{
+                    VersionInfo = [PSCustomObject]@{ ProductVersion = '0.0.0.0'; FileVersion = '0.0.0.0' }
+                }
+            }
+            Mock Get-ChildItem {
+                return @(
+                    [PSCustomObject]@{
+                        Name          = 'Zalo-24.10.1'
+                        FullName      = 'C:\Users\User\AppData\Local\Programs\Zalo\Zalo-24.10.1'
+                        LastWriteTime = [DateTime]::UtcNow
+                    }
+                )
+            }
+            Mock Get-ItemProperty { return $null }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Does not report Zalo as installed if orphaned registry key has no version, location, or disk files' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    DisplayName     = 'Zalo'
+                    DisplayVersion  = $null
+                    InstallLocation = $null
+                    DisplayIcon     = $null
+                    PSChildName     = 'Zalo'
+                }
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Installed | Should -BeFalse
+        }
+
+        It 'Does not downgrade active subdirectory version with outdated registry version' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo*' }
+            Mock Get-Item {
+                if ($LiteralPath -like '*Zalo-24.10.1*') {
+                    return [PSCustomObject]@{ VersionInfo = [PSCustomObject]@{ ProductVersion = '24.10.1' } }
+                }
+                return [PSCustomObject]@{ VersionInfo = [PSCustomObject]@{ ProductVersion = '1.0.0' } }
+            }
+            Mock Get-ChildItem {
+                return @(
+                    [PSCustomObject]@{
+                        Name          = 'Zalo-24.10.1'
+                        FullName      = 'C:\Users\User\AppData\Local\Programs\Zalo\Zalo-24.10.1'
+                        LastWriteTime = [DateTime]::UtcNow
+                    }
+                )
+            }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    DisplayName    = 'Zalo'
+                    DisplayVersion = '24.5.1'
+                    PSChildName    = 'Zalo'
+                }
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Picks higher version across hives when HKCU is older than HKLM' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                if ($Path -like 'HKCU:\*') {
+                    return [PSCustomObject]@{
+                        DisplayName    = 'Zalo'
+                        DisplayVersion = '24.5.1'
+                        PSChildName    = 'Zalo'
+                    }
+                }
+                if ($Path -like 'HKLM:\*') {
+                    return [PSCustomObject]@{
+                        DisplayName     = 'Zalo'
+                        DisplayVersion  = '24.10.1'
+                        InstallLocation = 'C:\Program Files\Zalo'
+                        PSChildName     = 'Zalo'
+                    }
+                }
+                return $null
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Prefers primary Zalo key and higher version when multiple registry keys exist in same hive' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                return @(
+                    [PSCustomObject]@{
+                        DisplayName    = 'Zalo Crash Reporter'
+                        DisplayVersion = '1.0.0'
+                        PSChildName    = 'ZaloCrash'
+                    },
+                    [PSCustomObject]@{
+                        DisplayName     = 'Zalo'
+                        DisplayVersion  = '24.10.1'
+                        InstallLocation = 'C:\Program Files\Zalo'
+                        PSChildName     = 'Zalo'
+                    }
+                )
+            } -ParameterFilter { $Path -like 'HKCU:\*' }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+            $res.DisplayName | Should -Be 'Zalo'
+        }
+
+        It 'Extracts FileVersion when ProductVersion is 0.0.0.0 on candidate executable' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo*' }
+            Mock Get-Item {
+                return [PSCustomObject]@{
+                    VersionInfo = [PSCustomObject]@{ ProductVersion = '0.0.0.0'; FileVersion = '24.10.1' }
+                }
+            } -ParameterFilter { $LiteralPath -like '*Zalo*' }
+            Mock Get-ChildItem { return @() }
+            Mock Get-ItemProperty { return $null }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
+        It 'Picks primary application entry over helper or crash reporter when neither has DisplayVersion' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                return @(
+                    [PSCustomObject]@{
+                        DisplayName    = 'Zalo Crash Reporter'
+                        DisplayVersion = $null
+                        PSChildName    = 'ZaloCrash'
+                    },
+                    [PSCustomObject]@{
+                        DisplayName     = 'Zalo'
+                        DisplayVersion  = $null
+                        InstallLocation = 'C:\Program Files\Zalo'
+                        PSChildName     = 'Zalo'
+                    }
+                )
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.ExecutablePath | Should -Be 'C:\Program Files\Zalo'
+            $res.Installed | Should -BeTrue
+        }
+
+        It 'Resolves executable when InstallLocation in registry has surrounding quotes' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo.exe' }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    DisplayName     = 'Zalo'
+                    DisplayVersion  = '24.10.1'
+                    InstallLocation = '"C:\Program Files\Zalo"'
+                    PSChildName     = 'Zalo'
+                }
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            ($res.ExecutablePath -replace '[\\/]', '\') | Should -Be 'C:\Program Files\Zalo\Zalo.exe'
+        }
+
+        It 'Compares version with 64-bit timestamp build number without integer overflow' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                if ($Path -like 'HKCU:\*') {
+                    return [PSCustomObject]@{
+                        DisplayName    = 'Zalo'
+                        DisplayVersion = '24.10.202610091230'
+                        PSChildName    = 'Zalo'
+                    }
+                }
+                if ($Path -like 'HKLM:\*') {
+                    return [PSCustomObject]@{
+                        DisplayName    = 'Zalo'
+                        DisplayVersion = '24.10.202610091234'
+                        PSChildName    = 'Zalo'
+                    }
+                }
+                return $null
+            }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.202610091234'
+        }
+
+        It 'Extracts clean semantic version from active directory with trailing non-numeric suffix' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*Zalo*' }
+            Mock Get-Item {
+                return [PSCustomObject]@{
+                    VersionInfo = [PSCustomObject]@{ ProductVersion = '0.0.0.0'; FileVersion = '0.0.0.0' }
+                }
+            }
+            Mock Get-ChildItem {
+                return @(
+                    [PSCustomObject]@{
+                        Name          = 'Zalo-24.10.1-x64'
+                        FullName      = 'C:\Users\User\AppData\Local\Programs\Zalo\Zalo-24.10.1-x64'
+                        LastWriteTime = [DateTime]::UtcNow
+                    }
+                )
+            }
+            Mock Get-ItemProperty { return $null }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'Zalo'
+            $res.Version | Should -Be '24.10.1'
+        }
+
         It 'Queries multiple applications when AppName array is provided' -Skip:(-not $isAppInstallerAvailable) {
             $res = Get-ToolkitInstalledApplication -AppName 'Chrome', 'Zalo'
             $res.Count | Should -Be 2
@@ -349,6 +716,63 @@ Describe 'Unit: AppInstaller Module' {
             $res.Installed | Should -BeTrue
             $res.Status | Should -Be 'OK'
             $script:startProcessInvoked | Should -BeFalse
+        }
+
+        It 'Ensures desktop shortcut is created for already-installed application when -CreateShortcut is specified without -Force' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            $script:startProcessInvoked = $false
+            Mock Start-Process {
+                $script:startProcessInvoked = $true
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+            Mock Get-ToolkitInstalledApplication {
+                return [PSCustomObject]@{
+                    AppName        = 'UniKey'
+                    DisplayName    = 'UniKey Vietnamese Input Method'
+                    Installed      = $true
+                    ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
+                    Version        = '4.6'
+                }
+            }
+            $script:shortcutCreatedWithTarget = $null
+            Mock New-ToolkitDesktopShortcut {
+                param($TargetExecutable, $ShortcutName, $Force)
+                $script:shortcutCreatedWithTarget = $TargetExecutable
+                return [PSCustomObject]@{ Created = $true; ShortcutPath = 'C:\Users\User\Desktop\UniKey.lnk' }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'UniKey' -CreateShortcut
+            $res | Should -Not -BeNullOrEmpty
+            $res.AppName | Should -Be 'UniKey'
+            $res.Installed | Should -BeTrue
+            $res.ShortcutCreated | Should -BeTrue
+            $res.Status | Should -Be 'OK'
+            $script:startProcessInvoked | Should -BeFalse
+            $script:shortcutCreatedWithTarget | Should -Be 'C:\Program Files\UniKey\UniKeyNT.exe'
+        }
+
+        It 'Deploys Chrome extensions when Chrome is already installed' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-ToolkitInstalledApplication {
+                return [PSCustomObject]@{
+                    AppName        = 'Chrome'
+                    DisplayName    = 'Google Chrome'
+                    Installed      = $true
+                    ExecutablePath = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+                    Version        = '120.0.0.0'
+                }
+            }
+            Mock New-ToolkitDesktopShortcut { return [PSCustomObject]@{ Created = $true } }
+            Mock Set-ToolkitDefaultApplication { return @([PSCustomObject]@{ DefaultSet = $true }) }
+            $script:installedChromePolicyCalled = $false
+            Mock Set-ToolkitChromeExtensionPolicy {
+                $script:installedChromePolicyCalled = $true
+                return [PSCustomObject]@{ Configured = $true }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'Chrome'
+            $res.Installed | Should -BeTrue
+            $script:installedChromePolicyCalled | Should -BeTrue
         }
 
         It 'Re-executes installation when -Force is explicitly passed for an already-installed application' -Skip:(-not $isAppInstallerAvailable) {
@@ -748,22 +1172,90 @@ Describe 'Unit: AppInstaller Module' {
             $zaloUrls.FallbackUrls | Should -Contain 'https://res-zaloapp-aka-jpt.zdn.vn/win/ZaloSetup-26.10.10.exe'
         }
 
-        It 'Resolve-ToolkitApplicationDownloadUrl returns null PrimaryUrl and empty fallbacks for UltraVNC and KLiteCodec' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Resolve-ToolkitApplicationDownloadUrl resolves valid non-null URLs for UltraVNC and KLiteCodec' -Skip:(-not $isAppInstallerAvailable) {
             $uvnc = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC'
-            $uvnc.PrimaryUrl | Should -BeNullOrEmpty
-            $uvnc.FallbackUrls.Count | Should -Be 0
+            $uvnc | Should -Not -BeNullOrEmpty
+            $uvnc.PrimaryUrl | Should -Not -BeNullOrEmpty
+            $uvnc.PrimaryUrl | Should -Match '\.exe$'
+            $uvnc.ResolvedDynamically | Should -BeTrue
+            $uvnc.FallbackUrls.Count | Should -BeGreaterThan 0
 
             $klite = 'KLiteCodec' | Resolve-ToolkitApplicationDownloadUrl
-            $klite.PrimaryUrl | Should -BeNullOrEmpty
-            $klite.FallbackUrls.Count | Should -Be 0
+            $klite | Should -Not -BeNullOrEmpty
+            $klite.PrimaryUrl | Should -Not -BeNullOrEmpty
+            $klite.PrimaryUrl | Should -Match '\.exe$'
+            $klite.ResolvedDynamically | Should -BeTrue
+            $klite.FallbackUrls.Count | Should -BeGreaterThan 0
         }
 
-        It 'Install-ToolkitApplication safely skips direct download fallback for applications without binary URLs when winget is unavailable' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Resolve-ToolkitApplicationDownloadUrl resolves UltraVNC with architecture selection for x64 and x86' -Skip:(-not $isAppInstallerAvailable) {
+            $vnc64 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'x64'
+            $vnc64.PrimaryUrl | Should -Match 'X64_Setup\.exe$'
+            $vnc64.FallbackUrls | Should -Contain 'https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
+
+            $vnc32 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'x86'
+            $vnc32.PrimaryUrl | Should -Match 'X86_Setup\.exe$'
+            $vnc32.FallbackUrls | Should -Contain 'https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe'
+
+            $vncWin64 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'win64'
+            $vncWin64.PrimaryUrl | Should -Match 'X64_Setup\.exe$'
+
+            $vncWin32 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'win32'
+            $vncWin32.PrimaryUrl | Should -Match 'X86_Setup\.exe$'
+        }
+
+        It 'Verifies all 7 catalog applications resolve valid installer or archive URLs ending in exe, zip, or msi' -Skip:(-not $isAppInstallerAvailable) {
+            $allApps = @('UniKey', 'Zalo', 'Chrome', 'FoxitReader', 'VCRedistAIO', 'UltraVNC', 'KLiteCodec')
+            foreach ($app in $allApps) {
+                $resolved = Resolve-ToolkitApplicationDownloadUrl -AppName $app
+                $resolved | Should -Not -BeNullOrEmpty
+                $resolved.PrimaryUrl | Should -Not -BeNullOrEmpty
+                $resolved.PrimaryUrl | Should -Match '\.(exe|zip|msi)(\?.*)?$'
+            }
+        }
+
+        It 'Falls back to direct URL download installer for UltraVNC when winget is unavailable' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command {
                 param($Name)
                 if ($Name -eq 'winget') { return $null }
                 return $null
+            }
+            $script:webRequestUri = $null
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $script:webRequestUri = $Uri
+                Set-Content -LiteralPath $OutFile -Value 'MOCK_EXE'
+            }
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+            $script:checkNum = 0
+            Mock Get-ToolkitInstalledApplication {
+                param($AppName)
+                $script:checkNum++
+                if ($script:checkNum -eq 1) {
+                    return [PSCustomObject]@{ AppName = $AppName; DisplayName = $AppName; Installed = $false; ExecutablePath = $null }
+                }
+                return [PSCustomObject]@{ AppName = $AppName; DisplayName = $AppName; Installed = $true; ExecutablePath = 'C:\Tools\UltraVNC\winvnc.exe' }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'UltraVNC' -Force
+            $res.Installed | Should -BeTrue
+            $res.Status | Should -Be 'OK'
+            $script:webRequestUri | Should -Match 'UltraVNC.*\.exe$'
+        }
+
+        It 'Install-ToolkitApplication handles direct download failure gracefully when winget is unavailable' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command {
+                param($Name)
+                if ($Name -eq 'winget') { return $null }
+                return $null
+            }
+            Mock Invoke-WebRequest {
+                throw "Network connection timed out"
             }
             Mock Get-ToolkitInstalledApplication {
                 param($AppName)

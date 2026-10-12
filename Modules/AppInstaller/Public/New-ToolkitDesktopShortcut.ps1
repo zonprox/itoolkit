@@ -52,6 +52,20 @@ function New-ToolkitDesktopShortcut {
         # 1. Resolve Desktop Directory
         $targetDesktop = $DesktopDirectory
         if ([string]::IsNullOrWhiteSpace($targetDesktop)) {
+            $shellKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders'
+            if (Test-Path -LiteralPath $shellKey -ErrorAction SilentlyContinue) {
+                try {
+                    $regProps = Get-ItemProperty -Path $shellKey -ErrorAction SilentlyContinue
+                    if ($regProps -and $regProps.Desktop -and -not [string]::IsNullOrWhiteSpace($regProps.Desktop)) {
+                        $expandedDesktop = [System.Environment]::ExpandEnvironmentVariables([string]$regProps.Desktop)
+                        if (Test-Path -LiteralPath $expandedDesktop -ErrorAction SilentlyContinue) {
+                            $targetDesktop = $expandedDesktop
+                        }
+                    }
+                } catch { $null = $_ }
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($targetDesktop)) {
             $targetDesktop = [Environment]::GetFolderPath('Desktop')
         }
         if ([string]::IsNullOrWhiteSpace($targetDesktop)) {
@@ -101,6 +115,8 @@ function New-ToolkitDesktopShortcut {
         $workingDir = Split-Path -Parent $TargetExecutable
 
         if ($onWindowsHost) {
+            $wsh = $null
+            $link = $null
             try {
                 $wsh = New-Object -ComObject WScript.Shell
                 $link = $wsh.CreateShortcut($shortcutFullPath)
@@ -115,10 +131,24 @@ function New-ToolkitDesktopShortcut {
                     $link.IconLocation = $IconLocation
                 }
                 $link.Save()
-                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($wsh) | Out-Null
             } catch {
                 # Fallback to file creation if COM is restricted
                 Set-Content -LiteralPath $shortcutFullPath -Value "[InternetShortcut]`r`nURL=file:///$TargetExecutable" -Encoding UTF8
+            } finally {
+                $objectsToRelease = @($link, $wsh)
+                if (Get-Command -Name 'Remove-ToolkitComObject' -ErrorAction SilentlyContinue) {
+                    Remove-ToolkitComObject -ComObjects $objectsToRelease
+                } else {
+                    foreach ($obj in $objectsToRelease) {
+                        if ($null -ne $obj -and [System.Runtime.InteropServices.Marshal]::IsComObject($obj)) {
+                            try {
+                                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($obj) | Out-Null
+                            } catch { $null = $_ }
+                        }
+                    }
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                }
             }
         } else {
             # Cross-platform / Linux test runner environment fallback

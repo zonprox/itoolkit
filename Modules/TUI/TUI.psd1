@@ -51,6 +51,7 @@
         'Write-ToolkitStatus',
         'Start-IToolkitMenu',
         'Get-ToolkitTelemetryData',
+        'Clear-ToolkitTelemetryCache',
         'Get-MainSystemInfoLines',
         'Get-WindowsRepairContextInfoLines',
         'Invoke-ToolkitSubmenuWindowsRepair',

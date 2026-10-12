@@ -219,6 +219,18 @@ function Start-IToolkitMenu {
             '7' { Invoke-ToolkitSubmenuWindowsRepair @subParams }
             '8' { Invoke-ToolkitSubmenuAppInstaller @subParams }
             '9' { Invoke-ToolkitSubmenuWindowsCleanup @subParams }
+            'R' {
+                if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
+                    Clear-ToolkitTelemetryCache
+                }
+                Write-ToolkitStatus -Message "Telemetry cache cleared." -Type 'OK'
+            }
+            'REFRESH' {
+                if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
+                    Clear-ToolkitTelemetryCache
+                }
+                Write-ToolkitStatus -Message "Telemetry cache cleared." -Type 'OK'
+            }
             'Q' {
                 Write-ToolkitStatus -Message "Exiting IToolkit." -Type 'OK'
             }
@@ -256,6 +268,15 @@ function Start-IToolkitMenu {
             '8' { Invoke-ToolkitSubmenuAppInstaller }
             '9' { Invoke-ToolkitSubmenuWindowsCleanup }
             'R' {
+                if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
+                    Clear-ToolkitTelemetryCache
+                }
+                continue
+            }
+            'REFRESH' {
+                if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
+                    Clear-ToolkitTelemetryCache
+                }
                 continue
             }
             'Q' {

@@ -109,7 +109,20 @@ function Invoke-ToolkitSubmenuAppInstaller {
         if (Get-Command -Name 'Get-ToolkitInstalledApplication' -ErrorAction SilentlyContinue) {
             try {
                 $rawApps = Get-ToolkitInstalledApplication
+                $standardOrder = @('Chrome', 'FoxitReader', 'UniKey', 'UltraVNC', 'KLiteCodec', 'VCRedistAIO', 'Zalo')
+                $sortedApps = @()
+                foreach ($targetName in $standardOrder) {
+                    $matched = $rawApps | Where-Object { $_.AppName -eq $targetName } | Select-Object -First 1
+                    if ($null -ne $matched) {
+                        $sortedApps += $matched
+                    }
+                }
                 foreach ($app in $rawApps) {
+                    if ($standardOrder -notcontains $app.AppName) {
+                        $sortedApps += $app
+                    }
+                }
+                foreach ($app in $sortedApps) {
                     $statusBadge = if ($app.Installed) { '[INSTALLED]' } else { '[MISSING]' }
                     $exeDisplay = if ($app.ExecutablePath) { Split-Path -Leaf $app.ExecutablePath } else { 'Not Installed' }
                     $appsList += [PSCustomObject]@{
@@ -136,21 +149,18 @@ function Invoke-ToolkitSubmenuAppInstaller {
             )
         }
 
-        Show-ToolkitItemTable -Items $appsList -Columns @('Application', 'Status', 'Executable', 'Version') -Headers @('APPLICATION', 'STATUS', 'EXECUTABLE', 'VERSION') -Title 'Managed Enterprise Application Catalog'
+        Show-ToolkitItemTable -Items $appsList -Columns @('Application', 'Status', 'Executable', 'Version') -Headers @('APPLICATION', 'STATUS', 'EXECUTABLE', 'VERSION') -Title 'Managed Enterprise Application Catalog' -NoIndex
 
         Write-Host ""
         $installerActions = @(
-            @{ Key = 'A'; Label = 'Install All Apps (Full Setup)' },
-            @{ Key = '1'; Label = 'Install Chrome (Set Default)' },
-            @{ Key = '2'; Label = 'Install Foxit Reader (Set Default)' },
-            @{ Key = '3'; Label = 'Install UniKey (Desktop Shortcut)' },
-            @{ Key = '4'; Label = 'Install UltraVNC (Desktop Shortcut)' },
-            @{ Key = '5'; Label = 'Install K-Lite Codec Pack' },
-            @{ Key = '6'; Label = 'Install VC++ Redist AIO' },
-            @{ Key = '7'; Label = 'Install Zalo PC (Desktop Shortcut)' },
-            @{ Key = 'E'; Label = 'Deploy Chrome Extensions (uBlock Lite)' },
-            @{ Key = 'S'; Label = 'Create Desktop Shortcuts' },
-            @{ Key = 'D'; Label = 'Set Default Applications' }
+            @{ Key = '1'; Label = 'Google Chrome' },
+            @{ Key = '2'; Label = 'Foxit Reader' },
+            @{ Key = '3'; Label = 'UniKey' },
+            @{ Key = '4'; Label = 'UltraVNC' },
+            @{ Key = '5'; Label = 'K-Lite Codec Pack' },
+            @{ Key = '6'; Label = 'Visual C++ Redistributable AIO' },
+            @{ Key = '7'; Label = 'Zalo PC' },
+            @{ Key = 'A'; Label = 'All Applications' }
         )
         $navActions = @(
             @{ Key = 'B'; Label = 'Back to Main Menu' },
@@ -163,7 +173,7 @@ function Invoke-ToolkitSubmenuAppInstaller {
             return
         }
 
-        $validKeys = @('A', '1', '2', '3', '4', '5', '6', '7', 'E', 'S', 'D', 'B', 'Q')
+        $validKeys = @('1', '2', '3', '4', '5', '6', '7', 'A', 'B', 'Q')
         $sub = Read-ToolkitMenuChoice -Prompt 'Select Action' -ValidKeys $validKeys
         if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
             $inSubmenu = $false
@@ -267,63 +277,6 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Zalo PC deployment finished." -Type 'OK'
                 } else {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
-                }
-                Wait-UserAcknowledge
-                break
-            }
-            'E' {
-                if (Get-Command -Name 'Set-ToolkitChromeExtensionPolicy' -ErrorAction SilentlyContinue) {
-                    Write-ToolkitStatus -Message "Deploying uBlock Origin Lite extension policy for Chrome..." -Type 'INFO'
-                    $extRes = Set-ToolkitChromeExtensionPolicy
-                    if ($extRes.Configured) {
-                        Write-ToolkitStatus -Message "uBlock Origin Lite enterprise policy applied successfully." -Type 'OK'
-                    } else {
-                        Write-ToolkitStatus -Message "Chrome extension policy could not be verified." -Type 'WARN'
-                    }
-                } elseif (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
-                    Write-ToolkitStatus -Message "Configuring Chrome extension policy via AppInstaller..." -Type 'INFO'
-                    $res = Install-ToolkitApplication -AppName 'Chrome' -ConfigureChromeExtensions
-                    $res | Format-Table -AutoSize
-                    Write-ToolkitStatus -Message "Chrome extension configuration finished." -Type 'OK'
-                } else {
-                    Write-ToolkitStatus -Message "Chrome extension deployment cmdlet not available." -Type 'WARN'
-                }
-                Wait-UserAcknowledge
-                break
-            }
-            'S' {
-                if ((Get-Command -Name 'Get-ToolkitInstalledApplication' -ErrorAction SilentlyContinue) -and
-                    (Get-Command -Name 'New-ToolkitDesktopShortcut' -ErrorAction SilentlyContinue)) {
-                    Write-ToolkitStatus -Message "Creating desktop shortcuts for current user..." -Type 'INFO'
-                    $installedApps = Get-ToolkitInstalledApplication
-                    $shortcutMap = @{
-                        'UniKey'      = 'UniKey.lnk'
-                        'UltraVNC'    = 'UltraVNC Viewer.lnk'
-                        'KLiteCodec'  = 'Media Player Classic.lnk'
-                        'Chrome'      = 'Google Chrome.lnk'
-                        'FoxitReader' = 'Foxit PDF Reader.lnk'
-                        'Zalo'        = 'Zalo.lnk'
-                    }
-                    foreach ($app in $installedApps) {
-                        if ($app.Installed -and $app.ExecutablePath -and $shortcutMap.ContainsKey($app.AppName)) {
-                            New-ToolkitDesktopShortcut -TargetExecutable $app.ExecutablePath -ShortcutName $shortcutMap[$app.AppName] -Force | Out-Null
-                        }
-                    }
-                    Write-ToolkitStatus -Message "Desktop shortcut creation completed." -Type 'OK'
-                } else {
-                    Write-ToolkitStatus -Message "Shortcut creation cmdlets not available." -Type 'WARN'
-                }
-                Wait-UserAcknowledge
-                break
-            }
-            'D' {
-                if (Get-Command -Name 'Set-ToolkitDefaultApplication' -ErrorAction SilentlyContinue) {
-                    Write-ToolkitStatus -Message "Setting default applications (Chrome for Browser, Foxit for PDF)..." -Type 'INFO'
-                    $res = Set-ToolkitDefaultApplication -Application 'All'
-                    $res | Format-Table -AutoSize
-                    Write-ToolkitStatus -Message "Default application configuration completed." -Type 'OK'
-                } else {
-                    Write-ToolkitStatus -Message "Set-ToolkitDefaultApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
                 break

@@ -25,7 +25,8 @@
         'Set-ToolkitRegistryValue',
         'Write-ToolkitLog',
         'Format-ToolkitSummary',
-        'Show-ToolkitConfirmation'
+        'Show-ToolkitConfirmation',
+        'Remove-ToolkitComObject'
     )
 
     CmdletsToExport        = @()

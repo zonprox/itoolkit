@@ -55,6 +55,10 @@ function Install-ToolkitApplication {
             $pubResolve = Join-Path $PSScriptRoot 'Resolve-ToolkitApplicationDownloadUrl.ps1'
             if (Test-Path -LiteralPath $pubResolve) { . $pubResolve }
         }
+        if (-not (Get-Command -Name 'Set-ToolkitChromeExtensionPolicy' -ErrorAction SilentlyContinue)) {
+            $pubExt = Join-Path $PSScriptRoot 'Set-ToolkitChromeExtensionPolicy.ps1'
+            if (Test-Path -LiteralPath $pubExt) { . $pubExt }
+        }
 
         if (-not (Get-PSDrive -Name 'C' -Scope Global -ErrorAction SilentlyContinue)) {
             New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -Scope Global -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
@@ -101,22 +105,24 @@ function Install-ToolkitApplication {
                 ProcessNames         = @('UniKeyNT', 'UniKey')
             }
             'UltraVNC' = @{
-                DisplayName     = 'UltraVNC Remote Support'
-                WingetId        = 'uvnc.UltraVNC'
-                FallbackUrl     = 'https://uvnc.com/'
-                SilentArgs      = '/VERYSILENT /NORESTART'
-                ShortcutName    = 'UltraVNC Viewer.lnk'
-                CanSetDefault   = $false
-                ProcessNames    = @('vncviewer', 'winvnc')
+                DisplayName          = 'UltraVNC Remote Support'
+                WingetId             = 'uvnc.UltraVNC'
+                FallbackUrl          = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
+                AlternateFallbackUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe'
+                SilentArgs           = '/VERYSILENT /NORESTART'
+                ShortcutName         = 'UltraVNC Viewer.lnk'
+                CanSetDefault        = $false
+                ProcessNames         = @('vncviewer', 'winvnc')
             }
             'KLiteCodec' = @{
-                DisplayName     = 'K-Lite Codec Pack'
-                WingetId        = 'CodecGuide.K-LiteCodecPack.Standard'
-                FallbackUrl     = 'https://codecguide.com/'
-                SilentArgs      = '/verysilent /norestart'
-                ShortcutName    = 'Media Player Classic.lnk'
-                CanSetDefault   = $false
-                ProcessNames    = @('mpc-hc64', 'mpc-hc', 'mpc-be64', 'mpc-be')
+                DisplayName          = 'K-Lite Codec Pack'
+                WingetId             = 'CodecGuide.K-LiteCodecPack.Standard'
+                FallbackUrl          = 'https://files3.codecguide.com/K-Lite_Codec_Pack_1880_Standard.exe'
+                AlternateFallbackUrl = 'https://files2.codecguide.com/K-Lite_Codec_Pack_1880_Standard.exe'
+                SilentArgs           = '/verysilent /norestart'
+                ShortcutName         = 'Media Player Classic.lnk'
+                CanSetDefault        = $false
+                ProcessNames         = @('mpc-hc64', 'mpc-hc', 'mpc-be64', 'mpc-be')
             }
             'Chrome' = @{
                 DisplayName     = 'Google Chrome'
@@ -194,12 +200,47 @@ function Install-ToolkitApplication {
 
             if ($installed -and -not $Force) {
                 Write-AppInstallerLog -Message "$($meta.DisplayName) is already installed at '$exePath'. Skipping reinstallation (use -Force to override)." -Level 'INFO' -Component 'Install-ToolkitApplication'
+
+                $shortcutCreated = $false
+                if ($CreateShortcut -and -not [string]::IsNullOrWhiteSpace($meta.ShortcutName) -and -not [string]::IsNullOrWhiteSpace($exePath)) {
+                    try {
+                        Write-AppInstallerLog -Message "Ensuring desktop shortcut '$($meta.ShortcutName)' for already installed $($meta.DisplayName)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                        $shortcutResult = New-ToolkitDesktopShortcut -TargetExecutable $exePath -ShortcutName $meta.ShortcutName -Force
+                        $shortcutCreated = [bool]($shortcutResult.Created -or $shortcutResult.AlreadyExists)
+                        Write-AppInstallerLog -Message "Desktop shortcut configured: $($meta.ShortcutName)" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                    } catch {
+                        Write-AppInstallerLog -Message "Failed to create desktop shortcut for $($meta.DisplayName): $($_.Exception.Message)" -Level 'WARN' -Component 'Install-ToolkitApplication'
+                    }
+                }
+
+                $defaultConfigured = $false
+                if ($SetDefault -and $meta.CanSetDefault -and ($target -eq 'Chrome' -or $target -eq 'FoxitReader') -and -not [string]::IsNullOrWhiteSpace($exePath)) {
+                    try {
+                        $defResult = Set-ToolkitDefaultApplication -Application $target -ExecutablePath $exePath
+                        $defaultConfigured = [bool]($defResult | Where-Object { $_.DefaultSet -eq $true })
+                    } catch {
+                        $null = $_
+                    }
+                }
+
+                if ($target -eq 'Chrome' -and $ConfigureChromeExtensions) {
+                    try {
+                        Write-AppInstallerLog -Message "Deploying Chrome enterprise policy for extension uBlock Origin Lite..." -Level 'INFO' -Component 'Install-ToolkitApplication'
+                        if (Get-Command -Name 'Set-ToolkitChromeExtensionPolicy' -ErrorAction SilentlyContinue) {
+                            Set-ToolkitChromeExtensionPolicy | Out-Null
+                            Write-AppInstallerLog -Message "Chrome enterprise policy for uBlock Origin Lite configured successfully." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                        }
+                    } catch {
+                        Write-AppInstallerLog -Message "Failed to deploy Chrome extension policy: $($_.Exception.Message)" -Level 'WARN' -Component 'Install-ToolkitApplication'
+                    }
+                }
+
                 $results.Add([PSCustomObject]@{
                     AppName           = $target
                     DisplayName       = $meta.DisplayName
                     Installed         = $true
-                    ShortcutCreated   = $false
-                    DefaultConfigured = $false
+                    ShortcutCreated   = $shortcutCreated
+                    DefaultConfigured = $defaultConfigured
                     ExecutablePath    = $exePath
                     Status            = 'OK'
                 })
@@ -356,8 +397,16 @@ function Install-ToolkitApplication {
                                     }
 
                                     Expand-Archive -LiteralPath $downloadedFile -DestinationPath $destDir -Force -ErrorAction Stop
-                                    $expectedExe = if ($meta.TargetExe) { Join-Path $destDir $meta.TargetExe } else { $null }
-                                    if (-not $expectedExe -or (Test-Path -LiteralPath $expectedExe -ErrorAction SilentlyContinue)) {
+                                    $expectedExe = if ($meta.TargetExe) {
+                                        $directExe = Join-Path $destDir $meta.TargetExe
+                                        if (Test-Path -LiteralPath $directExe -ErrorAction SilentlyContinue) {
+                                            $directExe
+                                        } else {
+                                            $foundExe = Get-ChildItem -Path $destDir -Filter $meta.TargetExe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                                            if ($foundExe) { $foundExe.FullName } else { $null }
+                                        }
+                                    } else { $null }
+                                    if (-not $meta.TargetExe -or $expectedExe) {
                                         $installedSuccess = $true
                                         $extracted = $true
                                         Write-AppInstallerLog -Message "Successfully extracted $($meta.DisplayName) archive to '$destDir'." -Level 'INFO' -Component 'Install-ToolkitApplication'
@@ -400,6 +449,10 @@ function Install-ToolkitApplication {
             $postCheck = Get-ToolkitInstalledApplication -AppName $target
             $installed = $postCheck.Installed
             $exePath = $postCheck.ExecutablePath
+            if (-not $exePath -and $expectedExe) {
+                $exePath = $expectedExe
+                $installed = $true
+            }
             if ($installed) {
                 Write-AppInstallerLog -Message "Installation successfully verified for $($meta.DisplayName)." -Level 'SUCCESS' -Component 'Install-ToolkitApplication'
             } else {
@@ -411,7 +464,7 @@ function Install-ToolkitApplication {
             if ($CreateShortcut -and -not [string]::IsNullOrWhiteSpace($meta.ShortcutName) -and -not [string]::IsNullOrWhiteSpace($exePath)) {
                 try {
                     Write-AppInstallerLog -Message "Creating desktop shortcut '$($meta.ShortcutName)' for $($meta.DisplayName)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
-                    $shortcutResult = New-ToolkitDesktopShortcut -TargetExecutable $exePath -ShortcutName $meta.ShortcutName -Force:$Force
+                    $shortcutResult = New-ToolkitDesktopShortcut -TargetExecutable $exePath -ShortcutName $meta.ShortcutName -Force
                     $shortcutCreated = [bool]($shortcutResult.Created -or $shortcutResult.AlreadyExists)
                     Write-AppInstallerLog -Message "Desktop shortcut configured: $($meta.ShortcutName)" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
                 } catch {

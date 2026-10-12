@@ -1,7 +1,7 @@
 # ==============================================================================
 # ExternalTools.Tests.ps1
 # Unit test suite for Modules/ExternalTools (Features 49, 50, 51)
-# Covers: Test-InternetConnectivity, Invoke-BrowserDebloat, Invoke-Win11Debloat.
+# Covers: Test-InternetConnectivity, Invoke-BrowserDebloat, Invoke-Win11Debloat, Invoke-OfficeToolPlus.
 # ==============================================================================
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -65,9 +65,28 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
             $res.Launched | Should -BeFalse
         }
 
+        It 'Invoke-Win11Debloat rejects non-HTTPS URL' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            { Invoke-Win11Debloat -ScriptUrl 'http://raw.githubusercontent.com/script.ps1' } | Should -Throw "*HTTPS*"
+        }
+
+        It 'Invoke-Win11Debloat rejects unapproved domain' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            { Invoke-Win11Debloat -ScriptUrl 'https://unauthorized-domain.com/evil.ps1' } | Should -Throw "*whitelist*"
+        }
+
+        It 'Invoke-Win11Debloat rejects payload with AST syntax errors' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Show-ToolkitConfirmation { return $true }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'function BrokenSyntax {' } }
+
+            { Invoke-Win11Debloat } | Should -Throw "*syntax*"
+        }
+
         It 'Invoke-Win11Debloat launches script when confirmed' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Show-ToolkitConfirmation { return $true }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "Win11Debloat"' } }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $res = Invoke-Win11Debloat
@@ -81,12 +100,23 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
         It 'Invoke-BrowserDebloat checks internet and prompts confirmation before launch' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Show-ToolkitConfirmation { return $true }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "BrowserDebloat"' } }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $res = Invoke-BrowserDebloat
             $res.ToolName | Should -Be 'BrowserDebloat'
             $res.ScriptUrl | Should -Be 'https://debloat.yashg.dev/install.ps1'
             $res.Launched | Should -BeTrue
+        }
+
+        It 'Invoke-BrowserDebloat rejects non-HTTPS URL' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            { Invoke-BrowserDebloat -ScriptUrl 'http://raw.githubusercontent.com/script.ps1' } | Should -Throw "*HTTPS*"
+        }
+
+        It 'Invoke-BrowserDebloat rejects unapproved domain' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            { Invoke-BrowserDebloat -ScriptUrl 'https://unauthorized-domain.com/evil.ps1' } | Should -Throw "*whitelist*"
         }
 
         It 'Invoke-BrowserDebloat supports WhatIf' -Skip:(-not $isExtToolsAvailable) {
@@ -108,6 +138,16 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
             $res.Launched | Should -BeTrue
         }
 
+        It 'Invoke-OfficeToolPlus rejects non-HTTPS URL' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            { Invoke-OfficeToolPlus -ScriptUrl 'http://otp.landian.vip/' } | Should -Throw "*HTTPS*"
+        }
+
+        It 'Invoke-OfficeToolPlus rejects unapproved domain' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            { Invoke-OfficeToolPlus -ScriptUrl 'https://unauthorized-domain.com/' } | Should -Throw "*whitelist*"
+        }
+
         It 'Invoke-OfficeToolPlus aborts if offline' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $false }
             { Invoke-OfficeToolPlus } | Should -Throw
@@ -125,6 +165,24 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
             Mock Test-InternetConnectivity { return $true }
             $res = Invoke-OfficeToolPlus -WhatIf
             $res.Launched | Should -BeFalse
+        }
+    }
+
+    Context 'Submenu Telemetry & Non-Interactive Execution' {
+        It 'Get-ExternalToolsContextInfoLines enumerates all 3 tools' -Skip:(-not $isExtToolsAvailable) {
+            $lines = Get-ExternalToolsContextInfoLines
+            $lines.Count | Should -BeGreaterThan 3
+            ($lines -join "`n") | Should -Match 'Win11Debloat'
+            ($lines -join "`n") | Should -Match 'BrowserDebloat'
+            ($lines -join "`n") | Should -Match 'Office Tool Plus'
+        }
+
+        It 'Invoke-ToolkitSubmenuExternalTools completes cleanly with -NonInteractive' -Skip:(-not $isExtToolsAvailable) {
+            { Invoke-ToolkitSubmenuExternalTools -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuExternalTools exits immediately with -ExitImmediately' -Skip:(-not $isExtToolsAvailable) {
+            { Invoke-ToolkitSubmenuExternalTools -ExitImmediately } | Should -Not -Throw
         }
     }
 }

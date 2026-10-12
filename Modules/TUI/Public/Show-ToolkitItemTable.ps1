@@ -49,7 +49,10 @@ function Show-ToolkitItemTable {
 
         [Parameter(Mandatory = $false)]
         [ValidateRange(0, 300)]
-        [int]$Width = 0
+        [int]$Width = 0,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoIndex
     )
 
     # 1. Determine effective layout width
@@ -160,14 +163,14 @@ function Show-ToolkitItemTable {
     }
 
     # 7. Dynamic Column Width Budgeting
-    $totalCols = 1 + $Columns.Count
+    $totalCols = if ($NoIndex) { $Columns.Count } else { 1 + $Columns.Count }
     $borderOverhead = 3 * $totalCols + 1
 
     $maxIdxStr = "[$($Items.Count)]"
-    $idxColWidth = [math]::Max(5, $maxIdxStr.Length + 2)
+    $idxColWidth = if ($NoIndex) { 0 } else { [math]::Max(5, $maxIdxStr.Length + 2) }
 
     $availContent = $tableWidth - $borderOverhead
-    $availUserWidth = $availContent - $idxColWidth
+    $availUserWidth = if ($NoIndex) { $availContent } else { $availContent - $idxColWidth }
     if ($availUserWidth -lt ($Columns.Count * 4)) {
         $availUserWidth = $Columns.Count * 4
         $tableWidth = $borderOverhead + $idxColWidth + $availUserWidth
@@ -234,7 +237,9 @@ function Show-ToolkitItemTable {
 
     # 8. Build ASCII Borders (+, -, |)
     $borderParts = [System.Collections.Generic.List[string]]::new()
-    $borderParts.Add('-' * ($idxColWidth + 2))
+    if (-not $NoIndex) {
+        $borderParts.Add('-' * ($idxColWidth + 2))
+    }
     for ($c = 0; $c -lt $Columns.Count; $c++) {
         $borderParts.Add('-' * ($colWidths[$c] + 2))
     }
@@ -256,11 +261,15 @@ function Show-ToolkitItemTable {
     # 10. Render Header Row
     Write-Host $tableBorder -ForegroundColor DarkGray
     Write-Host '| ' -ForegroundColor DarkGray -NoNewline
-    $idxHdr = '#'
-    $idxHdrPad = ' ' * ($idxColWidth - $idxHdr.Length)
-    Write-Host "$idxHdr$idxHdrPad" -ForegroundColor DarkCyan -NoNewline
+    if (-not $NoIndex) {
+        $idxHdr = '#'
+        $idxHdrPad = ' ' * ($idxColWidth - $idxHdr.Length)
+        Write-Host "$idxHdr$idxHdrPad" -ForegroundColor DarkCyan -NoNewline
+    }
     for ($c = 0; $c -lt $Columns.Count; $c++) {
-        Write-Host ' | ' -ForegroundColor DarkGray -NoNewline
+        if ($c -gt 0 -or (-not $NoIndex)) {
+            Write-Host ' | ' -ForegroundColor DarkGray -NoNewline
+        }
         $hText = $resolvedHeaders[$c]
         $cWidth = $colWidths[$c]
         if ($hText.Length -gt $cWidth) {
@@ -277,13 +286,17 @@ function Show-ToolkitItemTable {
         $rowItem = $Items[$i]
         Write-Host '| ' -ForegroundColor DarkGray -NoNewline
 
-        $idxText = "[$($i + 1)]"
-        Write-Host $idxText -ForegroundColor Yellow -NoNewline
-        $idxPad = ' ' * ($idxColWidth - $idxText.Length)
-        Write-Host $idxPad -NoNewline
+        if (-not $NoIndex) {
+            $idxText = "[$($i + 1)]"
+            Write-Host $idxText -ForegroundColor Yellow -NoNewline
+            $idxPad = ' ' * ($idxColWidth - $idxText.Length)
+            Write-Host $idxPad -NoNewline
+        }
 
         for ($c = 0; $c -lt $Columns.Count; $c++) {
-            Write-Host ' | ' -ForegroundColor DarkGray -NoNewline
+            if ($c -gt 0 -or (-not $NoIndex)) {
+                Write-Host ' | ' -ForegroundColor DarkGray -NoNewline
+            }
             $cWidth = $colWidths[$c]
             $cellRaw = Get-ToolkitPropertyValue -Object $rowItem -PropertyName $Columns[$c]
 

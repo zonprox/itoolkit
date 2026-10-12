@@ -259,6 +259,37 @@ Describe 'Unit: Core Module Services' {
             $res2 = Show-ToolkitConfirmation -Prompt 'Proceed?' -Default $false
             $res2 | Should -BeFalse
         }
+
+        It 'Write-ToolkitLog normalizes lowercase logs path to PascalCase Logs' -Skip:(-not $isCoreAvailable) {
+            $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+            $subLogs = Join-Path $tempDir 'logs'
+            try {
+                Write-ToolkitLog -Message 'Normalization test' -LogDirectory $subLogs
+                Test-Path -LiteralPath (Join-Path $tempDir 'Logs') | Should -BeTrue
+                Test-Path -LiteralPath (Join-Path $tempDir 'logs') | Should -BeFalse
+            } finally {
+                Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    Context 'Deterministic COM Object Cleanup' {
+        It 'Remove-ToolkitComObject handles null without errors' -Skip:(-not $isCoreAvailable) {
+            { Remove-ToolkitComObject -ComObject $null } | Should -Not -Throw
+        }
+
+        It 'Remove-ToolkitComObject handles non-COM objects gracefully' -Skip:(-not $isCoreAvailable) {
+            $nonCom = [PSCustomObject]@{ Name = 'Test' }
+            { Remove-ToolkitComObject -ComObject $nonCom } | Should -Not -Throw
+        }
+
+        It 'Remove-ToolkitComObject accepts pipeline input' -Skip:(-not $isCoreAvailable) {
+            { @($null, [PSCustomObject]@{ Id = 1 }) | Remove-ToolkitComObject -SkipGarbageCollection } | Should -Not -Throw
+        }
+
+        It 'Remove-ToolkitComObject respects SkipGarbageCollection switch' -Skip:(-not $isCoreAvailable) {
+            { Remove-ToolkitComObject -ComObject $null -SkipGarbageCollection } | Should -Not -Throw
+        }
     }
 
     Context 'Upload Boundary & Production Sanitization' {

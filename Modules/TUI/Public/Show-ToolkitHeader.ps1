@@ -1,3 +1,25 @@
+# In-session hardware telemetry cache variable
+$script:ToolkitHardwareCache = $null
+
+function Clear-ToolkitTelemetryCache {
+    <#
+    .SYNOPSIS
+        Clears the in-session hardware telemetry cache to force fresh hardware detection.
+    .DESCRIPTION
+        Resets the module-scoped $script:ToolkitHardwareCache variable to null,
+        forcing subsequent calls to Get-ToolkitTelemetryData or Show-ToolkitHeader
+        to perform a fresh live hardware and OS probe.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $script:ToolkitHardwareCache = $null
+}
+
+if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Clear-ToolkitTelemetryCache' -Value (Get-Command -Name 'Clear-ToolkitTelemetryCache').ScriptBlock
+}
+
 function Get-ToolkitTelemetryData {
     <#
     .SYNOPSIS
@@ -7,10 +29,23 @@ function Get-ToolkitTelemetryData {
         (CIM Win32_ComputerSystem / Win32_OperatingSystem -> GC fallback), Windows 11 vs 10 build/revision
         (CurrentBuild.UBR & DisplayVersion), BIOS hardware manufacturer and model (Registry -> CIM fallback),
         primary active physical IPv4 address (filtering virtual/loopback), and dynamic system drive metrics.
+        Caches static hardware specifications in session while sampling dynamic memory and storage.
+    .PARAMETER ForceRefresh
+        Forces a fresh live probe of all static hardware and OS metrics, bypassing the in-session cache.
     #>
-        [CmdletBinding()]
-        param()
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [switch]$ForceRefresh
+    )
 
+    if ($ForceRefresh) {
+        $script:ToolkitHardwareCache = $null
+    }
+
+    $isCached = ($null -ne $script:ToolkitHardwareCache)
+
+    if (-not $isCached) {
         # 1. OS & Build Detection (Windows 11 vs Windows 10 resolution with DisplayVersion & UBR)
         $productName = $null
         $displayVer = $null
@@ -181,9 +216,8 @@ function Get-ToolkitTelemetryData {
             $cpuDisplay = "$cpuCount Logical Processors"
         }
 
-        # 3. Physical Installed RAM & Available RAM
+        # 3. Physical Installed Total RAM
         $totalRamGB = $null
-        $availRamGB = $null
 
         try {
             if (Get-Command -Name 'Get-CimInstance' -ErrorAction SilentlyContinue) {
@@ -194,9 +228,6 @@ function Get-ToolkitTelemetryData {
 
                 $cimOs = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($null -ne $cimOs) {
-                    if ($cimOs.FreePhysicalMemory -gt 0) {
-                        $availRamGB = [math]::Round(($cimOs.FreePhysicalMemory * 1KB) / 1GB, 1)
-                    }
                     if ($null -eq $totalRamGB -and $cimOs.TotalVisibleMemorySize -gt 0) {
                         $totalRamGB = [math]::Round(($cimOs.TotalVisibleMemorySize * 1KB) / 1GB, 1)
                     }
@@ -208,17 +239,15 @@ function Get-ToolkitTelemetryData {
         }
 
         # Non-Windows / Linux /proc/meminfo fallback
-        if ($null -eq $totalRamGB -or $null -eq $availRamGB) {
+        if ($null -eq $totalRamGB) {
             try {
                 if (Test-Path -Path '/proc/meminfo' -ErrorAction SilentlyContinue) {
                     $memLines = Get-Content -Path '/proc/meminfo' -ErrorAction SilentlyContinue
                     if ($null -ne $memLines) {
                         foreach ($mLine in $memLines) {
-                            if ($null -eq $totalRamGB -and $mLine -match 'MemTotal:\s+(\d+)\s+kB') {
+                            if ($mLine -match 'MemTotal:\s+(\d+)\s+kB') {
                                 $totalRamGB = [math]::Round(([double]$Matches[1] * 1KB) / 1GB, 1)
-                            }
-                            elseif ($null -eq $availRamGB -and $mLine -match 'MemAvailable:\s+(\d+)\s+kB') {
-                                $availRamGB = [math]::Round(([double]$Matches[1] * 1KB) / 1GB, 1)
+                                break
                             }
                         }
                     }
@@ -239,16 +268,6 @@ function Get-ToolkitTelemetryData {
             catch {
                 $null = $_
             }
-        }
-
-        if ($null -ne $totalRamGB -and $null -ne $availRamGB) {
-            $ramDisplay = "RAM: ${totalRamGB} GB (${availRamGB} GB Free)"
-        }
-        elseif ($null -ne $totalRamGB) {
-            $ramDisplay = "RAM: ${totalRamGB} GB"
-        }
-        else {
-            $ramDisplay = "RAM: Available"
         }
 
         # 4. Device Manufacturer & Model (BIOS Registry -> CIM fallback)
@@ -487,23 +506,97 @@ function Get-ToolkitTelemetryData {
             $primaryIp = '127.0.0.1'
         }
 
-        # 6. Dynamic System Drive Storage
-        $driveInfo = "Storage: System Drive"
-        try {
-            $sysDriveName = $env:SystemDrive
-            if ([string]::IsNullOrWhiteSpace($sysDriveName)) {
-                if ($null -ne $env:SystemRoot -and $env:SystemRoot.Length -ge 2 -and $env:SystemRoot[1] -eq ':') {
-                    $sysDriveName = $env:SystemRoot.Substring(0, 2)
-                }
-                elseif ($null -ne $env:windir -and $env:windir.Length -ge 2 -and $env:windir[1] -eq ':') {
-                    $sysDriveName = $env:windir.Substring(0, 2)
+        # 6. Resolve System Drive Name
+        $sysDriveName = $env:SystemDrive
+        if ([string]::IsNullOrWhiteSpace($sysDriveName)) {
+            if ($null -ne $env:SystemRoot -and $env:SystemRoot.Length -ge 2 -and $env:SystemRoot[1] -eq ':') {
+                $sysDriveName = $env:SystemRoot.Substring(0, 2)
+            }
+            elseif ($null -ne $env:windir -and $env:windir.Length -ge 2 -and $env:windir[1] -eq ':') {
+                $sysDriveName = $env:windir.Substring(0, 2)
+            }
+            else {
+                if ([System.IO.Path]::DirectorySeparatorChar -eq '/') {
+                    $sysDriveName = '/'
                 }
                 else {
                     $sysDriveName = 'C:'
                 }
             }
+        }
 
-            $allDrives = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady }
+        # Store static metrics in session cache
+        $script:ToolkitHardwareCache = [PSCustomObject]@{
+            OSDisplay       = $osDisplay
+            Architecture    = if ($osArch -match '^\d+-bit$') { $osArch } else { "${osArch}-bit" }
+            CPUDisplay      = $cpuDisplay
+            TotalRamGB      = $totalRamGB
+            HardwareDisplay = $hwDisplay
+            ActiveIPv4      = $primaryIp
+            SystemDriveName = $sysDriveName
+        }
+    }
+
+    # Retrieve cached static metrics
+    $cached = $script:ToolkitHardwareCache
+    $osDisplay = $cached.OSDisplay
+    $osArch = $cached.Architecture
+    $cpuDisplay = $cached.CPUDisplay
+    $totalRamGB = $cached.TotalRamGB
+    $hwDisplay = $cached.HardwareDisplay
+    $primaryIp = $cached.ActiveIPv4
+    $sysDriveName = $cached.SystemDriveName
+
+    # Dynamic Metric 1: Available Free RAM
+    $availRamGB = $null
+    try {
+        if (Get-Command -Name 'Get-CimInstance' -ErrorAction SilentlyContinue) {
+            $cimOs = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -ne $cimOs -and $cimOs.FreePhysicalMemory -gt 0) {
+                $availRamGB = [math]::Round(($cimOs.FreePhysicalMemory * 1KB) / 1GB, 1)
+            }
+        }
+    }
+    catch {
+        $null = $_
+    }
+
+    # Non-Windows / Linux /proc/meminfo fallback
+    if ($null -eq $availRamGB) {
+        try {
+            if (Test-Path -Path '/proc/meminfo' -ErrorAction SilentlyContinue) {
+                $memLines = Get-Content -Path '/proc/meminfo' -ErrorAction SilentlyContinue
+                if ($null -ne $memLines) {
+                    foreach ($mLine in $memLines) {
+                        if ($mLine -match 'MemAvailable:\s+(\d+)\s+kB') {
+                            $availRamGB = [math]::Round(([double]$Matches[1] * 1KB) / 1GB, 1)
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            $null = $_
+        }
+    }
+
+    if ($null -ne $totalRamGB -and $null -ne $availRamGB) {
+        $ramDisplay = "RAM: ${totalRamGB} GB (${availRamGB} GB Free)"
+    }
+    elseif ($null -ne $totalRamGB) {
+        $ramDisplay = "RAM: ${totalRamGB} GB"
+    }
+    else {
+        $ramDisplay = "RAM: Available"
+    }
+
+    # Dynamic Metric 2: System Drive Storage
+    $driveInfo = "Storage: System Drive"
+    try {
+        $allDrives = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady }
+        $targetDrive = $null
+        if ($null -ne $allDrives) {
             $targetDrive = $allDrives | Where-Object {
                 $_.Name -like "$sysDriveName*" -or $_.RootDirectory.FullName -like "$sysDriveName*"
             } | Select-Object -First 1
@@ -514,38 +607,39 @@ function Get-ToolkitTelemetryData {
             if ($null -eq $targetDrive) {
                 $targetDrive = $allDrives | Select-Object -First 1
             }
+        }
 
-            if ($null -ne $targetDrive) {
-                try {
-                    $freeBytes = $targetDrive.AvailableFreeSpace
-                    $totalBytes = $targetDrive.TotalSize
-                    $freeGB = [math]::Round($freeBytes / 1GB, 1)
-                    $totalGB = [math]::Round($totalBytes / 1GB, 1)
-                    $pctFree = 0
-                    if ($totalBytes -gt 0) {
-                        $pctFree = [math]::Round(($freeBytes / $totalBytes) * 100, 0)
-                    }
-                    $driveInfo = "System Drive ($($targetDrive.Name)) ${freeGB} GB Free / ${totalGB} GB Total (${pctFree}% Free)"
+        if ($null -ne $targetDrive) {
+            try {
+                $freeBytes = $targetDrive.AvailableFreeSpace
+                $totalBytes = $targetDrive.TotalSize
+                $freeGB = [math]::Round($freeBytes / 1GB, 1)
+                $totalGB = [math]::Round($totalBytes / 1GB, 1)
+                $pctFree = 0
+                if ($totalBytes -gt 0) {
+                    $pctFree = [math]::Round(($freeBytes / $totalBytes) * 100, 0)
                 }
-                catch {
-                    $driveInfo = "System Drive ($($targetDrive.Name)) Ready"
-                }
+                $driveInfo = "System Drive ($($targetDrive.Name)) ${freeGB} GB Free / ${totalGB} GB Total (${pctFree}% Free)"
+            }
+            catch {
+                $driveInfo = "System Drive ($($targetDrive.Name)) Ready"
             }
         }
-        catch {
-            $null = $_
-        }
-
-        return [PSCustomObject]@{
-            OSDisplay       = $osDisplay
-            Architecture    = "${osArch}-bit"
-            CPUDisplay      = $cpuDisplay
-            RAMDisplay      = $ramDisplay
-            HardwareDisplay = $hwDisplay
-            ActiveIPv4      = $primaryIp
-            StorageDisplay  = $driveInfo
-        }
     }
+    catch {
+        $null = $_
+    }
+
+    return [PSCustomObject]@{
+        OSDisplay       = $osDisplay
+        Architecture    = if ($osArch -match '^\d+-bit$') { $osArch } else { "${osArch}-bit" }
+        CPUDisplay      = $cpuDisplay
+        RAMDisplay      = $ramDisplay
+        HardwareDisplay = $hwDisplay
+        ActiveIPv4      = $primaryIp
+        StorageDisplay  = $driveInfo
+    }
+}
 
 if (Get-Command -Name 'Get-ToolkitTelemetryData' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Get-ToolkitTelemetryData' -Value (Get-Command -Name 'Get-ToolkitTelemetryData').ScriptBlock
@@ -575,6 +669,8 @@ function Show-ToolkitHeader {
     Switch to clear host screen before drawing the banner.
 .PARAMETER NoSystemInfo
     Switch to omit the system info status bar.
+.PARAMETER ForceRefresh
+    Forces a fresh live probe of hardware and OS telemetry, bypassing the in-session cache.
 .PARAMETER InfoLines
     Array of diagnostic information lines to render inside the banner box.
 .EXAMPLE
@@ -597,6 +693,9 @@ function Show-ToolkitHeader {
 
         [Parameter(Mandatory = $false)]
         [switch]$NoSystemInfo,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$ForceRefresh,
 
         [Parameter(Mandatory = $false)]
         [string[]]$InfoLines
@@ -806,7 +905,7 @@ function Show-ToolkitHeader {
 
         # Deep telemetry summary line (OS & Hardware Platform)
         try {
-            $telemetry = Get-ToolkitTelemetryData
+            $telemetry = Get-ToolkitTelemetryData -ForceRefresh:$ForceRefresh
             if ($null -ne $telemetry) {
                 $platParts = [System.Collections.Generic.List[string]]::new()
                 if (-not [string]::IsNullOrWhiteSpace($telemetry.OSDisplay)) {

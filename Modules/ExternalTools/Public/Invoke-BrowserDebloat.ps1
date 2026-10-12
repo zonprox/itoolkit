@@ -11,7 +11,10 @@ function Invoke-BrowserDebloat {
 #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([PSCustomObject])]
-    param()
+    param(
+        [Parameter(Mandatory = $false, Position = 0)]
+        [string]$ScriptUrl = 'https://debloat.yashg.dev/install.ps1'
+    )
 
     process {
         # 1. Pre-Flight Internet Connectivity Check
@@ -20,28 +23,57 @@ function Invoke-BrowserDebloat {
             throw "Pre-flight check failed: Internet connectivity is required to download and execute Browser Debloat."
         }
 
-        # 2. Target URL
-        $scriptUrl = 'https://debloat.yashg.dev/install.ps1'
+        # 2. HTTPS Protocol Enforcement
+        if ([string]::IsNullOrWhiteSpace($ScriptUrl) -or -not ($ScriptUrl.StartsWith('https://', [System.StringComparison]::OrdinalIgnoreCase))) {
+            throw "Security validation failed: ScriptUrl must use HTTPS protocol ('$ScriptUrl')."
+        }
 
-        # 3. WhatIf / ShouldProcess Evaluation
-        if (-not $PSCmdlet.ShouldProcess("BrowserDebloat ($scriptUrl)", "Download and execute external browser debloat utility")) {
+        # 3. Domain Whitelist Verification
+        $targetUri = $null
+        try {
+            $targetUri = [System.Uri]$ScriptUrl
+        } catch {
+            throw "Security validation failed: Invalid ScriptUrl format ('$ScriptUrl')."
+        }
+
+        $allowedDomains = @(
+            'raw.githubusercontent.com',
+            'github.com',
+            'otp.landian.vip',
+            'debloat.yashg.dev'
+        )
+
+        $domainAllowed = $false
+        foreach ($d in $allowedDomains) {
+            if ($targetUri.Host -eq $d -or $targetUri.Host.EndsWith(".$d", [System.StringComparison]::OrdinalIgnoreCase)) {
+                $domainAllowed = $true
+                break
+            }
+        }
+
+        if (-not $domainAllowed) {
+            throw "Security validation failed: Domain '$($targetUri.Host)' is not permitted by domain whitelist."
+        }
+
+        # 4. WhatIf / ShouldProcess Evaluation
+        if (-not $PSCmdlet.ShouldProcess("BrowserDebloat ($ScriptUrl)", "Download and execute external browser debloat utility")) {
             return [PSCustomObject]@{
                 ToolName  = 'BrowserDebloat'
-                ScriptUrl = $scriptUrl
+                ScriptUrl = $ScriptUrl
                 Launched  = $false
                 ExitCode  = $null
             }
         }
 
-        # 4. Mandatory User Confirmation Prompt
+        # 5. Mandatory User Confirmation Prompt
         $confirmed = $false
         if (Get-Command -Name 'Show-ToolkitConfirmation' -ErrorAction SilentlyContinue) {
-            $confirmed = Show-ToolkitConfirmation -Prompt "Browser Debloat will execute external code from $scriptUrl. Proceed?" -Default $false
+            $confirmed = Show-ToolkitConfirmation -Prompt "Browser Debloat will execute external code from $ScriptUrl. Proceed?" -Default $false
         } else {
             try {
                 if ($Host -and $Host.UI -and $Host.UI.PromptForChoice) {
                     $caption = "Security Confirmation Required"
-                    $message = "Browser Debloat will download and execute external code from $scriptUrl. Do you want to proceed?"
+                    $message = "Browser Debloat will download and execute external code from $ScriptUrl. Do you want to proceed?"
                     $choices = @(
                         [System.Management.Automation.Host.ChoiceDescription]::new('&Yes', 'Execute external script'),
                         [System.Management.Automation.Host.ChoiceDescription]::new('&No', 'Cancel execution')
@@ -62,32 +94,67 @@ function Invoke-BrowserDebloat {
             }
             return [PSCustomObject]@{
                 ToolName  = 'BrowserDebloat'
-                ScriptUrl = $scriptUrl
+                ScriptUrl = $ScriptUrl
                 Launched  = $false
                 ExitCode  = $null
             }
         }
 
-        # 5. Launch Process safely without Invoke-Expression
+        # 6. Secure Temporary File Staging & AST Syntax Pre-Validation
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-            Write-ToolkitLog -Message "Launching Browser Debloat from $scriptUrl..." -Level 'INFO' -Component 'Invoke-BrowserDebloat'
+            Write-ToolkitLog -Message "Downloading and validating Browser Debloat from $ScriptUrl..." -Level 'INFO' -Component 'Invoke-BrowserDebloat'
         }
 
-        $commandPayload = "& { [scriptblock]::Create((Invoke-RestMethod '$scriptUrl')).Invoke() }"
-        $processArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"$commandPayload`""
+        $tempScript = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("IToolkit_BrowserDebloat_" + [System.Guid]::NewGuid().ToString('N') + ".ps1")
+        try {
+            $rawContent = $null
+            $webResp = Invoke-WebRequest -Uri $ScriptUrl -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
+            if ($webResp -is [string]) {
+                $rawContent = $webResp
+            } elseif ($null -ne $webResp.PSObject.Properties['Content']) {
+                $rawContent = [string]$webResp.Content
+            } else {
+                $rawContent = [string]$webResp
+            }
 
-        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $processArgs -Wait -PassThru -ErrorAction Stop
+            if ([string]::IsNullOrWhiteSpace($rawContent)) {
+                throw "Downloaded payload from '$ScriptUrl' is empty."
+            }
 
-        $exitCode = 0
-        if ($null -ne $proc -and $proc.PSObject.Properties['ExitCode'] -and $null -ne $proc.ExitCode) {
-            $exitCode = $proc.ExitCode
+            # Safety check: reject HTML landing pages
+            if ($rawContent -match '(?i)^\s*<!DOCTYPE\s+html' -or $rawContent -match '(?i)^\s*<html') {
+                throw "Remote endpoint returned HTML content instead of an executable script."
+            }
+
+            # AST syntax pre-validation (must have 0 parse errors)
+            $tokens = $null
+            $parseErrors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseInput($rawContent, [ref]$tokens, [ref]$parseErrors)
+            if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
+                throw "Remote script failed AST syntax validation ($($parseErrors.Count) syntax error(s))."
+            }
+
+            [System.IO.File]::WriteAllText($tempScript, $rawContent, [System.Text.Encoding]::UTF8)
+
+            $processArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$tempScript`""
+            $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $processArgs -Wait -PassThru -ErrorAction Stop
+
+            $exitCode = 0
+            if ($null -ne $proc -and $proc.PSObject.Properties['ExitCode'] -and $null -ne $proc.ExitCode) {
+                $exitCode = $proc.ExitCode
+            }
+
+            return [PSCustomObject]@{
+                ToolName  = 'BrowserDebloat'
+                ScriptUrl = $ScriptUrl
+                Launched  = $true
+                ExitCode  = $exitCode
+            }
         }
-
-        return [PSCustomObject]@{
-            ToolName  = 'BrowserDebloat'
-            ScriptUrl = $scriptUrl
-            Launched  = $true
-            ExitCode  = $exitCode
+        finally {
+            if (Test-Path -LiteralPath $tempScript) {
+                Remove-Item -LiteralPath $tempScript -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 }

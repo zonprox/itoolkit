@@ -30,8 +30,9 @@ function Get-ExternalToolsContextInfoLines {
     $lines.Add("Internet Check : $netStatus")
 
     # 2. Integrated Launchers
-    $lines.Add("Tool 1         : Browser Debloat (Chrome & Chromium cleanup & debloat) [READY]")
-    $lines.Add("Tool 2         : Win11Debloat (Windows 11 bloatware & telemetry purge) [READY]")
+    $lines.Add("Tool 1         : Win11Debloat (Raphire) [READY]")
+    $lines.Add("Tool 2         : BrowserDebloat (LeDragoX) [READY]")
+    $lines.Add("Tool 3         : Office Tool Plus (Yerong) [READY]")
 
     return $lines.ToArray()
 }
@@ -60,8 +61,8 @@ function Invoke-ToolkitSubmenuExternalTools {
         @{ Key = 'Q'; Label = 'Exit Console' }
     )
     $toolsDetails = @(
-        @{ Key = '1'; Action = 'Run Browser Debloat'; Description = 'Launch Chrome/Browser debloat utility.'; Prerequisite = 'Internet access [READY]' },
-        @{ Key = '2'; Action = 'Run Win11Debloat'; Description = 'Launch Win11Debloat script for bloatware/telemetry purge.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '1'; Action = 'Run Win11Debloat'; Description = 'Launch Win11Debloat script for bloatware/telemetry purge.'; Prerequisite = 'Internet access [READY]' },
+        @{ Key = '2'; Action = 'Run Browser Debloat'; Description = 'Launch Chrome/Browser debloat utility.'; Prerequisite = 'Internet access [READY]' },
         @{ Key = '3'; Action = 'Run Office Tool Plus'; Description = 'Launch Office Tool Plus for deployment and activation.'; Prerequisite = 'Internet access [READY]' },
         @{ Key = '4'; Action = 'Test Connectivity'; Description = 'Test ICMP ping, HTTP, and HTTPS endpoints.'; Prerequisite = 'Network adapter [READY]' }
     )
@@ -90,13 +91,13 @@ function Invoke-ToolkitSubmenuExternalTools {
 
         switch ($sub) {
             '1' {
-                if (Get-Command -Name 'Invoke-BrowserDebloat' -ErrorAction SilentlyContinue) {
-                    Invoke-BrowserDebloat | Format-List
+                if (Get-Command -Name 'Invoke-Win11Debloat' -ErrorAction SilentlyContinue) {
+                    Invoke-Win11Debloat | Format-List
                 }
             }
             '2' {
-                if (Get-Command -Name 'Invoke-Win11Debloat' -ErrorAction SilentlyContinue) {
-                    Invoke-Win11Debloat | Format-List
+                if (Get-Command -Name 'Invoke-BrowserDebloat' -ErrorAction SilentlyContinue) {
+                    Invoke-BrowserDebloat | Format-List
                 }
             }
             '3' {

@@ -109,8 +109,23 @@ function Reset-PrinterConnections {
                         if (Get-Command -Name 'Remove-Printer' -ErrorAction SilentlyContinue) {
                             Remove-Printer -Name $pName -ErrorAction SilentlyContinue
                         } elseif ($env:OS -match 'Windows') {
-                            $wsNet = New-Object -ComObject WScript.Network
-                            $wsNet.RemovePrinterConnection($pName, $true, $true)
+                            $wsNet = $null
+                            try {
+                                $wsNet = New-Object -ComObject WScript.Network
+                                $wsNet.RemovePrinterConnection($pName, $true, $true)
+                            } finally {
+                                if (Get-Command -Name 'Remove-ToolkitComObject' -ErrorAction SilentlyContinue) {
+                                    Remove-ToolkitComObject -ComObject $wsNet
+                                } else {
+                                    if ($null -ne $wsNet -and [System.Runtime.InteropServices.Marshal]::IsComObject($wsNet)) {
+                                        try {
+                                            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($wsNet) | Out-Null
+                                        } catch { $null = $_ }
+                                    }
+                                    [System.GC]::Collect()
+                                    [System.GC]::WaitForPendingFinalizers()
+                                }
+                            }
                         }
                     } catch {
                         Write-Verbose "Removal of stale printer '$pName' failed: $($_.Exception.Message)"
