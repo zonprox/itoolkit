@@ -14,7 +14,7 @@
 .PARAMETER NonInteractive
     Runs in headless / non-interactive mode, suppressing the interactive keyboard TUI menu.
 .PARAMETER MenuOption
-    Directly selects and executes a specific menu option or command (e.g. '1', '2', 'Q')
+    Directly selects and executes a specific menu option or command (e.g. '1', '2', '0')
     without requiring interactive menu navigation.
 .PARAMETER LogDirectory
     Custom directory path for session execution logs. Defaults to the Logs/ folder in project root.

@@ -48,9 +48,19 @@ function Read-ToolkitMenuChoice {
 
         $rawInput = Read-Host -Prompt $promptString
 
-        # Handle empty input with default
+        # Handle empty input with default (normalized against ValidKeys)
         if ([string]::IsNullOrWhiteSpace($rawInput) -and -not [string]::IsNullOrWhiteSpace($Default)) {
-            return $Default
+            $cleanDefault = $Default.Trim().Trim('[', ']').Trim()
+            if ($null -ne $ValidKeys -and $ValidKeys.Count -gt 0) {
+                foreach ($k in $ValidKeys) {
+                    $kStr = $k.ToString().Trim().Trim('[', ']').Trim()
+                    if ($kStr.Equals($cleanDefault, [System.StringComparison]::OrdinalIgnoreCase) -or
+                        $k.ToString().Equals($Default.Trim(), [System.StringComparison]::OrdinalIgnoreCase)) {
+                        return $k.ToString()
+                    }
+                }
+            }
+            return $cleanDefault
         }
 
         if ($null -eq $rawInput) {

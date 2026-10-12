@@ -199,7 +199,9 @@ function Start-IToolkitMenu {
             $subParams['NonInteractive'] = $true
         }
 
-        switch ($MenuOption.ToUpperInvariant()) {
+        $cleanOption = $MenuOption.Trim().Trim('[', ']').Trim().ToUpperInvariant()
+
+        switch ($cleanOption) {
             '1' { Invoke-ToolkitSubmenuSystemHealth @subParams }
             '2' { Invoke-ToolkitSubmenuOfficeSuite @subParams }
             '3' {

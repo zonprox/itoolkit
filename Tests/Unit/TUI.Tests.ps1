@@ -54,31 +54,43 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Read-ToolkitMenuChoice accepts valid key choice' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return '1' }
-            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q')
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
             $choice | Should -Be '1'
         }
 
-        It 'Read-ToolkitMenuChoice is case-insensitive for exit keys' -Skip:(-not $isTUIAvailable) {
-            Mock Read-Host { return 'q' }
-            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q')
-            $choice.ToUpper() | Should -Be 'Q'
+        It 'Read-ToolkitMenuChoice rejects letter exit keys and requires numeric 0' -Skip:(-not $isTUIAvailable) {
+            $script:attemptCount = 0
+            Mock Read-Host {
+                $script:attemptCount++
+                if ($script:attemptCount -eq 1) { return 'q' }
+                return '0'
+            }
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
+            $choice | Should -Be '0'
+            $script:attemptCount | Should -Be 2
         }
 
         It 'Read-ToolkitMenuChoice returns Default value when input is empty string' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return '' }
-            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q') -Default 'Q'
-            $choice | Should -Be 'Q'
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0') -Default '0'
+            $choice | Should -Be '0'
+        }
+
+        It 'Read-ToolkitMenuChoice returns normalized Default value when Default is bracketed [1]' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '' }
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0') -Default '[1]'
+            $choice | Should -Be '1'
         }
 
         It 'Read-ToolkitMenuChoice safely handles null/EOF without throwing' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return $null }
-            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q')
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
             $choice | Should -Be ''
         }
 
         It 'Read-ToolkitMenuChoice terminates after max attempts on repeated empty input' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return '' }
-            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q')
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
             $choice | Should -Be ''
         }
 
@@ -89,7 +101,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 if ($script:attemptCount -eq 1) { return 'invalid_choice' }
                 return '2'
             }
-            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q')
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
             $choice | Should -Be '2'
         }
 
@@ -131,6 +143,14 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Start-IToolkitMenu -MenuOption '0' -NonInteractive } | Should -Not -Throw
             { Start-IToolkitMenu -MenuOption 'Q' -NonInteractive } | Should -Not -Throw
             { Start-IToolkitMenu -MenuOption 'X' -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Start-IToolkitMenu accepts bracketed menu options (e.g. [1], [0]) and routes cleanly' -Skip:(-not $isTUIAvailable) {
+            $script:healthCalled = $false
+            Mock Invoke-ToolkitSubmenuSystemHealth { $script:healthCalled = $true }
+            { Start-IToolkitMenu -MenuOption '[1]' -NonInteractive } | Should -Not -Throw
+            $script:healthCalled | Should -BeTrue
+            { Start-IToolkitMenu -MenuOption '[0]' -NonInteractive } | Should -Not -Throw
         }
 
         It 'Start-IToolkitMenu lists category options without prompting when -NonInteractive is specified' -Skip:(-not $isTUIAvailable) {
