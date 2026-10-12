@@ -15,7 +15,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('All', 'StaticAnalysis', 'Unit', 'E2E')]
+    [ValidateSet('All', 'Unit', 'StaticAnalysis', 'Adversarial', 'Network', 'Printers', 'TUI', 'AppInstaller', 'E2E')]
     [string]$Suite = 'All',
 
     [string]$Tag,
@@ -46,6 +46,7 @@ switch ($Suite) {
     'All' {
         $testPaths.Add((Join-Path $TestsDir 'StaticAnalysis'))
         $testPaths.Add((Join-Path $TestsDir 'Unit'))
+        $testPaths.Add((Join-Path $TestsDir 'Adversarial'))
         $testPaths.Add((Join-Path $TestsDir 'E2E'))
     }
     'StaticAnalysis' {
@@ -54,8 +55,23 @@ switch ($Suite) {
     'Unit' {
         $testPaths.Add((Join-Path $TestsDir 'Unit'))
     }
+    'Adversarial' {
+        $testPaths.Add((Join-Path $TestsDir 'Adversarial'))
+    }
     'E2E' {
         $testPaths.Add((Join-Path $TestsDir 'E2E'))
+    }
+    'Network' {
+        $testPaths.Add((Join-Path $TestsDir 'Unit/Network.Tests.ps1'))
+    }
+    'Printers' {
+        $testPaths.Add((Join-Path $TestsDir 'Unit/Printers.Tests.ps1'))
+    }
+    'TUI' {
+        $testPaths.Add((Join-Path $TestsDir 'Unit/TUI.Tests.ps1'))
+    }
+    'AppInstaller' {
+        $testPaths.Add((Join-Path $TestsDir 'Unit/AppInstaller.Tests.ps1'))
     }
 }
 

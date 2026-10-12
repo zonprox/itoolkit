@@ -18,8 +18,24 @@ function Get-AppInstallerContextInfoLines {
     $lines.Add("Current User   : $currentUser | Desktop: $desktopPath")
 
     # 2. Package Manager & Installation Engine
-    $hasWinget = [bool](Get-Command -Name 'winget' -ErrorAction SilentlyContinue)
-    $pmStr = if ($hasWinget) { "winget [READY]" } else { "Direct HTTPS Installer [READY]" }
+    $pmStr = "Package Manager: [STANDALONE DIRECT DOWNLOAD]"
+    if (Get-Command -Name 'Get-ToolkitWingetStatus' -ErrorAction SilentlyContinue) {
+        try {
+            $wStat = Get-ToolkitWingetStatus
+            if ($wStat.Healthy) {
+                $vStr = if ($wStat.Version) { " - v$($wStat.Version.TrimStart('v'))" } else { '' }
+                $pmStr = "Package Manager: winget [ACTIVE$vStr]"
+            } elseif ($wStat.Available) {
+                $pmStr = "Package Manager: winget [DEGRADED - Sources Unhealthy]"
+            } else {
+                $pmStr = "Package Manager: [STANDALONE DIRECT DOWNLOAD]"
+            }
+        } catch {
+            $null = $_
+        }
+    } elseif (Get-Command -Name 'winget' -ErrorAction SilentlyContinue) {
+        $pmStr = "Package Manager: winget [ACTIVE]"
+    }
     $lines.Add("Deploy Engine  : $pmStr")
 
     # 3. Installed Apps Overview
@@ -160,10 +176,13 @@ function Invoke-ToolkitSubmenuAppInstaller {
             @{ Key = '5'; Label = 'K-Lite Codec Pack' },
             @{ Key = '6'; Label = 'Visual C++ Redistributable AIO' },
             @{ Key = '7'; Label = 'Zalo PC' },
-            @{ Key = 'A'; Label = 'All Applications' }
+            @{ Key = 'A'; Label = 'All Applications' },
+            @{ Key = 'U'; Label = 'Upgrade All Applications' },
+            @{ Key = 'W'; Label = 'Self-Repair Package Manager' },
+            @{ Key = 'B'; Label = 'Bootstrap / Update Winget' }
         )
         $navActions = @(
-            @{ Key = 'B'; Label = 'Back to Main Menu' },
+            @{ Key = '0'; Label = 'Back to Main Menu' },
             @{ Key = 'Q'; Label = 'Quit' }
         )
         Show-ToolkitActionCatalog -Actions $installerActions -NavActions $navActions -Title 'DEPLOYMENT ACTIONS'
@@ -173,9 +192,9 @@ function Invoke-ToolkitSubmenuAppInstaller {
             return
         }
 
-        $validKeys = @('1', '2', '3', '4', '5', '6', '7', 'A', 'B', 'Q')
+        $validKeys = @('1', '2', '3', '4', '5', '6', '7', 'A', 'U', 'W', 'B', '0', 'Q')
         $sub = Read-ToolkitMenuChoice -Prompt 'Select Action' -ValidKeys $validKeys
-        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq 'B') {
+        if ([string]::IsNullOrWhiteSpace($sub) -or $sub.ToUpperInvariant() -eq '0') {
             $inSubmenu = $false
             break
         }
@@ -279,6 +298,56 @@ function Invoke-ToolkitSubmenuAppInstaller {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+                break
+            }
+            'U' {
+                Write-ToolkitStatus -Message "Upgrading all managed applications via package manager..." -Type 'INFO'
+                if (Get-Command -Name 'Update-WingetPackage' -ErrorAction SilentlyContinue) {
+                    $res = Update-WingetPackage -All
+                    if ($res -and $res.Success) {
+                        Write-ToolkitStatus -Message "Application upgrades completed successfully via winget." -Type 'OK'
+                    } else {
+                        Write-ToolkitStatus -Message "Package upgrade completed with notices: $($res.ErrorMessage)." -Type 'WARN'
+                    }
+                } elseif (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Upgrading applications via direct installer fallback..." -Type 'INFO'
+                    $res = Install-ToolkitApplication -AppName 'All' -Force
+                    $res | Format-Table -AutoSize
+                    Write-ToolkitStatus -Message "Direct update completed." -Type 'OK'
+                } else {
+                    Write-ToolkitStatus -Message "Update-WingetPackage command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+                break
+            }
+            'W' {
+                Write-ToolkitStatus -Message "Diagnosing and self-repairing Windows Package Manager..." -Type 'INFO'
+                if (Get-Command -Name 'Repair-ToolkitWinget' -ErrorAction SilentlyContinue) {
+                    $res = Repair-ToolkitWinget
+                    if ($res -and $res.Healthy) {
+                        Write-ToolkitStatus -Message "Package Manager self-repair successful! Actions taken: $($res.ActionsTaken -join '; ')." -Type 'OK'
+                    } else {
+                        Write-ToolkitStatus -Message "Self-repair completed with notices: $($res.ErrorMessage)." -Type 'WARN'
+                    }
+                } else {
+                    Write-ToolkitStatus -Message "Repair-ToolkitWinget command not available." -Type 'WARN'
+                }
+                Wait-UserAcknowledge
+                break
+            }
+            'B' {
+                Write-ToolkitStatus -Message "Bootstrapping / Updating to latest Windows Package Manager..." -Type 'INFO'
+                if (Get-Command -Name 'Install-ToolkitWingetLatest' -ErrorAction SilentlyContinue) {
+                    $res = Install-ToolkitWingetLatest
+                    if ($res -and $res.Success) {
+                        Write-ToolkitStatus -Message "Winget bootstrap / update succeeded! Version: $($res.Version)." -Type 'OK'
+                    } else {
+                        Write-ToolkitStatus -Message "Winget bootstrap completed with notices: $($res.ErrorMessage)." -Type 'WARN'
+                    }
+                } else {
+                    Write-ToolkitStatus -Message "Install-ToolkitWingetLatest command not available." -Type 'WARN'
+                }
+                $inSubmenu = $false
                 break
             }
         }

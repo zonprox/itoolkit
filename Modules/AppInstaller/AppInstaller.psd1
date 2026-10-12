@@ -19,7 +19,12 @@
         'Public/Set-ToolkitDefaultApplication.ps1',
         'Public/Install-ToolkitApplication.ps1',
         'Public/Set-ToolkitChromeExtensionPolicy.ps1',
-        'Public/Resolve-ToolkitApplicationDownloadUrl.ps1'
+        'Public/Resolve-ToolkitApplicationDownloadUrl.ps1',
+        'Public/Get-ToolkitWingetStatus.ps1',
+        'Public/Install-ToolkitWingetLatest.ps1',
+        'Public/Repair-ToolkitWinget.ps1',
+        'Public/Install-WingetPackage.ps1',
+        'Public/Update-WingetPackage.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -29,7 +34,12 @@
         'Set-ToolkitDefaultApplication',
         'Install-ToolkitApplication',
         'Set-ToolkitChromeExtensionPolicy',
-        'Resolve-ToolkitApplicationDownloadUrl'
+        'Resolve-ToolkitApplicationDownloadUrl',
+        'Get-ToolkitWingetStatus',
+        'Install-ToolkitWingetLatest',
+        'Repair-ToolkitWinget',
+        'Install-WingetPackage',
+        'Update-WingetPackage'
     )
 
     CmdletsToExport        = @()

@@ -50,6 +50,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Pre-flight operating system support check (R5)
+if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
+    $osVer = [System.Environment]::OSVersion.Version
+    if ($osVer.Major -lt 10 -or ($osVer.Major -eq 10 -and $osVer.Build -lt 10240)) {
+        throw "Unsupported operating system: $([System.Environment]::OSVersion.VersionString). IToolkit exclusively supports Windows 10 (Build 10240+) and Windows 11 (Build 22000+)."
+    }
+}
+
 # Determine project root directory
 $scriptDir = $PSScriptRoot
 if ([string]::IsNullOrEmpty($scriptDir)) {

@@ -132,13 +132,14 @@ function Start-IToolkitMenu {
     Panel, and Live Contextual Status & Telemetry Panel):
     1. Outlook & PST
     2. Office & Excel
-    3. Network & Printers
+    3. Printers & Spooler
     4. User Profile Backup
     5. Account Admin
     6. External Tools
     7. Windows Repair
     8. Quick App Installer
     9. Windows Cleanup
+    N. Network Diagnostics & Repair
     R. Refresh Screen
     Q. Exit Console
 .PARAMETER ExitImmediately
@@ -180,13 +181,14 @@ function Start-IToolkitMenu {
     $mainDetails = @(
         @{ Key = '1'; Action = 'Outlook & PST'; Description = 'PST/OST discovery, relocation, profile repoints & limits.'; Prerequisite = 'Outlook installed [READY]' },
         @{ Key = '2'; Action = 'Office & Excel'; Description = 'Hardware acceleration, cache reset, add-ins, GDI audit.'; Prerequisite = 'Office 2013-365 [READY]' },
-        @{ Key = '3'; Action = 'Network & Printers'; Description = 'Print spooler queue, Ne ports, Point & Print policies.'; Prerequisite = 'Spooler service [READY]' },
+        @{ Key = '3'; Action = 'Printers & Spooler'; Description = 'Print spooler queue, Ne ports, Point & Print policies, and error catalogs.'; Prerequisite = 'Spooler service [READY]' },
         @{ Key = '4'; Action = 'User Profile Backup'; Description = 'User folder sync, Chromium bookmarks, certs & manifests.'; Prerequisite = 'Local drive space [READY]' },
         @{ Key = '5'; Action = 'Account Admin'; Description = 'Local/domain account management, SID -500, domain health.'; Prerequisite = 'Administrator rights [READY]' },
         @{ Key = '6'; Action = 'External Tools'; Description = 'Browser Debloat, Win11Debloat, network testing.'; Prerequisite = 'Internet access [READY]' },
         @{ Key = '7'; Action = 'Windows Repair'; Description = 'SFC scan, DISM RestoreHealth, Windows Update & network reset.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
         @{ Key = '8'; Action = 'Quick App Installer'; Description = 'Silent install UniKey, UltraVNC, K-Lite, Chrome, VCRedist, Foxit, Zalo.'; Prerequisite = 'Internet access [READY]' },
-        @{ Key = '9'; Action = 'Windows Cleanup'; Description = 'Component store, update cache, dumps, DO cache & temp files.'; Prerequisite = 'Administrator rights [RECOMMENDED]' }
+        @{ Key = '9'; Action = 'Windows Cleanup'; Description = 'Component store, update cache, dumps, DO cache & temp files.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
+        @{ Key = 'N'; Action = 'Network Diagnostics & Repair'; Description = 'Winsock, TCP/IP, DNS, DHCP, SMB guest/signing, and network repair.'; Prerequisite = 'Network adapter [READY]' }
     )
 
     # If NonInteractive flag is set without MenuOption, display main menu once and return
@@ -219,6 +221,8 @@ function Start-IToolkitMenu {
             '7' { Invoke-ToolkitSubmenuWindowsRepair @subParams }
             '8' { Invoke-ToolkitSubmenuAppInstaller @subParams }
             '9' { Invoke-ToolkitSubmenuWindowsCleanup @subParams }
+            'N' { Invoke-ToolkitSubmenuNetwork @subParams }
+            'NETWORK' { Invoke-ToolkitSubmenuNetwork @subParams }
             'R' {
                 if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
                     Clear-ToolkitTelemetryCache
@@ -251,7 +255,7 @@ function Start-IToolkitMenu {
         Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -ClearScreen -InfoLines $sysInfo
         Show-ToolkitDetailPanel -Details $mainDetails -NavActions $mainNav -Title 'ACTIONS & COMMANDS'
 
-        $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'R', 'Q', 'X') -Default $DefaultSelection
+        $choice = Read-ToolkitMenuChoice -Prompt 'Select' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N', 'R', 'Q', 'X') -Default $DefaultSelection
 
         if ([string]::IsNullOrWhiteSpace($choice)) {
             break
@@ -267,6 +271,7 @@ function Start-IToolkitMenu {
             '7' { Invoke-ToolkitSubmenuWindowsRepair }
             '8' { Invoke-ToolkitSubmenuAppInstaller }
             '9' { Invoke-ToolkitSubmenuWindowsCleanup }
+            'N' { Invoke-ToolkitSubmenuNetwork }
             'R' {
                 if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
                     Clear-ToolkitTelemetryCache

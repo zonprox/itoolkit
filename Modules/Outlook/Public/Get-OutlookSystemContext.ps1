@@ -5,7 +5,7 @@ function Get-OutlookSystemContext {
 .DESCRIPTION
     Discovers installed Office versions (15.0, 16.0, C2R, and MSI), installation architecture
     (32-bit / 64-bit), executable path, active process state and process IDs, configured
-    and default profiles across modern and legacy hives, PST threshold policies, and bound
+    and default profiles across modern hives, PST threshold policies, and bound
     data files. Returns an empty structured object with informational notices without
     throwing terminating errors when Office or Outlook is absent.
 .OUTPUTS
@@ -161,10 +161,6 @@ function Get-OutlookSystemContext {
                     $officeVersion = '15.0'
                     if ($installType -eq 'None') { $installType = 'Standard' }
                 }
-                elseif (Test-Path -LiteralPath 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles') {
-                    $officeVersion = 'Legacy'
-                    if ($installType -eq 'None') { $installType = 'Legacy' }
-                }
             }
 
             # 6. Running Process & PIDs
@@ -178,8 +174,7 @@ function Get-OutlookSystemContext {
 
             $profileHives = @(
                 @{ Base = 'HKCU:\Software\Microsoft\Office\16.0\Outlook\Profiles'; Meta = 'HKCU:\Software\Microsoft\Office\16.0\Outlook' },
-                @{ Base = 'HKCU:\Software\Microsoft\Office\15.0\Outlook\Profiles'; Meta = 'HKCU:\Software\Microsoft\Office\15.0\Outlook' },
-                @{ Base = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles'; Meta = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles' }
+                @{ Base = 'HKCU:\Software\Microsoft\Office\15.0\Outlook\Profiles'; Meta = 'HKCU:\Software\Microsoft\Office\15.0\Outlook' }
             )
 
             foreach ($h in $profileHives) {

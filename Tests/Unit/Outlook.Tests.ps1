@@ -462,7 +462,7 @@ Describe 'Unit: Outlook Data Management Module' {
             $context.OutlookPath | Should -Be 'C:\Program Files (x86)\Microsoft Office\Office16\OUTLOOK.EXE'
         }
 
-        It 'Discovers legacy Windows Messaging Subsystem profile topology' -Skip:(-not $isOutlookAvailable) {
+        It 'Ignores decommissioned pre-Windows 10 legacy Windows Messaging Subsystem keys' -Skip:(-not $isOutlookAvailable) {
             Mock Get-Process { return @() }
             Mock Find-OutlookDataFiles { return @() }
             $wmsKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles'
@@ -482,9 +482,9 @@ Describe 'Unit: Outlook Data Management Module' {
             Mock Get-ItemProperty { return $null }
 
             $context = Get-OutlookSystemContext
-            $context.OfficeVersion | Should -Be 'Legacy'
-            $context.Profiles | Should -Contain 'LegacyWMSProfile'
-            $context.DefaultProfile | Should -Be 'LegacyWMSProfile'
+            $context.OfficeVersion | Should -Be 'None'
+            $context.Profiles.Count | Should -Be 0
+            $context.DefaultProfile | Should -Be 'None'
         }
 
         It 'Detects running OUTLOOK process and populates ProcessId telemetry' -Skip:(-not $isOutlookAvailable) {

@@ -108,7 +108,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         }
 
         It 'Start-IToolkitMenu lists category options without prompting when -NonInteractive is specified' -Skip:(-not $isTUIAvailable) {
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8')
+            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat -NonInteractive } | Should -Not -Throw
             }
@@ -116,7 +116,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Submenus terminate immediately on EOF ($null) without infinite looping' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return $null }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8')
+            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat } | Should -Not -Throw
             }
@@ -124,7 +124,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Submenus terminate immediately on empty string input fallback without looping' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return '' }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8')
+            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat } | Should -Not -Throw
             }
@@ -132,7 +132,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Submenus exit back to caller when Back key (B) is selected' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { return 'B' }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8')
+            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat } | Should -Not -Throw
             }
@@ -211,6 +211,14 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         It 'Invoke-ToolkitSubmenuWindowsCleanup returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
             { Invoke-ToolkitSubmenuWindowsCleanup -ExitImmediately } | Should -Not -Throw
         }
+
+        It 'Invoke-ToolkitSubmenuNetwork renders and terminates cleanly with -NonInteractive' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuNetwork -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Invoke-ToolkitSubmenuNetwork returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitSubmenuNetwork -ExitImmediately } | Should -Not -Throw
+        }
     }
 
     Context 'Headless Menu Invocation & Telemetry Extraction' {
@@ -221,7 +229,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Start-IToolkitMenu extracts category telemetry across all submenus in headless mode' -Skip:(-not $isTUIAvailable) {
             Mock Read-Host { throw "Read-Host should never be invoked in non-interactive headless mode" }
-            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9')
+            $categories = @('1', '2', '3', '4', '5', '6', '7', '8', '9', 'N')
             foreach ($cat in $categories) {
                 { Start-IToolkitMenu -MenuOption $cat -NonInteractive } | Should -Not -Throw
             }
@@ -834,7 +842,8 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             @{ Name = 'ExternalTools';  Command = 'Invoke-ToolkitSubmenuExternalTools' },
             @{ Name = 'WindowsRepair';  Command = 'Invoke-ToolkitSubmenuWindowsRepair' },
             @{ Name = 'AppInstaller';   Command = 'Invoke-ToolkitSubmenuAppInstaller' },
-            @{ Name = 'WindowsCleanup'; Command = 'Invoke-ToolkitSubmenuWindowsCleanup' }
+            @{ Name = 'WindowsCleanup'; Command = 'Invoke-ToolkitSubmenuWindowsCleanup' },
+            @{ Name = 'Network';        Command = 'Invoke-ToolkitSubmenuNetwork' }
         )
 
         It '<Name>: Terminates immediately without processing when -ExitImmediately is passed' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
@@ -1716,6 +1725,100 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Start-IToolkitMenu } | Should -Not -Throw
             $script:cleanupDispatched | Should -BeTrue
+        }
+    }
+
+    Context 'Milestone M17: TUI Router Options 3 & N and Network Decoupling' {
+        It 'Start-IToolkitMenu details panel exposes Option 3 as Printers & Spooler' -Skip:(-not $isTUIAvailable) {
+            $script:capturedMainDetails = $null
+            Mock Show-ToolkitDetailPanel {
+                param($Details, $NavActions, $Title)
+                $script:capturedMainDetails = $Details
+            }
+            { Start-IToolkitMenu -NonInteractive } | Should -Not -Throw
+            $script:capturedMainDetails | Should -Not -BeNullOrEmpty
+            $opt3 = $script:capturedMainDetails | Where-Object { $_.Key -eq '3' }
+            $opt3 | Should -Not -BeNullOrEmpty
+            $opt3.Action | Should -Be 'Printers & Spooler'
+            $opt3.Description | Should -Be 'Print spooler queue, Ne ports, Point & Print policies, and error catalogs.'
+            $opt3.Prerequisite | Should -Be 'Spooler service [READY]'
+        }
+
+        It 'Start-IToolkitMenu details panel exposes Option N as Network Diagnostics & Repair' -Skip:(-not $isTUIAvailable) {
+            $script:capturedMainDetails = $null
+            Mock Show-ToolkitDetailPanel {
+                param($Details, $NavActions, $Title)
+                $script:capturedMainDetails = $Details
+            }
+            { Start-IToolkitMenu -NonInteractive } | Should -Not -Throw
+            $script:capturedMainDetails | Should -Not -BeNullOrEmpty
+            $optN = $script:capturedMainDetails | Where-Object { $_.Key -eq 'N' }
+            $optN | Should -Not -BeNullOrEmpty
+            $optN.Action | Should -Be 'Network Diagnostics & Repair'
+            $optN.Description | Should -Be 'Winsock, TCP/IP, DNS, DHCP, SMB guest/signing, and network repair.'
+            $optN.Prerequisite | Should -Be 'Network adapter [READY]'
+        }
+
+        It 'Start-IToolkitMenu interactive loop includes N in valid keys' -Skip:(-not $isTUIAvailable) {
+            $script:capturedValidKeys = $null
+            Mock Read-ToolkitMenuChoice {
+                param($Prompt, $ValidKeys, $Default)
+                $script:capturedValidKeys = $ValidKeys
+                return 'Q'
+            }
+            { Start-IToolkitMenu } | Should -Not -Throw
+            $script:capturedValidKeys | Should -Not -BeNullOrEmpty
+            $script:capturedValidKeys | Should -Contain 'N'
+            $script:capturedValidKeys | Should -Contain '3'
+        }
+
+        It 'Start-IToolkitMenu routes Option 3 to Invoke-ToolkitSubmenuPrinters via parameter switch' -Skip:(-not $isTUIAvailable) {
+            $script:printersCalled = $false
+            Mock Invoke-ToolkitSubmenuPrinters {
+                $script:printersCalled = $true
+            }
+            { Start-IToolkitMenu -MenuOption '3' -NonInteractive } | Should -Not -Throw
+            $script:printersCalled | Should -BeTrue
+        }
+
+        It 'Start-IToolkitMenu routes Option N and NETWORK to Invoke-ToolkitSubmenuNetwork via parameter switch' -Skip:(-not $isTUIAvailable) {
+            $script:networkCalledCount = 0
+            Mock Invoke-ToolkitSubmenuNetwork {
+                $script:networkCalledCount++
+            }
+            { Start-IToolkitMenu -MenuOption 'N' -NonInteractive } | Should -Not -Throw
+            { Start-IToolkitMenu -MenuOption 'NETWORK' -NonInteractive } | Should -Not -Throw
+            $script:networkCalledCount | Should -Be 2
+        }
+
+        It 'Start-IToolkitMenu interactive choice 3 dispatches to Invoke-ToolkitSubmenuPrinters' -Skip:(-not $isTUIAvailable) {
+            $script:printersDispatched = $false
+            Mock Invoke-ToolkitSubmenuPrinters {
+                $script:printersDispatched = $true
+            }
+            $script:choiceCount = 0
+            Mock Read-ToolkitMenuChoice {
+                $script:choiceCount++
+                if ($script:choiceCount -eq 1) { return '3' }
+                return 'Q'
+            }
+            { Start-IToolkitMenu } | Should -Not -Throw
+            $script:printersDispatched | Should -BeTrue
+        }
+
+        It 'Start-IToolkitMenu interactive choice N dispatches to Invoke-ToolkitSubmenuNetwork' -Skip:(-not $isTUIAvailable) {
+            $script:networkDispatched = $false
+            Mock Invoke-ToolkitSubmenuNetwork {
+                $script:networkDispatched = $true
+            }
+            $script:choiceCount = 0
+            Mock Read-ToolkitMenuChoice {
+                $script:choiceCount++
+                if ($script:choiceCount -eq 1) { return 'N' }
+                return 'Q'
+            }
+            { Start-IToolkitMenu } | Should -Not -Throw
+            $script:networkDispatched | Should -BeTrue
         }
     }
 }

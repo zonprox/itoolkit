@@ -18,6 +18,12 @@ if (-not (Get-PSDrive -Name 'C' -ErrorAction SilentlyContinue)) {
 if (-not (Get-PSDrive -Name 'D' -ErrorAction SilentlyContinue)) {
     New-PSDrive -Name 'D' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue | Out-Null
 }
+if (-not (Get-Command 'Add-AppxPackage' -ErrorAction SilentlyContinue)) {
+    function global:Add-AppxPackage { param($Path, $DependencyPath, $Register, [switch]$DisableDevelopmentMode) }
+}
+if (-not (Get-Command 'Get-AppxPackage' -ErrorAction SilentlyContinue)) {
+    function global:Get-AppxPackage { param($Name) }
+}
 
 # 1. Dot-source Private helper scripts first (available to public functions, not exported)
 $privatePath = Join-Path -Path $moduleRoot -ChildPath 'Private'

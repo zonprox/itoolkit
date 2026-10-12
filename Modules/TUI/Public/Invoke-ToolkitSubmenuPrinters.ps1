@@ -130,7 +130,7 @@ function Invoke-ToolkitSubmenuPrinters {
 
         $clear = if ($NonInteractive) { $false } else { $true }
         $printersInfo = Get-PrintersContextInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT > NETWORK & PRINT SPOOLER' -Subtitle 'Spooler Diagnostics, Queue Purge, Ne Ports, Point & Print' -ClearScreen:$clear -InfoLines $printersInfo
+        Show-ToolkitHeader -Title 'ITOOLKIT > PRINTERS & SPOOLER' -Subtitle 'Spooler Diagnostics, Queue Purge, Error Code Catalog, Point & Print' -ClearScreen:$clear -InfoLines $printersInfo
 
         Show-ToolkitItemTable -Items $printers -Columns @('Name', 'Status', 'Driver', 'Port') -Headers @('NAME', 'STATUS', 'DRIVER', 'PORT') -Title 'Installed Printers'
 
@@ -138,6 +138,7 @@ function Invoke-ToolkitSubmenuPrinters {
         $topLevelActions = @(
             @{ Key = 'A'; Label = 'Apply All Server' },
             @{ Key = 'L'; Label = 'Apply All Client' },
+            @{ Key = 'X'; Label = 'Apply All Both' },
             @{ Key = 'F'; Label = 'Fixes Catalog' },
             @{ Key = 'U'; Label = 'Rollback' },
             @{ Key = 'S'; Label = 'Spooler Restart & Purge' },
@@ -153,12 +154,12 @@ function Invoke-ToolkitSubmenuPrinters {
         Show-ToolkitActionCatalog -Actions $topLevelActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Network & Print Spooler Troubleshooting'." -Type 'INFO'
+            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Printers & Spooler Troubleshooting'." -Type 'INFO'
             return
         }
 
-        $validKeys = @('A', 'L', 'F', 'U', 'S', 'R', 'P', 'N', 'C', 'B', 'Q')
-        $promptText = if ($printers.Count -gt 0) { "  Select item [1-$($printers.Count)] or action" } else { "  Select action [A, L, F, U, S, R, P, N, C, B, Q]" }
+        $validKeys = @('A', 'L', 'X', 'F', 'U', 'S', 'R', 'P', 'N', 'C', 'B', 'Q')
+        $promptText = if ($printers.Count -gt 0) { "  Select item [1-$($printers.Count)] or action" } else { "  Select action [A, L, X, F, U, S, R, P, N, C, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $printers.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -214,53 +215,101 @@ function Invoke-ToolkitSubmenuPrinters {
                     }
                     Wait-UserAcknowledge
                 }
+                'X' {
+                    if (Get-Command -Name 'Set-PrinterRemediation' -ErrorAction SilentlyContinue) {
+                        try {
+                            $res = Set-PrinterRemediation -Role Both -All
+                            if ($res -and $res.Success) {
+                                Write-ToolkitStatus -Message "All printer remediations (Both Roles) applied successfully. Fixes: $($res.FixesApplied -join ', ')." -Type 'OK'
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Printer remediation completed with warnings." -Type 'WARN'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to apply printer remediations: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    else {
+                        Write-ToolkitStatus -Message "Set-PrinterRemediation command not available." -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
+                }
                 'F' {
                     Write-Host ""
-                    Write-Host "  Select remediation fix from catalog:" -ForegroundColor Cyan
-                    Write-Host "  [1] RpcAuthnLevel (Server - Fix 0x0000011b)"
-                    Write-Host "  [2] RemoteRpcEndPoint (Server - Allow client RPC binds)"
-                    Write-Host "  [3] RpcProtocols (Server - Named pipes & protocols)"
-                    Write-Host "  [4] SpoolerHealth (Server - Permissions & service restart)"
-                    Write-Host "  [5] PointAndPrintAdmin (Client - RestrictDriverInstallationToAdministrators=0)"
-                    Write-Host "  [6] PointAndPrintPrompts (Client - Suppress elevation prompts)"
-                    Write-Host "  [7] RpcNamedPipe (Client - Fix 0x00000709)"
-                    Write-Host "  [8] CopyFilesPolicy (Client - Fix 0x0000007c)"
-                    Write-Host "  [B] Back"
-                    $fChoice = Read-ToolkitMenuChoice -Prompt 'Select Fix' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', 'B') -Default 'B'
+                    Write-Host "  ========================================================================================" -ForegroundColor Cyan
+                    Write-Host "  ITOOLKIT > PRINTERS > ERROR CODE REMEDIATION CATALOG" -ForegroundColor Cyan
+                    Write-Host "  Select an error code to apply targeted fix:" -ForegroundColor Yellow
+                    Write-Host "  ----------------------------------------------------------------------------------------" -ForegroundColor DarkGray
+                    Write-Host "  [1]  0x0000011b : RPC Authn Level Privacy & Remote Endpoints (Server / PrintNightmare)"
+                    Write-Host "  [2]  0x00000709 : RPC Named Pipe Protocol & Default Printer Key Reset (Client)"
+                    Write-Host "  [3]  0x0000007c : CopyFiles Policy for Point & Print Driver Downloads (Client)"
+                    Write-Host "  [4]  0x0000007e : Spooler DLL Re-registration & Driver Path Restoration (Client/Server)"
+                    Write-Host "  [5]  0x00000bcb : Point & Print Driver Installation & Elevation Bypass (Client)"
+                    Write-Host "  [6]  0x00000002 : Missing Driver File / INF & Driver Store Repair (Client/Server)"
+                    Write-Host "  [7]  0x00000006 : Invalid Spooler Handle & Port Lock Cleanup (Client/Server)"
+                    Write-Host "  [8]  0x00000057 : Parameter Incorrect & Driver Configuration Reset (Client)"
+                    Write-Host "  [9]  0x000003e3 : Aborted I/O Queue Flush & Stalled Job Purge (Client/Server)"
+                    Write-Host "  [10] SpoolerCrash: Spooler Crash Recovery (Full Purge & Permissions) (Client/Server)"
+                    Write-Host "  [11] NePortConflict: Purge Corrupted Virtual Ne00:-Ne99: Port Bindings (Client)"
+                    Write-Host "  [12] RefreshConnections: Rebind & Validate User Network Printer Mappings (Client)"
+                    Write-Host "  [B]  Back"
+                    Write-Host "  ========================================================================================" -ForegroundColor Cyan
+                    $fChoice = Read-ToolkitMenuChoice -Prompt 'Select Fix' -ValidKeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'B') -Default 'B'
                     if (-not [string]::IsNullOrWhiteSpace($fChoice) -and $fChoice.ToUpperInvariant() -ne 'B') {
                         try {
                             switch ($fChoice) {
                                 '1' {
-                                    $res = Set-PrinterServerRemediation -Fix 'RpcAuthnLevel'
-                                    Write-ToolkitStatus -Message "Applied server fix: RpcAuthnLevel." -Type 'OK'
+                                    if (Get-Command -Name 'Set-PrinterServerRemediation' -ErrorAction SilentlyContinue) {
+                                        $res = Set-PrinterServerRemediation -Fix 'RpcAuthnLevel'
+                                    } else {
+                                        $res = Set-PrinterRemediation -Fix '0x0000011b'
+                                    }
+                                    Write-ToolkitStatus -Message "Applied fix for 0x0000011b (RpcAuthnLevel)." -Type 'OK'
                                 }
                                 '2' {
-                                    $res = Set-PrinterServerRemediation -Fix 'RemoteRpcEndPoint'
-                                    Write-ToolkitStatus -Message "Applied server fix: RemoteRpcEndPoint." -Type 'OK'
+                                    $res = Set-PrinterRemediation -Fix '0x00000709'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x00000709 (RpcNamedPipe & DefaultPrinterKey)." -Type 'OK'
                                 }
                                 '3' {
-                                    $res = Set-PrinterServerRemediation -Fix 'RpcProtocols'
-                                    Write-ToolkitStatus -Message "Applied server fix: RpcProtocols." -Type 'OK'
+                                    $res = Set-PrinterRemediation -Fix '0x0000007c'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x0000007c (CopyFilesPolicy)." -Type 'OK'
                                 }
                                 '4' {
-                                    $res = Set-PrinterServerRemediation -Fix 'SpoolerHealth'
-                                    Write-ToolkitStatus -Message "Applied server fix: SpoolerHealth." -Type 'OK'
+                                    $res = Set-PrinterRemediation -Fix '0x0000007e'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x0000007e (SpoolerDLLs & Driver Restoration)." -Type 'OK'
                                 }
                                 '5' {
-                                    $res = Set-PrinterClientRemediation -Fix 'PointAndPrintAdmin'
-                                    Write-ToolkitStatus -Message "Applied client fix: PointAndPrintAdmin." -Type 'OK'
+                                    $res = Set-PrinterRemediation -Fix '0x00000bcb'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x00000bcb (PointAndPrintAdmin & Prompts)." -Type 'OK'
                                 }
                                 '6' {
-                                    $res = Set-PrinterClientRemediation -Fix 'PointAndPrintPrompts'
-                                    Write-ToolkitStatus -Message "Applied client fix: PointAndPrintPrompts." -Type 'OK'
+                                    $res = Set-PrinterRemediation -Fix '0x00000002'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x00000002 (DriverStoreRepair)." -Type 'OK'
                                 }
                                 '7' {
-                                    $res = Set-PrinterClientRemediation -Fix 'RpcNamedPipe'
-                                    Write-ToolkitStatus -Message "Applied client fix: RpcNamedPipe." -Type 'OK'
+                                    $res = Set-PrinterRemediation -Fix '0x00000006'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x00000006 (SpoolerHandles)." -Type 'OK'
                                 }
                                 '8' {
-                                    $res = Set-PrinterClientRemediation -Fix 'CopyFilesPolicy'
-                                    Write-ToolkitStatus -Message "Applied client fix: CopyFilesPolicy." -Type 'OK'
+                                    $res = Set-PrinterRemediation -Fix '0x00000057'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x00000057 (DriverConfig & Connections)." -Type 'OK'
+                                }
+                                '9' {
+                                    $res = Set-PrinterRemediation -Fix '0x000003e3'
+                                    Write-ToolkitStatus -Message "Applied fix for 0x000003e3 (ClearStalledJobs)." -Type 'OK'
+                                }
+                                '10' {
+                                    $res = Set-PrinterRemediation -Fix 'SpoolerCrash'
+                                    Write-ToolkitStatus -Message "Applied fix for Spooler Crash Recovery (Full Purge & Permissions)." -Type 'OK'
+                                }
+                                '11' {
+                                    $res = Set-PrinterRemediation -Fix 'NePortConflict'
+                                    Write-ToolkitStatus -Message "Applied fix for NePortConflict (Virtual Ne Ports Purged)." -Type 'OK'
+                                }
+                                '12' {
+                                    $res = Set-PrinterRemediation -Fix 'RefreshConnections'
+                                    Write-ToolkitStatus -Message "Applied fix for RefreshConnections (Rebound Mappings)." -Type 'OK'
                                 }
                             }
                         }

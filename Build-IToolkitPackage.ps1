@@ -147,6 +147,7 @@ try {
         'Outlook',
         'Office',
         'Printers',
+        'Network',
         'Backup',
         'Accounts',
         'ExternalTools',

@@ -59,6 +59,14 @@ function Install-ToolkitApplication {
             $pubExt = Join-Path $PSScriptRoot 'Set-ToolkitChromeExtensionPolicy.ps1'
             if (Test-Path -LiteralPath $pubExt) { . $pubExt }
         }
+        if (-not (Get-Command -Name 'Get-ToolkitWingetStatus' -ErrorAction SilentlyContinue)) {
+            $pubWingetStat = Join-Path $PSScriptRoot 'Get-ToolkitWingetStatus.ps1'
+            if (Test-Path -LiteralPath $pubWingetStat) { . $pubWingetStat }
+        }
+        if (-not (Get-Command -Name 'Install-WingetPackage' -ErrorAction SilentlyContinue)) {
+            $pubWingetInstall = Join-Path $PSScriptRoot 'Install-WingetPackage.ps1'
+            if (Test-Path -LiteralPath $pubWingetInstall) { . $pubWingetInstall }
+        }
 
         if (-not (Get-PSDrive -Name 'C' -Scope Global -ErrorAction SilentlyContinue)) {
             New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -Scope Global -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
@@ -82,13 +90,14 @@ function Install-ToolkitApplication {
         # 2. Application Definition Catalog
         $catalog = @{
             'VCRedistAIO' = @{
-                DisplayName     = 'Visual C++ Redistributable AIO'
-                WingetId        = 'abbodi1406.vcredist'
-                FallbackUrl     = 'https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe'
-                SilentArgs      = '/ai /y'
-                ShortcutName    = $null # Runtime libraries, no desktop shortcut needed
-                CanSetDefault   = $false
-                ProcessNames    = @()
+                DisplayName          = 'Visual C++ Redistributable AIO'
+                WingetId             = 'Microsoft.VCRedist.2015+.x64'
+                AlternateWingetId    = 'abbodi1406.vcredist'
+                FallbackUrl          = 'https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe'
+                SilentArgs           = '/ai /y'
+                ShortcutName         = $null # Runtime libraries, no desktop shortcut needed
+                CanSetDefault        = $false
+                ProcessNames         = @()
             }
             'UniKey' = @{
                 DisplayName          = 'UniKey Vietnamese Input Method'
@@ -106,7 +115,8 @@ function Install-ToolkitApplication {
             }
             'UltraVNC' = @{
                 DisplayName          = 'UltraVNC Remote Support'
-                WingetId             = 'uvnc.UltraVNC'
+                WingetId             = 'UltraVNC.UltraVNC'
+                AlternateWingetId    = 'uvnc.UltraVNC'
                 FallbackUrl          = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
                 AlternateFallbackUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe'
                 SilentArgs           = '/VERYSILENT /NORESTART'
@@ -169,10 +179,14 @@ function Install-ToolkitApplication {
             Write-AppInstallerLog -Message "Dependency sequencing: Reordered VCRedistAIO to first position ahead of dependent applications." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
         }
 
-        Write-AppInstallerLog -Message "Resolved deployment targets: $($targets -join ', ')" -Level 'INFO' -Component 'Install-ToolkitApplication'
-
         $results = [System.Collections.Generic.List[PSCustomObject]]::new()
-        $hasWinget = [bool](Get-Command -Name 'winget' -ErrorAction SilentlyContinue)
+        $hasWinget = $false
+        if (Get-Command -Name 'Get-ToolkitWingetStatus' -ErrorAction SilentlyContinue) {
+            $wStat = Get-ToolkitWingetStatus
+            $hasWinget = [bool]($wStat -and $wStat.Available)
+        } else {
+            $hasWinget = [bool](Get-Command -Name 'winget' -ErrorAction SilentlyContinue)
+        }
 
         foreach ($target in $targets) {
             $meta = $catalog[$target]
@@ -280,20 +294,31 @@ function Install-ToolkitApplication {
                     $candidateWingetIds += $meta.AlternateWingetId
                 }
                 foreach ($wId in $candidateWingetIds) {
-                    try {
-                        $wingetArgs = "install --id $wId -e --silent --accept-package-agreements --accept-source-agreements $(if ($Force) { '--force' } else { '' })".Trim()
-                        Write-AppInstallerLog -Message "Invoking winget: winget $wingetArgs" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
-                        $proc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru -ErrorAction Stop
-                        $exitCode = if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
-                        Write-AppInstallerLog -Message "winget process exited with code $exitCode." -Level $(if ($exitCode -eq 0) { 'DEBUG' } else { 'WARN' }) -Component 'Install-ToolkitApplication'
-                        if ($exitCode -eq 0) {
+                    if (Get-Command -Name 'Install-WingetPackage' -ErrorAction SilentlyContinue) {
+                        Write-AppInstallerLog -Message "Attempting winget installation for $($meta.DisplayName) via Install-WingetPackage (id: $wId)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                        $wRes = Install-WingetPackage -PackageId $wId -Force:$Force
+                        if ($wRes -and $wRes.Installed) {
                             $installedSuccess = $true
                             break
                         } else {
-                            Write-AppInstallerLog -Message "winget installation for $($meta.DisplayName) (id: $wId) returned non-zero code $exitCode." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                            Write-AppInstallerLog -Message "Install-WingetPackage for $wId uncompleted: $($wRes.ErrorMessage)" -Level 'WARN' -Component 'Install-ToolkitApplication'
                         }
-                    } catch {
-                        Write-AppInstallerLog -Message "winget execution error for $($meta.DisplayName) (id: $wId): $($_.Exception.Message)." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                    } else {
+                        try {
+                            $wingetArgs = "install --id $wId -e --silent --accept-package-agreements --accept-source-agreements $(if ($Force) { '--force' } else { '' })".Trim()
+                            Write-AppInstallerLog -Message "Invoking winget: winget $wingetArgs" -Level 'DEBUG' -Component 'Install-ToolkitApplication'
+                            $proc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru -ErrorAction Stop
+                            $exitCode = if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
+                            Write-AppInstallerLog -Message "winget process exited with code $exitCode." -Level $(if ($exitCode -eq 0) { 'DEBUG' } else { 'WARN' }) -Component 'Install-ToolkitApplication'
+                            if ($exitCode -eq 0) {
+                                $installedSuccess = $true
+                                break
+                            } else {
+                                Write-AppInstallerLog -Message "winget installation for $($meta.DisplayName) (id: $wId) returned non-zero code $exitCode." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                            }
+                        } catch {
+                            Write-AppInstallerLog -Message "winget execution error for $($meta.DisplayName) (id: $wId): $($_.Exception.Message)." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                        }
                     }
                 }
                 if (-not $installedSuccess) {

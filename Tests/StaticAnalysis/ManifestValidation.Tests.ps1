@@ -5,10 +5,12 @@
 # ==============================================================================
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$script:ProjectRoot = $ProjectRoot
 $GuidRegex = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 $SemVerRegex = '^\d+\.\d+\.\d+(\..+)?$'
 
 BeforeAll {
+    $script:ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
     function Test-ToolkitManifestStructure {
         param([hashtable]$ManifestData)
         
@@ -166,6 +168,7 @@ Describe 'StaticAnalysis: Module Manifest Validation' {
             'Modules/Outlook/Outlook.psd1',
             'Modules/Office/Office.psd1',
             'Modules/Printers/Printers.psd1',
+            'Modules/Network/Network.psd1',
             'Modules/Backup/Backup.psd1',
             'Modules/Accounts/Accounts.psd1',
             'Modules/TUI/TUI.psd1',
@@ -204,6 +207,26 @@ Describe 'StaticAnalysis: Module Manifest Validation' {
                 $eval.IsValid | Should -BeTrue
             }
             $true | Should -BeTrue
+        }
+    }
+
+    Context 'Nested Module Export Parity Audit' {
+        It 'IToolkit root manifest re-exports all public functions from nested modules' {
+            $rootManifest = Import-PowerShellDataFile -Path (Join-Path $script:ProjectRoot 'IToolkit.psd1')
+            $rootExports = [System.Collections.Generic.HashSet[string]]::new(
+                [string[]]$rootManifest.FunctionsToExport,
+                [System.StringComparer]::OrdinalIgnoreCase
+            )
+
+            foreach ($nestedRel in $rootManifest.NestedModules) {
+                $nestedFull = Join-Path $script:ProjectRoot $nestedRel
+                if (Test-Path -LiteralPath $nestedFull) {
+                    $nestedManifest = Import-PowerShellDataFile -Path $nestedFull
+                    foreach ($func in $nestedManifest.FunctionsToExport) {
+                        $rootExports.Contains($func) | Should -BeTrue -Because "Root manifest IToolkit.psd1 must export '$func' defined in $nestedRel"
+                    }
+                }
+            }
         }
     }
 }

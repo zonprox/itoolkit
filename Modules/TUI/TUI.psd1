@@ -33,7 +33,8 @@
         'Public/Invoke-ToolkitSubmenuOutlook.ps1',
         'Public/Invoke-ToolkitSubmenuPrinters.ps1',
         'Public/Invoke-ToolkitSubmenuWindowsRepair.ps1',
-        'Public/Invoke-ToolkitSubmenuWindowsCleanup.ps1'
+        'Public/Invoke-ToolkitSubmenuWindowsCleanup.ps1',
+        'Public/Invoke-ToolkitSubmenuNetwork.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -59,6 +60,8 @@
         'Invoke-ToolkitSubmenuAppInstaller',
         'Get-WindowsCleanupContextInfoLines',
         'Invoke-ToolkitSubmenuWindowsCleanup',
+        'Get-NetworkContextInfoLines',
+        'Invoke-ToolkitSubmenuNetwork',
         'Invoke-ToolkitSubmenuAccounts',
         'Invoke-ToolkitSubmenuBackup',
         'Invoke-ToolkitSubmenuExternalTools',

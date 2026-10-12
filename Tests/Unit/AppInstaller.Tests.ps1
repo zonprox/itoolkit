@@ -25,6 +25,12 @@ BeforeAll {
     if (-not (Get-PSDrive -Name 'C' -ErrorAction SilentlyContinue)) {
         New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
     }
+    if (-not (Get-Command 'Add-AppxPackage' -ErrorAction SilentlyContinue)) {
+        function global:Add-AppxPackage { param($Path, $DependencyPath, $Register, [switch]$DisableDevelopmentMode) }
+    }
+    if (-not (Get-Command 'Get-AppxPackage' -ErrorAction SilentlyContinue)) {
+        function global:Get-AppxPackage { param($Name) }
+    }
 }
 
 Describe 'Unit: AppInstaller Module' {
@@ -1271,6 +1277,346 @@ Describe 'Unit: AppInstaller Module' {
             $res.AppName | Should -Be 'UltraVNC'
             $res.Installed | Should -BeFalse
             $res.Status | Should -Be 'WARN'
+        }
+    }
+
+    Context 'Get-ToolkitWingetStatus' {
+        It 'Returns structured status object when winget is unavailable' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'winget' }
+            Mock Test-Path { return $false }
+
+            $status = Get-ToolkitWingetStatus
+            $status | Should -Not -BeNullOrEmpty
+            $status.Available | Should -BeFalse
+            $status.Healthy | Should -BeFalse
+            $status.SourcesHealthy | Should -BeFalse
+            $status.Version | Should -BeNullOrEmpty
+            $status.ErrorMessage | Should -Match 'not found'
+        }
+
+        It 'Detects available winget via App Execution Alias path' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'winget' }
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*winget.exe' }
+            Mock Get-Command { return [PSCustomObject]@{ Name = 'winget' } } -ParameterFilter { $Name -eq 'winget' }
+
+            function script:winget {
+                param([Parameter(ValueFromRemainingArguments = $true)]$args)
+                if ($args -contains '--version') { return 'v1.9.25200' }
+                if ($args -contains 'source') { return 'Name   Argument' }
+                return ''
+            }
+
+            $status = Get-ToolkitWingetStatus
+            $status.Available | Should -BeTrue
+            $status.Healthy | Should -BeTrue
+            $status.SourcesHealthy | Should -BeTrue
+            $status.Version | Should -Match '1\.9\.25200'
+        }
+
+        It 'Detects unhealthy sources when winget source list fails' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-Command { return [PSCustomObject]@{ Name = 'winget' } } -ParameterFilter { $Name -eq 'winget' }
+
+            function script:winget {
+                param([Parameter(ValueFromRemainingArguments = $true)]$args)
+                if ($args -contains '--version') { return 'v1.9.25200' }
+                if ($args -contains 'source') { throw "Sources corrupted" }
+                return ''
+            }
+
+            $status = Get-ToolkitWingetStatus
+            $status.Available | Should -BeTrue
+            $status.Healthy | Should -BeFalse
+            $status.SourcesHealthy | Should -BeFalse
+            $status.ErrorMessage | Should -Not -BeNullOrEmpty
+        }
+    }
+
+    Context 'Install-ToolkitWingetLatest' {
+        It 'Bypasses installation and returns WhatIf status when -WhatIf is passed' -Skip:(-not $isAppInstallerAvailable) {
+            $res = Install-ToolkitWingetLatest -WhatIf
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'WhatIf'
+        }
+
+        It 'Returns current version without reinstalling when winget is healthy and -Force omitted' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-ToolkitWingetStatus {
+                return [PSCustomObject]@{ Available = $true; Healthy = $true; Version = 'v1.9.25200' }
+            }
+            $res = Install-ToolkitWingetLatest
+            $res.Success | Should -BeTrue
+            $res.Version | Should -Be 'v1.9.25200'
+            $res.DependenciesInstalled.Count | Should -Be 0
+        }
+
+        It 'Downloads dependencies and invokes Add-AppxPackage when bootstrapping' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-ToolkitWingetStatus {
+                return [PSCustomObject]@{ Available = $false; Healthy = $false; Version = $null }
+            }
+            $script:downloadedUrls = [System.Collections.Generic.List[string]]::new()
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $script:downloadedUrls.Add($Uri)
+                Set-Content -LiteralPath $OutFile -Value "MOCK_PKG" -Force
+            }
+            $script:appxInvoked = $false
+            $script:depPathsPassed = $null
+            Mock Add-AppxPackage {
+                param($Path, $DependencyPath)
+                $script:appxInvoked = $true
+                $script:depPathsPassed = $DependencyPath
+            }
+
+            $res = Install-ToolkitWingetLatest -Force
+            $res.Success | Should -BeTrue
+            $script:downloadedUrls.Count | Should -BeGreaterThan 0
+            $script:appxInvoked | Should -BeTrue
+            $res.DependenciesInstalled.Count | Should -BeGreaterThan 0
+        }
+
+        It 'Handles bundle download failure gracefully' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-ToolkitWingetStatus {
+                return [PSCustomObject]@{ Available = $false; Healthy = $false; Version = $null }
+            }
+            Mock Invoke-WebRequest {
+                throw "Network download failed"
+            }
+            $res = Install-ToolkitWingetLatest -Force
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'Failed'
+        }
+    }
+
+    Context 'Repair-ToolkitWinget' {
+        It 'Respects -WhatIf switch and returns WhatIf notice' -Skip:(-not $isAppInstallerAvailable) {
+            $res = Repair-ToolkitWinget -WhatIf
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'WhatIf'
+        }
+
+        It 'Resets sources via winget source reset --force and repairs alias' -Skip:(-not $isAppInstallerAvailable) {
+            $script:statusCall = 0
+            Mock Get-ToolkitWingetStatus {
+                $script:statusCall++
+                if ($script:statusCall -le 2) {
+                    return [PSCustomObject]@{ Available = $true; Healthy = $false; SourcesHealthy = $false; Version = 'v1.9' }
+                }
+                return [PSCustomObject]@{ Available = $true; Healthy = $true; SourcesHealthy = $true; Version = 'v1.9' }
+            }
+            $script:resetCalled = $false
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget' -and $ArgumentList -like '*source reset --force*') {
+                    $script:resetCalled = $true
+                    return [PSCustomObject]@{ ExitCode = 0 }
+                }
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            $res = Repair-ToolkitWinget
+            $res.Success | Should -BeTrue
+            $res.Healthy | Should -BeTrue
+            $script:resetCalled | Should -BeTrue
+            ($res.ActionsTaken | Where-Object { $_ -like '*source cache*' }) | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Re-registers AppX package and reinstalls dependencies when broken' -Skip:(-not $isAppInstallerAvailable) {
+            $script:rStatusCall = 0
+            Mock Get-ToolkitWingetStatus {
+                $script:rStatusCall++
+                if ($script:rStatusCall -le 3) {
+                    return [PSCustomObject]@{ Available = $false; Healthy = $false; SourcesHealthy = $false; Version = $null }
+                }
+                return [PSCustomObject]@{ Available = $true; Healthy = $true; SourcesHealthy = $true; Version = 'v1.9.25200' }
+            }
+            Mock Install-ToolkitWingetLatest {
+                return [PSCustomObject]@{ Success = $true; Version = 'v1.9.25200'; DependenciesInstalled = @('VCLibs') }
+            }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+
+            $res = Repair-ToolkitWinget -Force
+            $res.Success | Should -BeTrue
+            $res.ActionsTaken.Count | Should -BeGreaterThan 0
+        }
+    }
+
+    Context 'Install-WingetPackage' {
+        It 'Respects -WhatIf switch and returns WhatIf status' -Skip:(-not $isAppInstallerAvailable) {
+            $res = Install-WingetPackage -PackageId 'Google.Chrome' -WhatIf
+            $res.Installed | Should -BeFalse
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'WhatIf'
+        }
+
+        It 'Executes silent winget install with exact flags on exit code 0' -Skip:(-not $isAppInstallerAvailable) {
+            $script:passedWingetArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget') {
+                    $script:passedWingetArgs = $ArgumentList
+                    return [PSCustomObject]@{ ExitCode = 0 }
+                }
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            $res = Install-WingetPackage -PackageId 'Google.Chrome'
+            $res.PackageId | Should -Be 'Google.Chrome'
+            $res.Installed | Should -BeTrue
+            $res.Success | Should -BeTrue
+            $script:passedWingetArgs | Should -Match 'install --id Google\.Chrome'
+            $script:passedWingetArgs | Should -Match '--exact'
+            $script:passedWingetArgs | Should -Match '--silent'
+            $script:passedWingetArgs | Should -Match '--accept-package-agreements'
+            $script:passedWingetArgs | Should -Match '--accept-source-agreements'
+        }
+
+        It 'Returns uninstalled and error message on non-zero exit code' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                return [PSCustomObject]@{ ExitCode = 1603 }
+            }
+
+            $res = Install-WingetPackage -PackageId 'PhamKimLong.UniKey'
+            $res.PackageId | Should -Be 'PhamKimLong.UniKey'
+            $res.Installed | Should -BeFalse
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match '1603'
+        }
+    }
+
+    Context 'Update-WingetPackage' {
+        It 'Respects -WhatIf switch and returns WhatIf status' -Skip:(-not $isAppInstallerAvailable) {
+            $res = Update-WingetPackage -All -WhatIf
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'WhatIf'
+        }
+
+        It 'Executes winget upgrade --all when -All is specified' -Skip:(-not $isAppInstallerAvailable) {
+            $script:upgradeArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget') {
+                    $script:upgradeArgs = $ArgumentList
+                    return [PSCustomObject]@{ ExitCode = 0 }
+                }
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            $res = Update-WingetPackage -All
+            $res.Success | Should -BeTrue
+            $res.TotalUpgraded | Should -BeGreaterThan 0
+            $script:upgradeArgs | Should -Match 'upgrade --all'
+            $script:upgradeArgs | Should -Match '--silent'
+            $script:upgradeArgs | Should -Match '--accept-package-agreements'
+        }
+
+        It 'Executes winget upgrade for individual package when -PackageId is passed' -Skip:(-not $isAppInstallerAvailable) {
+            $script:singleUpgradeArgs = $null
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget') {
+                    $script:singleUpgradeArgs = $ArgumentList
+                    return [PSCustomObject]@{ ExitCode = 0 }
+                }
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+
+            $res = Update-WingetPackage -PackageId 'Google.Chrome'
+            $res.Success | Should -BeTrue
+            $res.UpgradedPackages | Should -Contain 'Google.Chrome'
+            $script:singleUpgradeArgs | Should -Match 'upgrade --id Google\.Chrome'
+        }
+
+        It 'Returns non-zero exit code error message gracefully' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Start-Process {
+                return [PSCustomObject]@{ ExitCode = 2 }
+            }
+
+            $res = Update-WingetPackage -All
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'exit code: 2'
+        }
+    }
+
+    Context 'TUI Submenu AppInstaller Integration' {
+        It 'Get-AppInstallerContextInfoLines displays winget health badge when active' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-ToolkitWingetStatus {
+                return [PSCustomObject]@{ Available = $true; Healthy = $true; Version = 'v1.9.25200' }
+            }
+            $lines = Get-AppInstallerContextInfoLines
+            $engineLine = $lines | Where-Object { $_ -like '*Deploy Engine*' }
+            $engineLine | Should -Match 'winget \[ACTIVE - v1\.9\.25200\]'
+        }
+
+        It 'Get-AppInstallerContextInfoLines displays standalone direct download when winget unavailable' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Get-ToolkitWingetStatus {
+                return [PSCustomObject]@{ Available = $false; Healthy = $false; Version = $null }
+            }
+            $lines = Get-AppInstallerContextInfoLines
+            $engineLine = $lines | Where-Object { $_ -like '*Deploy Engine*' }
+            $engineLine | Should -Match '\[STANDALONE DIRECT DOWNLOAD\]'
+        }
+
+        It 'Invoke-ToolkitSubmenuAppInstaller exposes U, W, B in action catalog' -Skip:(-not $isAppInstallerAvailable) {
+            $script:capturedActions = $null
+            Mock Show-ToolkitActionCatalog {
+                param($Actions, $NavActions, $Title)
+                $script:capturedActions = $Actions
+            }
+            Invoke-ToolkitSubmenuAppInstaller -NonInteractive
+            $script:capturedActions | Should -Not -BeNullOrEmpty
+            $keys = $script:capturedActions | ForEach-Object { $_.Key }
+            $keys | Should -Contain 'U'
+            $keys | Should -Contain 'W'
+            $keys | Should -Contain 'B'
+        }
+
+        It 'Invoke-ToolkitSubmenuAppInstaller dispatches Update-WingetPackage -All on hotkey U' -Skip:(-not $isAppInstallerAvailable) {
+            $script:upgradeAllCalled = $false
+            Mock Update-WingetPackage {
+                param([switch]$All)
+                $script:upgradeAllCalled = [bool]$All
+                return [PSCustomObject]@{ Success = $true; TotalUpgraded = 3 }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:uCount = 0
+            Mock Read-ToolkitMenuChoice {
+                $script:uCount++
+                if ($script:uCount -eq 1) { return 'U' }
+                return 'Q'
+            }
+
+            Invoke-ToolkitSubmenuAppInstaller
+            $script:upgradeAllCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuAppInstaller dispatches Repair-ToolkitWinget on hotkey W' -Skip:(-not $isAppInstallerAvailable) {
+            $script:repairCalled = $false
+            Mock Repair-ToolkitWinget {
+                $script:repairCalled = $true
+                return [PSCustomObject]@{ Success = $true; Healthy = $true; ActionsTaken = @('Reset cache') }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:wCount = 0
+            Mock Read-ToolkitMenuChoice {
+                $script:wCount++
+                if ($script:wCount -eq 1) { return 'W' }
+                return 'Q'
+            }
+
+            Invoke-ToolkitSubmenuAppInstaller
+            $script:repairCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuAppInstaller dispatches Install-ToolkitWingetLatest on hotkey B' -Skip:(-not $isAppInstallerAvailable) {
+            $script:bootstrapCalled = $false
+            Mock Install-ToolkitWingetLatest {
+                $script:bootstrapCalled = $true
+                return [PSCustomObject]@{ Success = $true; Version = 'v1.9.25200' }
+            }
+            Mock Read-ToolkitMenuChoice { return 'B' }
+
+            Invoke-ToolkitSubmenuAppInstaller
+            $script:bootstrapCalled | Should -BeTrue
         }
     }
 }

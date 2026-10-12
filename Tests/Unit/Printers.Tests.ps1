@@ -263,4 +263,221 @@ Describe 'Unit: Printers Troubleshooting Module' {
             $restored | Should -BeTrue
         }
     }
+
+    Context 'Comprehensive Printer Error Code Catalog & Batch Remediation (R2, R4)' {
+        BeforeEach {
+            Mock Set-ToolkitRegistryValue {
+                param($KeyPath, $ValueName, $Value, $PropertyType, $BackupDirectory)
+                return [PSCustomObject]@{
+                    RegBackupFile = "C:\Backups\$ValueName.reg"
+                    BackupFile    = "C:\Backups\$ValueName.reg"
+                }
+            }
+            Mock Stop-Service { }
+            Mock Start-Service { }
+            Mock Get-Service { return [PSCustomObject]@{ Status = 'Running' } }
+            Mock Get-Process { return @() }
+            Mock Test-Path { return $true }
+            Mock Reset-PrintSpoolerQueue { return [PSCustomObject]@{ FilesPurged = 2; ServiceRestarted = $true } }
+            Mock Reset-PrinterNePortBindings { return [PSCustomObject]@{ CleanedPortsCount = 1; RegBackupFile = 'C:\Backups\NePorts.reg' } }
+            Mock Reset-PrinterConnections { return [PSCustomObject]@{ RefreshedConnections = 2; StaleRemoved = 0 } }
+            Mock Register-PrintSpoolerComponents { return $true }
+            Mock Export-RegistryKeyBackup { return [PSCustomObject]@{ BackupFilePath = 'C:\Backups\Connections.reg' } }
+            Mock Get-CimInstance { return @() }
+        }
+
+        It 'Set-PrinterRemediation -All applies both server and client remediations in batch mode' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Role Both -All
+            $res.Role | Should -Be 'Both'
+            $res.FixesApplied | Should -Contain 'RpcAuthnLevel'
+            $res.FixesApplied | Should -Contain 'PointAndPrintAdmin'
+            $res.FixesApplied | Should -Contain 'RpcNamedPipe'
+            $res.FixesApplied | Should -Contain 'CopyFilesPolicy'
+            $res.FixesApplied | Should -Contain 'SpoolerDLLs'
+            $res.FixesApplied | Should -Contain 'DriverStoreRepair'
+            $res.FixesApplied | Should -Contain 'SpoolerHandles'
+            $res.FixesApplied | Should -Contain 'DriverConfig'
+            $res.FixesApplied | Should -Contain 'ClearStalledJobs'
+            $res.FixesApplied | Should -Contain 'SpoolerCrash'
+            $res.FixesApplied | Should -Contain 'NePorts'
+            $res.FixesApplied | Should -Contain 'RefreshConnections'
+            $res.RegBackupFiles.Count | Should -BeGreaterThan 0
+            $res.SpoolerRestarted | Should -BeTrue
+            $res.Success | Should -BeTrue
+            $res.ErrorMessage | Should -BeNullOrEmpty
+        }
+
+        It 'Set-PrinterRemediation -Role Client -All applies all client remediations' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Role Client -All
+            $res.Role | Should -Be 'Client'
+            $res.FixesApplied | Should -Contain 'PointAndPrintAdmin'
+            $res.FixesApplied | Should -Contain 'PointAndPrintPrompts'
+            $res.FixesApplied | Should -Contain 'RpcNamedPipe'
+            $res.FixesApplied | Should -Contain 'DefaultPrinterKey'
+            $res.FixesApplied | Should -Contain 'CopyFilesPolicy'
+            $res.FixesApplied | Should -Contain 'NePorts'
+            $res.FixesApplied | Should -Contain 'RefreshConnections'
+            $res.FixesApplied | Should -Not -Contain 'RpcAuthnLevel'
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation -Role Server -All applies all server remediations' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Role Server -All
+            $res.Role | Should -Be 'Server'
+            $res.FixesApplied | Should -Contain 'RpcAuthnLevel'
+            $res.FixesApplied | Should -Contain 'RemoteRpcEndPoint'
+            $res.FixesApplied | Should -Contain 'RpcProtocols'
+            $res.FixesApplied | Should -Contain 'SpoolerHealth'
+            $res.FixesApplied | Should -Not -Contain 'PointAndPrintAdmin'
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x0000011b (RpcAuthnLevel & RemoteRpcEndPoint & restart spooler)' -Skip:(-not $isPrintersAvailable) {
+            $capturedValues = @{}
+            Mock Set-ToolkitRegistryValue {
+                param($KeyPath, $ValueName, $Value, $PropertyType, $BackupDirectory)
+                $capturedValues[$ValueName] = $Value
+                return [PSCustomObject]@{ RegBackupFile = "C:\Backups\$ValueName.reg" }
+            }
+            $res = Set-PrinterRemediation -Fix '0x0000011b'
+            $res.FixesApplied | Should -Contain '0x0000011b'
+            $res.FixesApplied | Should -Contain 'RpcAuthnLevel'
+            $res.FixesApplied | Should -Contain 'RemoteRpcEndPoint'
+            $capturedValues['RpcAuthnLevelPrivacyEnabled'] | Should -Be 0
+            $capturedValues['RegisterSpoolerRemoteRpcEndPoint'] | Should -Be 1
+            $res.SpoolerRestarted | Should -BeTrue
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x00000709 (RpcNamedPipe & DefaultPrinterKey)' -Skip:(-not $isPrintersAvailable) {
+            $capturedValues = @{}
+            Mock Set-ToolkitRegistryValue {
+                param($KeyPath, $ValueName, $Value, $PropertyType, $BackupDirectory)
+                $capturedValues[$ValueName] = $Value
+                return [PSCustomObject]@{ RegBackupFile = "C:\Backups\$ValueName.reg" }
+            }
+            $res = Set-PrinterRemediation -ErrorCodes '0x00000709'
+            $res.FixesApplied | Should -Contain '0x00000709'
+            $res.FixesApplied | Should -Contain 'RpcNamedPipe'
+            $res.FixesApplied | Should -Contain 'DefaultPrinterKey'
+            $capturedValues['RpcUseNamedPipeProtocol'] | Should -Be 1
+            $capturedValues['UserSelectedDefault'] | Should -Be 1
+            $capturedValues['LegacyDefaultPrinterMode'] | Should -Be 1
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x0000007c (CopyFilesPolicy)' -Skip:(-not $isPrintersAvailable) {
+            $capturedValues = @{}
+            Mock Set-ToolkitRegistryValue {
+                param($KeyPath, $ValueName, $Value, $PropertyType, $BackupDirectory)
+                $capturedValues[$ValueName] = $Value
+                return [PSCustomObject]@{ RegBackupFile = "C:\Backups\$ValueName.reg" }
+            }
+            $res = Set-PrinterRemediation -Fix '0x0000007c'
+            $res.FixesApplied | Should -Contain '0x0000007c'
+            $capturedValues['CopyFilesPolicy'] | Should -Be 1
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x0000007e (SpoolerDLLs & Driver Restoration)' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Fix '0x0000007e'
+            $res.FixesApplied | Should -Contain '0x0000007e'
+            $res.FixesApplied | Should -Contain 'SpoolerDLLs'
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x00000bcb (PointAndPrintAdmin & Prompts)' -Skip:(-not $isPrintersAvailable) {
+            $capturedValues = @{}
+            Mock Set-ToolkitRegistryValue {
+                param($KeyPath, $ValueName, $Value, $PropertyType, $BackupDirectory)
+                $capturedValues[$ValueName] = $Value
+                return [PSCustomObject]@{ RegBackupFile = "C:\Backups\$ValueName.reg" }
+            }
+            $res = Set-PrinterRemediation -Fix '0x00000bcb'
+            $res.FixesApplied | Should -Contain '0x00000bcb'
+            $capturedValues['RestrictDriverInstallationToAdministrators'] | Should -Be 0
+            $capturedValues['NoWarningNoElevationOnInstall'] | Should -Be 1
+            $capturedValues['UpdatePromptSettings'] | Should -Be 2
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x00000002 (DriverStoreRepair)' -Skip:(-not $isPrintersAvailable) {
+            $capturedValues = @{}
+            Mock Set-ToolkitRegistryValue {
+                param($KeyPath, $ValueName, $Value, $PropertyType, $BackupDirectory)
+                $capturedValues[$ValueName] = $Value
+                return [PSCustomObject]@{ RegBackupFile = "C:\Backups\$ValueName.reg" }
+            }
+            $res = Set-PrinterRemediation -Fix '0x00000002'
+            $res.FixesApplied | Should -Contain '0x00000002'
+            $capturedValues['Directory'] | Should -Be 'W32X64'
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x00000006 (SpoolerHandles & restart spooler)' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Fix '0x00000006'
+            $res.FixesApplied | Should -Contain '0x00000006'
+            $res.SpoolerRestarted | Should -BeTrue
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x00000057 (DriverConfig & DefaultSpoolDirectory)' -Skip:(-not $isPrintersAvailable) {
+            $capturedValues = @{}
+            Mock Set-ToolkitRegistryValue {
+                param($KeyPath, $ValueName, $Value, $PropertyType, $BackupDirectory)
+                $capturedValues[$ValueName] = $Value
+                return [PSCustomObject]@{ RegBackupFile = "C:\Backups\$ValueName.reg" }
+            }
+            $res = Set-PrinterRemediation -Fix '0x00000057'
+            $res.FixesApplied | Should -Contain '0x00000057'
+            $capturedValues['DefaultSpoolDirectory'] | Should -Not -BeNullOrEmpty
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates 0x000003e3 (ClearStalledJobs & Win32_PrintJob)' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Fix '0x000003e3'
+            $res.FixesApplied | Should -Contain '0x000003e3'
+            $res.SpoolerRestarted | Should -BeTrue
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates SpoolerCrash (Full queue purge & ACLs & restart)' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Fix 'SpoolerCrash'
+            $res.FixesApplied | Should -Contain 'SpoolerCrash'
+            $res.SpoolerRestarted | Should -BeTrue
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates NePortConflict (Reset Ne Ports)' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Fix 'NePortConflict'
+            $res.FixesApplied | Should -Contain 'NePortConflict'
+            $res.CleanedNePortsCount | Should -Be 1
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation remediates RefreshConnections (Rebind network mappings)' -Skip:(-not $isPrintersAvailable) {
+            $res = Set-PrinterRemediation -Fix 'RefreshConnections'
+            $res.FixesApplied | Should -Contain 'RefreshConnections'
+            $res.RefreshedConnections | Should -Be 2
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Set-PrinterRemediation supports -WhatIf simulation without executing mutations' -Skip:(-not $isPrintersAvailable) {
+            $regModified = $false
+            Mock Set-ToolkitRegistryValue { $regModified = $true; return $null }
+            $res = Set-PrinterRemediation -All -WhatIf
+            $regModified | Should -BeFalse
+            $res.RegBackupFiles | Should -Contain '[Simulated - WhatIf]'
+            $res.SpoolerRestarted | Should -BeFalse
+            $res.Success | Should -BeTrue
+        }
+
+        It 'Supports rollback capability via Restore-RegistryKeyBackup on remediation backups' -Skip:(-not $isPrintersAvailable) {
+            Mock Restore-RegistryKeyBackup { return $true }
+            $res = Set-PrinterRemediation -Fix '0x0000011b'
+            $res.RegBackupFiles.Count | Should -BeGreaterThan 0
+            $restored = Restore-RegistryKeyBackup -BackupFilePath $res.RegBackupFiles[0]
+            $restored | Should -BeTrue
+        }
+    }
 }

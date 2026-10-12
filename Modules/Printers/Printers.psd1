@@ -6,7 +6,7 @@
     Author                 = 'IToolkit Team'
     CompanyName            = 'Enterprise IT Administration'
     Copyright              = '(c) 2026 IToolkit. All rights reserved.'
-    Description            = 'Print Spooler diagnostics, queue purge, component re-registration, NeXX port binding resets, Point and Print policy remediation, and network printer connectivity testing.'
+    Description            = 'Print Spooler diagnostics, queue purge, component re-registration, NeXX port binding resets, and Point and Print policy remediation.'
 
     # PowerShell Engine Compatibility
     PowerShellVersion      = '5.1'
@@ -20,10 +20,10 @@
         'Public/Reset-PrinterNePortBindings.ps1',
         'Public/Test-PointAndPrintPolicy.ps1',
         'Public/Set-PointAndPrintRemediation.ps1',
-        'Public/Test-NetworkPrinterConnectivity.ps1',
         'Public/Reset-PrinterConnections.ps1',
         'Public/Set-PrinterServerRemediation.ps1',
-        'Public/Set-PrinterClientRemediation.ps1'
+        'Public/Set-PrinterClientRemediation.ps1',
+        'Public/Set-PrinterRemediation.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -34,10 +34,10 @@
         'Reset-PrinterNePortBindings',
         'Test-PointAndPrintPolicy',
         'Set-PointAndPrintRemediation',
-        'Test-NetworkPrinterConnectivity',
         'Reset-PrinterConnections',
         'Set-PrinterServerRemediation',
-        'Set-PrinterClientRemediation'
+        'Set-PrinterClientRemediation',
+        'Set-PrinterRemediation'
     )
 
     CmdletsToExport        = @()
@@ -46,7 +46,7 @@
 
     PrivateData            = @{
         PSData = @{
-            Tags = @('IToolkit', 'Printers', 'PrintSpooler', 'PrintNightmare', 'NetworkPrinting')
+            Tags = @('IToolkit', 'Printers', 'PrintSpooler', 'PrintNightmare')
         }
     }
 }
