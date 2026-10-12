@@ -6,9 +6,9 @@ function Resolve-ToolkitApplicationDownloadUrl {
     Dynamically queries official endpoints (unikey.org, zalo.me redirect) with short
     timeouts (4s) and architecture detection, falling back gracefully to known stable URLs.
 .PARAMETER AppName
-    Target application name ('UniKey', 'Zalo', 'Chrome', 'FoxitReader', 'VCRedistAIO', 'UltraVNC', 'KLiteCodec').
+    Target application name ('UniKey', 'Zalo', 'Chrome', 'FoxitReader', 'VCRedistAIO', 'UltraVNC', 'KLiteCodec', 'WinRAR').
 .PARAMETER Architecture
-    Optional architecture override ('win64', 'win32', 'arm64').
+    Optional architecture override ('win64', 'arm64').
 .OUTPUTS
     [PSCustomObject] containing AppName, PrimaryUrl, FallbackUrls, ResolvedDynamically, DetectedArchitecture.
 #>
@@ -16,7 +16,7 @@ function Resolve-ToolkitApplicationDownloadUrl {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
-        [ValidateSet('UniKey', 'Zalo', 'Chrome', 'FoxitReader', 'VCRedistAIO', 'UltraVNC', 'KLiteCodec')]
+        [ValidateSet('UniKey', 'Zalo', 'Chrome', 'FoxitReader', 'VCRedistAIO', 'UltraVNC', 'KLiteCodec', 'WinRAR')]
         [string]$AppName,
 
         [Parameter(Mandatory = $false)]
@@ -24,7 +24,7 @@ function Resolve-ToolkitApplicationDownloadUrl {
     )
 
     process {
-        # Detect host architecture
+        # Detect host architecture (strictly 64-bit)
         $arch = $Architecture
         if ([string]::IsNullOrWhiteSpace($arch)) {
             $rawArch = if ($env:PROCESSOR_ARCHITEW6432) {
@@ -36,7 +36,6 @@ function Resolve-ToolkitApplicationDownloadUrl {
             }
             $arch = switch -Wildcard ($rawArch) {
                 '*arm64*' { 'arm64' }
-                '*x86*'   { 'win32' }
                 default   { 'win64' }
             }
         }
@@ -47,10 +46,9 @@ function Resolve-ToolkitApplicationDownloadUrl {
 
         switch ($AppName) {
             'UniKey' {
-                # Known stable fallbacks (UniKey 4.6 RC2)
+                # Known stable fallbacks (UniKey 4.6 RC2 win64)
                 $stableUrls = @{
                     'win64' = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win64.zip'
-                    'win32' = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win32.zip'
                     'arm64' = 'https://www.unikey.org/assets/release/unikey46RC2-250531-arm64.zip'
                 }
 
@@ -63,7 +61,7 @@ function Resolve-ToolkitApplicationDownloadUrl {
                     $client.Timeout = [System.TimeSpan]::FromSeconds(4)
                     $client.DefaultRequestHeaders.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
                     $html = $client.GetStringAsync('https://www.unikey.org/assets/release/').GetAwaiter().GetResult()
-                    $regex = '(?i)(unikey[0-9A-Za-z_-]+-(?:win64|win32|arm64)\.zip)'
+                    $regex = '(?i)(unikey[0-9A-Za-z_-]+-(?:win64|arm64)\.zip)'
                     $matches = [regex]::Matches($html, $regex)
                     $archMatches = [System.Collections.Generic.List[string]]::new()
                     foreach ($m in $matches) {
@@ -89,8 +87,6 @@ function Resolve-ToolkitApplicationDownloadUrl {
                 if (-not $primaryUrl) {
                     $key = if ($arch -like '*arm64*') {
                         'arm64'
-                    } elseif ($arch -like '*32*' -or $arch -like '*86*' -or $arch -eq 'win32') {
-                        'win32'
                     } else {
                         'win64'
                     }
@@ -101,7 +97,7 @@ function Resolve-ToolkitApplicationDownloadUrl {
                 }
 
                 # Add alternate architecture stable URLs as fallbacks
-                foreach ($k in @('win64', 'win32', 'arm64')) {
+                foreach ($k in @('win64', 'arm64')) {
                     $u = $stableUrls[$k]
                     if ($u -ne $primaryUrl -and -not $fallbacks.Contains($u)) {
                         $fallbacks.Add($u)
@@ -173,18 +169,8 @@ function Resolve-ToolkitApplicationDownloadUrl {
             }
 
             'UltraVNC' {
-                $is32 = ($arch -eq 'win32' -or $arch -eq 'x86' -or $arch -like '*32*' -or $arch -like '*86*')
-                if ($is32) {
-                    $primaryUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe'
-                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe')
-                    $fallbacks.Add('https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe')
-                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe')
-                } else {
-                    $primaryUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
-                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe')
-                    $fallbacks.Add('https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe')
-                    $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe')
-                }
+                $primaryUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
+                $fallbacks.Add('https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe')
                 $resolvedDynamically = $true
             }
 
@@ -193,6 +179,46 @@ function Resolve-ToolkitApplicationDownloadUrl {
                 $fallbacks.Add('https://files2.codecguide.com/K-Lite_Codec_Pack_1880_Standard.exe')
                 $fallbacks.Add('https://files1.codecguide.com/K-Lite_Codec_Pack_1880_Standard.exe')
                 $resolvedDynamically = $true
+            }
+
+            'WinRAR' {
+                $knownStable = @(
+                    'https://www.rarlab.com/rar/winrar-x64-701.exe',
+                    'https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-x64-701.exe'
+                )
+
+                # Attempt dynamic discovery from official rarlab download listing
+                $handler = $null
+                $client = $null
+                try {
+                    $handler = [System.Net.Http.HttpClientHandler]::new()
+                    $client = [System.Net.Http.HttpClient]::new($handler)
+                    $client.Timeout = [System.TimeSpan]::FromSeconds(4)
+                    $client.DefaultRequestHeaders.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+                    $html = $client.GetStringAsync('https://www.rarlab.com/download.htm').GetAwaiter().GetResult()
+                    $regex = '(?i)/rar/(winrar-x64-\d+\.exe)'
+                    $match = [regex]::Match($html, $regex)
+                    if ($match.Success) {
+                        $primaryUrl = "https://www.rarlab.com/rar/$($match.Groups[1].Value)"
+                        $resolvedDynamically = $true
+                    }
+                } catch {
+                    $resolvedDynamically = $false
+                } finally {
+                    if ($null -ne $client) { $client.Dispose() }
+                    if ($null -ne $handler) { $handler.Dispose() }
+                }
+
+                if (-not $primaryUrl) {
+                    $primaryUrl = $knownStable[0]
+                    $resolvedDynamically = $true
+                }
+
+                foreach ($u in $knownStable) {
+                    if ($u -ne $primaryUrl -and -not $fallbacks.Contains($u)) {
+                        $fallbacks.Add($u)
+                    }
+                }
             }
         }
 

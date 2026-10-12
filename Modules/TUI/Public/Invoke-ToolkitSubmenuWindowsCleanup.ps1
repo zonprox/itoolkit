@@ -174,10 +174,9 @@ function Invoke-ToolkitSubmenuWindowsCleanup {
         Write-Host ""
         $modeLabel = if ($whatIfMode) { 'Toggle WhatIf [WHATIF: ON]' } else { 'Toggle WhatIf [LIVE: ACTIVE]' }
         $cleanupActions = @(
-            @{ Key = 'W'; Label = $modeLabel },
             @{ Key = 'A'; Label = 'Quick Clean All' },
             @{ Key = 'R'; Label = 'ResetBase Component Store' },
-            @{ Key = 'D'; Label = 'Refresh Space Estimates' }
+            @{ Key = 'W'; Label = $modeLabel }
         )
         $navActions = @(
             @{ Key = 'B'; Label = 'Back to Main Menu' },
@@ -190,8 +189,8 @@ function Invoke-ToolkitSubmenuWindowsCleanup {
             return
         }
 
-        $validKeys = @('W', 'A', 'R', 'D', 'B', 'Q')
-        $promptText = "  Select subsystem [1-$($cleanupItems.Count)] or action [W, A, R, D, B, Q]"
+        $validKeys = @('A', 'R', 'W', 'D', 'B', 'Q')
+        $promptText = "  Select subsystem [1-$($cleanupItems.Count)] or action [A, R, W, B, Q]"
         $selection = Read-ToolkitItemSelection -MaxIndex $cleanupItems.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {

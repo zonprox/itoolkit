@@ -1388,7 +1388,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:importCertCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuWindowsRepair renders action catalog exposing S, D, W, N, R' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuWindowsRepair renders action catalog exposing A, S, D, W, R' -Skip:(-not $isTUIAvailable) {
             $script:repairCatalogActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
@@ -1397,11 +1397,12 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitSubmenuWindowsRepair -NonInteractive } | Should -Not -Throw
             $script:repairCatalogActions | Should -Not -BeNullOrEmpty
             $keys = $script:repairCatalogActions | ForEach-Object { $_.Key }
+            $keys | Should -Contain 'A'
             $keys | Should -Contain 'S'
             $keys | Should -Contain 'D'
             $keys | Should -Contain 'W'
-            $keys | Should -Contain 'N'
             $keys | Should -Contain 'R'
+            $keys | Should -Not -Contain 'N'
         }
 
         It 'Invoke-ToolkitSubmenuWindowsRepair displays elevation warning banner when Test-IsAdmin returns false' -Skip:(-not $isTUIAvailable) {
@@ -1481,7 +1482,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:wmiRan | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller renders action catalog exposing A, 1-7 with simplified labels and no redundant actions' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller renders action catalog exposing A, 1-8, U with simplified labels and no redundant actions' -Skip:(-not $isTUIAvailable) {
             $script:installerCatalogActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
@@ -1497,7 +1498,11 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $keys | Should -Contain '5'
             $keys | Should -Contain '6'
             $keys | Should -Contain '7'
+            $keys | Should -Contain '8'
             $keys | Should -Contain 'A'
+            $keys | Should -Contain 'U'
+            $keys | Should -Not -Contain 'W'
+            $keys | Should -Not -Contain 'B'
             $keys | Should -Not -Contain 'S'
             $keys | Should -Not -Contain 'D'
             $keys | Should -Not -Contain 'E'
@@ -1515,7 +1520,9 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             ($script:installerCatalogActions | Where-Object { $_.Key -eq '5' }).Label | Should -Be 'K-Lite Codec Pack'
             ($script:installerCatalogActions | Where-Object { $_.Key -eq '6' }).Label | Should -Be 'Visual C++ Redistributable AIO'
             ($script:installerCatalogActions | Where-Object { $_.Key -eq '7' }).Label | Should -Be 'Zalo PC'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq '8' }).Label | Should -Be 'WinRAR'
             ($script:installerCatalogActions | Where-Object { $_.Key -eq 'A' }).Label | Should -Be 'All Applications'
+            ($script:installerCatalogActions | Where-Object { $_.Key -eq 'U' }).Label | Should -Be 'Update All Winget Apps'
         }
 
         It 'Invoke-ToolkitSubmenuAppInstaller dispatches install commands correctly' -Skip:(-not $isTUIAvailable) {
@@ -1567,7 +1574,18 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:installAppName | Should -Be 'Zalo'
             $script:installShortcut | Should -BeTrue
 
-            # Verify removed keys (D, S, E) are not present in ValidKeys passed to Read-ToolkitMenuChoice
+            # Test Hotkey 8 (WinRAR)
+            $script:choiceCount = 0
+            Mock Read-ToolkitMenuChoice {
+                $script:choiceCount++
+                if ($script:choiceCount -eq 1) { return '8' }
+                return 'Q'
+            }
+            { Invoke-ToolkitSubmenuAppInstaller } | Should -Not -Throw
+            $script:installAppName | Should -Be 'WinRAR'
+            $script:installShortcut | Should -BeTrue
+
+            # Verify removed keys (D, S, E, W) are not present in ValidKeys passed to Read-ToolkitMenuChoice, but 8, U, and standard navigation B are
             $script:capturedValidKeys = $null
             Mock Read-ToolkitMenuChoice {
                 param($Prompt, $ValidKeys)
@@ -1578,6 +1596,10 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:capturedValidKeys | Should -Not -Contain 'D'
             $script:capturedValidKeys | Should -Not -Contain 'S'
             $script:capturedValidKeys | Should -Not -Contain 'E'
+            $script:capturedValidKeys | Should -Not -Contain 'W'
+            $script:capturedValidKeys | Should -Contain 'B'
+            $script:capturedValidKeys | Should -Contain '8'
+            $script:capturedValidKeys | Should -Contain 'U'
         }
     }
 
@@ -1599,7 +1621,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $subsystemNames | Should -Contain 'Temporary Files'
         }
 
-        It 'Invoke-ToolkitSubmenuWindowsCleanup renders action catalog exposing W, A, R, D, B, Q' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuWindowsCleanup renders action catalog exposing W, A, R, B, Q' -Skip:(-not $isTUIAvailable) {
             $script:capturedActions = $null
             $script:capturedNav = $null
             Mock Show-ToolkitActionCatalog {
@@ -1613,7 +1635,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $keys | Should -Contain 'W'
             $keys | Should -Contain 'A'
             $keys | Should -Contain 'R'
-            $keys | Should -Contain 'D'
+            $keys | Should -Not -Contain 'D'
             $navKeys = $script:capturedNav | ForEach-Object { $_.Key }
             $navKeys | Should -Contain 'B'
             $navKeys | Should -Contain 'Q'

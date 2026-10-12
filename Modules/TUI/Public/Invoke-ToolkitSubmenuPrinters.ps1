@@ -138,14 +138,10 @@ function Invoke-ToolkitSubmenuPrinters {
         $topLevelActions = @(
             @{ Key = 'A'; Label = 'Apply All Server' },
             @{ Key = 'L'; Label = 'Apply All Client' },
-            @{ Key = 'X'; Label = 'Apply All Both' },
-            @{ Key = 'F'; Label = 'Fixes Catalog' },
-            @{ Key = 'U'; Label = 'Rollback' },
             @{ Key = 'S'; Label = 'Spooler Restart & Purge' },
-            @{ Key = 'R'; Label = 'Register DLLs' },
             @{ Key = 'P'; Label = 'Point & Print Remediation' },
-            @{ Key = 'N'; Label = 'Reset Ne Ports' },
-            @{ Key = 'C'; Label = 'Refresh Connections' }
+            @{ Key = 'F'; Label = 'Fixes Catalog' },
+            @{ Key = 'U'; Label = 'Rollback' }
         )
         $navActions = @(
             @{ Key = 'B'; Label = 'Back' },
@@ -158,8 +154,8 @@ function Invoke-ToolkitSubmenuPrinters {
             return
         }
 
-        $validKeys = @('A', 'L', 'X', 'F', 'U', 'S', 'R', 'P', 'N', 'C', 'B', 'Q')
-        $promptText = if ($printers.Count -gt 0) { "  Select item [1-$($printers.Count)] or action" } else { "  Select action [A, L, X, F, U, S, R, P, N, C, B, Q]" }
+        $validKeys = @('A', 'L', 'S', 'P', 'F', 'U', 'X', 'R', 'N', 'C', 'B', 'Q')
+        $promptText = if ($printers.Count -gt 0) { "  Select item [1-$($printers.Count)] or action" } else { "  Select action [A, L, S, P, F, U, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $printers.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -366,7 +362,13 @@ function Invoke-ToolkitSubmenuPrinters {
                     if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
                         try {
                             Reset-PrintSpoolerQueue -Force
-                            Write-ToolkitStatus -Message "Print spooler service restarted and queue purged." -Type 'OK'
+                            if (Get-Command -Name 'Register-PrintSpoolerComponents' -ErrorAction SilentlyContinue) {
+                                try { Register-PrintSpoolerComponents | Out-Null } catch { $null = $_ }
+                            }
+                            if (Get-Command -Name 'Reset-PrinterNePortBindings' -ErrorAction SilentlyContinue) {
+                                try { Reset-PrinterNePortBindings | Out-Null } catch { $null = $_ }
+                            }
+                            Write-ToolkitStatus -Message "Print spooler service restarted, queue purged, and components re-registered." -Type 'OK'
                         }
                         catch {
                             Write-ToolkitStatus -Message "Failed to reset print spooler queue: $($_.Exception.Message)" -Type 'FAIL'

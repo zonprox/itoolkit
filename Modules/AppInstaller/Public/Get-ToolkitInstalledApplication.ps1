@@ -4,9 +4,9 @@ function Get-ToolkitInstalledApplication {
     Discovers installation status, executable path, and version for standard enterprise applications.
 .DESCRIPTION
     Checks standard 32-bit and 64-bit installation directories and registry uninstall keys
-    for UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome, Visual C++ Redistributable AIO, Foxit Reader, and Zalo PC.
+    for UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome, Visual C++ Redistributable AIO, Foxit Reader, Zalo PC, and WinRAR.
 .PARAMETER AppName
-    Target application name. Valid values: 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', or 'All'. Default is 'All'.
+    Target application name. Valid values: 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'WinRAR', or 'All'. Default is 'All'.
 .OUTPUTS
     [PSCustomObject[]] containing AppName, DisplayName, Installed, ExecutablePath, Version.
 #>
@@ -14,7 +14,7 @@ function Get-ToolkitInstalledApplication {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory = $false, Position = 0, ValueFromPipeline = $true)]
-        [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'All')]
+        [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'WinRAR', 'All')]
         [string[]]$AppName = @('All')
     )
 
@@ -116,10 +116,18 @@ function Get-ToolkitInstalledApplication {
                 )
                 RegistryPatterns = @('*Zalo*')
             }
+            'WinRAR' = @{
+                DisplayName     = 'WinRAR'
+                ExeCandidates   = @(
+                    (Join-Path $progFiles 'WinRAR\WinRAR.exe'),
+                    (Join-Path $progFilesX86 'WinRAR\WinRAR.exe')
+                )
+                RegistryPatterns = @('*WinRAR*')
+            }
         }
 
         $targets = if ($AppName -contains 'All') {
-            @('VCRedistAIO', 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'FoxitReader', 'Zalo')
+            @('VCRedistAIO', 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'FoxitReader', 'Zalo', 'WinRAR')
         } else {
             @($AppName)
         }

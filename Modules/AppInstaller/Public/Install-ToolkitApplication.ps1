@@ -1,15 +1,26 @@
+function Test-Is64BitOperatingSystem {
+    [CmdletBinding()]
+    param()
+    return [Environment]::Is64BitOperatingSystem
+}
+
+if (Get-Command -Name 'Test-Is64BitOperatingSystem' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Test-Is64BitOperatingSystem' -Value (Get-Command -Name 'Test-Is64BitOperatingSystem').ScriptBlock
+}
+
 function Install-ToolkitApplication {
 <#
 .SYNOPSIS
     Installs standard enterprise applications with automated desktop shortcut and default association configuration.
 .DESCRIPTION
     Automates silent installation of UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome,
-    Visual C++ Redistributables All-In-One (vcredist AIO), Foxit PDF Reader, and Zalo PC.
-    Sequences runtime dependencies (VCRedistAIO) first, guards against conflicting active processes,
-    utilizes Windows Package Manager (winget) with resilient direct URL fallback, automatically creates
-    desktop shortcuts, assigns default browser/PDF handlers, and deploys Chrome enterprise policies.
+    Visual C++ Redistributables All-In-One (vcredist AIO), Foxit PDF Reader, Zalo PC, and WinRAR.
+    Enforces 64-bit Windows operating system requirements, sequences runtime dependencies (VCRedistAIO) first,
+    guards against conflicting active processes, utilizes Windows Package Manager (winget) with transparent
+    diagnostics and auto-repair, resilient direct URL fallback, automatically creates desktop shortcuts,
+    assigns default browser/PDF handlers, and deploys Chrome enterprise policies.
 .PARAMETER AppName
-    Application to install. Valid values: 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'All'. Default is 'All'.
+    Application to install. Valid values: 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'WinRAR', 'All'. Default is 'All'.
 .PARAMETER CreateShortcut
     Creates a desktop shortcut (.lnk) on the current user's desktop upon installation. Default is true.
 .PARAMETER SetDefault
@@ -27,7 +38,7 @@ function Install-ToolkitApplication {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory = $false, Position = 0, ValueFromPipeline = $true)]
-        [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'All')]
+        [ValidateSet('UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'WinRAR', 'All')]
         [string[]]$AppName = @('All'),
 
         [Parameter(Mandatory = $false)]
@@ -67,6 +78,21 @@ function Install-ToolkitApplication {
             $pubWingetInstall = Join-Path $PSScriptRoot 'Install-WingetPackage.ps1'
             if (Test-Path -LiteralPath $pubWingetInstall) { . $pubWingetInstall }
         }
+        if (-not (Get-Command -Name 'Repair-ToolkitWinget' -ErrorAction SilentlyContinue)) {
+            $pubWingetRepair = Join-Path $PSScriptRoot 'Repair-ToolkitWinget.ps1'
+            if (Test-Path -LiteralPath $pubWingetRepair) { . $pubWingetRepair }
+        }
+
+        # 0. Upfront 64-bit Architecture Enforcement
+        $is64Bit = if (Get-Command -Name 'Test-Is64BitOperatingSystem' -ErrorAction SilentlyContinue) {
+            Test-Is64BitOperatingSystem
+        } else {
+            [Environment]::Is64BitOperatingSystem
+        }
+        if (-not $is64Bit) {
+            Write-AppInstallerLog -Message "Installation rejected: Only 64-bit Windows operating systems are supported." -Level 'ERROR' -Component 'Install-ToolkitApplication'
+            throw "Installation rejected: Only 64-bit Windows operating systems are supported."
+        }
 
         if (-not (Get-PSDrive -Name 'C' -Scope Global -ErrorAction SilentlyContinue)) {
             New-PSDrive -Name 'C' -PSProvider FileSystem -Root ([System.IO.Path]::GetTempPath()) -Scope Global -ErrorAction SilentlyContinue -WhatIf:$false | Out-Null
@@ -103,7 +129,6 @@ function Install-ToolkitApplication {
                 DisplayName          = 'UniKey Vietnamese Input Method'
                 WingetId             = 'PhamKimLong.UniKey'
                 FallbackUrl          = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win64.zip'
-                AlternateFallbackUrl = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win32.zip'
                 Arm64FallbackUrl     = 'https://www.unikey.org/assets/release/unikey46RC2-250531-arm64.zip'
                 InstallType          = 'Archive'
                 TargetDir            = 'UniKey'
@@ -118,7 +143,6 @@ function Install-ToolkitApplication {
                 WingetId             = 'UltraVNC.UltraVNC'
                 AlternateWingetId    = 'uvnc.UltraVNC'
                 FallbackUrl          = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
-                AlternateFallbackUrl = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe'
                 SilentArgs           = '/VERYSILENT /NORESTART'
                 ShortcutName         = 'UltraVNC Viewer.lnk'
                 CanSetDefault        = $false
@@ -164,11 +188,21 @@ function Install-ToolkitApplication {
                 CanSetDefault        = $false
                 ProcessNames         = @('Zalo')
             }
+            'WinRAR' = @{
+                DisplayName          = 'WinRAR'
+                WingetId             = 'RARLab.WinRAR'
+                FallbackUrl          = 'https://www.rarlab.com/rar/winrar-x64-701.exe'
+                AlternateFallbackUrl = 'https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-x64-701.exe'
+                SilentArgs           = '/s'
+                ShortcutName         = 'WinRAR.lnk'
+                CanSetDefault        = $false
+                ProcessNames         = @('WinRAR')
+            }
         }
 
         # 3. Dependency Sequencing & Target Resolution
         $targets = if ($AppName -contains 'All') {
-            @('VCRedistAIO', 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'FoxitReader', 'Zalo')
+            @('VCRedistAIO', 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'FoxitReader', 'Zalo', 'WinRAR')
         } else {
             @($AppName)
         }
@@ -181,8 +215,21 @@ function Install-ToolkitApplication {
 
         $results = [System.Collections.Generic.List[PSCustomObject]]::new()
         $hasWinget = $false
+        $wingetRepaired = $false
         if (Get-Command -Name 'Get-ToolkitWingetStatus' -ErrorAction SilentlyContinue) {
             $wStat = Get-ToolkitWingetStatus
+            if ($wStat -and $wStat.Available -and -not $wStat.Healthy) {
+                Write-AppInstallerLog -Message "Package manager is available but unhealthy. Transparently initiating self-repair..." -Level 'INFO' -Component 'Install-ToolkitApplication'
+                if (Get-Command -Name 'Repair-ToolkitWinget' -ErrorAction SilentlyContinue) {
+                    try {
+                        $null = Repair-ToolkitWinget
+                        $wingetRepaired = $true
+                        $wStat = Get-ToolkitWingetStatus
+                    } catch {
+                        $null = $_
+                    }
+                }
+            }
             $hasWinget = [bool]($wStat -and $wStat.Available)
         } else {
             $hasWinget = [bool](Get-Command -Name 'winget' -ErrorAction SilentlyContinue)
@@ -318,6 +365,36 @@ function Install-ToolkitApplication {
                             }
                         } catch {
                             Write-AppInstallerLog -Message "winget execution error for $($meta.DisplayName) (id: $wId): $($_.Exception.Message)." -Level 'WARN' -Component 'Install-ToolkitApplication'
+                        }
+                    }
+                }
+                if (-not $installedSuccess) {
+                    if (-not $wingetRepaired -and (Get-Command -Name 'Repair-ToolkitWinget' -ErrorAction SilentlyContinue)) {
+                        Write-AppInstallerLog -Message "winget installation unsuccessful for $($meta.DisplayName). Performing automatic package manager repair..." -Level 'INFO' -Component 'Install-ToolkitApplication'
+                        try {
+                            $repairRes = Repair-ToolkitWinget
+                            $wingetRepaired = $true
+                            if ($repairRes -and $repairRes.Healthy) {
+                                foreach ($wId in $candidateWingetIds) {
+                                    if (Get-Command -Name 'Install-WingetPackage' -ErrorAction SilentlyContinue) {
+                                        $wRes = Install-WingetPackage -PackageId $wId -Force:$Force
+                                        if ($wRes -and $wRes.Installed) {
+                                            $installedSuccess = $true
+                                            break
+                                        }
+                                    } else {
+                                        $wingetArgs = "install --id $wId -e --silent --accept-package-agreements --accept-source-agreements $(if ($Force) { '--force' } else { '' })".Trim()
+                                        $proc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru -ErrorAction Stop
+                                        $exitCode = if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
+                                        if ($exitCode -eq 0) {
+                                            $installedSuccess = $true
+                                            break
+                                        }
+                                    }
+                                }
+                            }
+                        } catch {
+                            $null = $_
                         }
                     }
                 }

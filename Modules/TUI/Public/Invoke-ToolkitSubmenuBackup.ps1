@@ -162,10 +162,7 @@ function Invoke-ToolkitSubmenuBackup {
             @{ Key = 'N'; Label = 'New Full Backup' },
             @{ Key = 'E'; Label = 'Export Bookmarks' },
             @{ Key = 'C'; Label = 'Export Certs' },
-            @{ Key = 'I'; Label = 'Import Certs' },
-            @{ Key = 'M'; Label = 'Map Folders' },
-            @{ Key = 'G'; Label = 'Generate Manifest' },
-            @{ Key = 'V'; Label = 'Verify Manifest' }
+            @{ Key = 'I'; Label = 'Import Certs' }
         )
         $navActions = @(
             @{ Key = 'B'; Label = 'Back' },
@@ -179,7 +176,7 @@ function Invoke-ToolkitSubmenuBackup {
         }
 
         $validKeys = @('N', 'E', 'C', 'I', 'M', 'G', 'V', 'B', 'Q')
-        $promptText = if ($backupItems.Count -gt 0) { "  Select item [1-$($backupItems.Count)] or action" } else { "  Select action [N, E, C, I, M, G, V, B, Q]" }
+        $promptText = if ($backupItems.Count -gt 0) { "  Select item [1-$($backupItems.Count)] or action" } else { "  Select action [N, E, C, I, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $backupItems.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -207,7 +204,18 @@ function Invoke-ToolkitSubmenuBackup {
                     if (-not [string]::IsNullOrWhiteSpace($src) -and (Get-Command -Name 'Start-ProfileDirectoryBackup' -ErrorAction SilentlyContinue)) {
                         try {
                             Start-ProfileDirectoryBackup -SourceDirectories @($src) -DestinationPath $dst | Format-List
-                            Write-ToolkitStatus -Message "Profile backup job completed." -Type 'OK'
+                            if (Get-Command -Name 'New-BackupIntegrityManifest' -ErrorAction SilentlyContinue) {
+                                try {
+                                    $man = New-BackupIntegrityManifest -BackupRoot $dst
+                                    Write-ToolkitStatus -Message "Profile backup job completed. SHA-256 manifest auto-generated: $man" -Type 'OK'
+                                }
+                                catch {
+                                    Write-ToolkitStatus -Message "Profile backup job completed." -Type 'OK'
+                                }
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Profile backup job completed." -Type 'OK'
+                            }
                         }
                         catch {
                             Write-ToolkitStatus -Message "Profile backup failed: $($_.Exception.Message)" -Type 'FAIL'

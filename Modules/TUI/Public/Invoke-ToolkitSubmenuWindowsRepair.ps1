@@ -124,10 +124,10 @@ function Invoke-ToolkitSubmenuWindowsRepair {
 
         Write-Host ""
         $repairActions = @(
+            @{ Key = 'A'; Label = 'Auto System Repair (DISM + SFC)' },
             @{ Key = 'S'; Label = 'SFC Scan' },
             @{ Key = 'D'; Label = 'DISM RestoreHealth' },
             @{ Key = 'W'; Label = 'Reset Windows Update' },
-            @{ Key = 'N'; Label = 'Reset Network Stack' },
             @{ Key = 'R'; Label = 'Repair WMI Repository' }
         )
         $navActions = @(
@@ -141,8 +141,8 @@ function Invoke-ToolkitSubmenuWindowsRepair {
             return
         }
 
-        $validKeys = @('S', 'D', 'W', 'N', 'R', 'B', 'Q')
-        $promptText = "  Select item [1-$($repairItems.Count)] or action [S, D, W, N, R, B, Q]"
+        $validKeys = @('A', 'S', 'D', 'W', 'R', 'N', 'B', 'Q')
+        $promptText = "  Select item [1-$($repairItems.Count)] or action [A, S, D, W, R, B, Q]"
         $selection = Read-ToolkitItemSelection -MaxIndex $repairItems.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -164,6 +164,34 @@ function Invoke-ToolkitSubmenuWindowsRepair {
         }
 
         switch ($actionKey) {
+            'A' {
+                try {
+                    Write-ToolkitStatus -Message "Initiating automated comprehensive system repair (DISM + SFC)..." -Type 'INFO'
+                    if (Get-Command -Name 'Invoke-WindowsDismRepair' -ErrorAction SilentlyContinue) {
+                        Write-ToolkitStatus -Message "Phase 1/2: Repairing component store via DISM /RestoreHealth..." -Type 'INFO'
+                        $dismRes = Invoke-WindowsDismRepair
+                        if ($dismRes -and $dismRes.Success) {
+                            Write-ToolkitStatus -Message "DISM repair completed successfully: $($dismRes.Status)." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "DISM repair notice: $($dismRes.ErrorMessage)." -Type 'WARN'
+                        }
+                    }
+                    if (Get-Command -Name 'Invoke-WindowsSfcScan' -ErrorAction SilentlyContinue) {
+                        Write-ToolkitStatus -Message "Phase 2/2: Verifying protected system files via SFC /scannow..." -Type 'INFO'
+                        $sfcRes = Invoke-WindowsSfcScan
+                        if ($sfcRes -and $sfcRes.Success) {
+                            Write-ToolkitStatus -Message "SFC scan completed successfully: $($sfcRes.Status)." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "SFC scan notice: $($sfcRes.ErrorMessage)." -Type 'WARN'
+                        }
+                    }
+                    Write-ToolkitStatus -Message "Comprehensive system repair complete." -Type 'OK'
+                }
+                catch {
+                    Write-ToolkitStatus -Message "System repair failed: $($_.Exception.Message)" -Type 'FAIL'
+                }
+                Wait-UserAcknowledge
+            }
             'B' {
                 return
             }

@@ -193,7 +193,6 @@ function Invoke-ToolkitSubmenuOffice {
 
         Write-Host ""
         $topLevelActions = @(
-            @{ Key = 'K'; Label = 'KMS Probe' },
             @{ Key = 'L'; Label = 'License Diagnostics' },
             @{ Key = 'R'; Label = 'Quick Repair' },
             @{ Key = 'O'; Label = 'Online Repair' },
@@ -212,8 +211,8 @@ function Invoke-ToolkitSubmenuOffice {
             return
         }
 
-        $validKeys = @('K', 'L', 'R', 'O', 'C', 'H', 'G', 'B', 'Q')
-        $promptText = if ($officeApps.Count -gt 0) { "  Select item [1-$($officeApps.Count)] or action" } else { "  Select action [K, L, R, O, C, H, G, B, Q]" }
+        $validKeys = @('L', 'R', 'O', 'C', 'H', 'G', 'K', 'B', 'Q')
+        $promptText = if ($officeApps.Count -gt 0) { "  Select item [1-$($officeApps.Count)] or action" } else { "  Select action [L, R, O, C, H, G, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $officeApps.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {

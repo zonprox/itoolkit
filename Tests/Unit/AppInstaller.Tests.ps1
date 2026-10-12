@@ -36,10 +36,10 @@ BeforeAll {
 Describe 'Unit: AppInstaller Module' {
 
     Context 'Get-ToolkitInstalledApplication' {
-        It 'Returns all 7 catalog applications when AppName is All or omitted' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Returns all 8 catalog applications when AppName is All or omitted' -Skip:(-not $isAppInstallerAvailable) {
             $apps = Get-ToolkitInstalledApplication
             $apps | Should -Not -BeNullOrEmpty
-            $apps.Count | Should -Be 7
+            $apps.Count | Should -Be 8
             $appNames = $apps | ForEach-Object { $_.AppName }
             $appNames | Should -Contain 'UniKey'
             $appNames | Should -Contain 'UltraVNC'
@@ -48,6 +48,7 @@ Describe 'Unit: AppInstaller Module' {
             $appNames | Should -Contain 'VCRedistAIO'
             $appNames | Should -Contain 'FoxitReader'
             $appNames | Should -Contain 'Zalo'
+            $appNames | Should -Contain 'WinRAR'
         }
 
         It 'Filters specifically by AppName for Chrome' -Skip:(-not $isAppInstallerAvailable) {
@@ -62,6 +63,44 @@ Describe 'Unit: AppInstaller Module' {
             $zalo | Should -Not -BeNullOrEmpty
             $zalo.AppName | Should -Be 'Zalo'
             $zalo.DisplayName | Should -Be 'Zalo'
+        }
+
+        It 'Filters specifically by AppName for WinRAR' -Skip:(-not $isAppInstallerAvailable) {
+            $winrar = Get-ToolkitInstalledApplication -AppName 'WinRAR'
+            $winrar | Should -Not -BeNullOrEmpty
+            $winrar.AppName | Should -Be 'WinRAR'
+            $winrar.DisplayName | Should -Be 'WinRAR'
+        }
+
+        It 'Detects WinRAR installed status and version when candidate path exists' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*WinRAR.exe' }
+            Mock Get-Item {
+                return [PSCustomObject]@{
+                    VersionInfo = [PSCustomObject]@{ ProductVersion = '7.01.0' }
+                }
+            } -ParameterFilter { $LiteralPath -like '*WinRAR.exe' }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'WinRAR'
+            $res.Installed | Should -BeTrue
+            $res.ExecutablePath | Should -Match 'WinRAR\.exe$'
+            $res.Version | Should -Be '7.01.0'
+        }
+
+        It 'Detects WinRAR installed status and version from uninstall registry' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    DisplayName     = 'WinRAR 7.01 (64-bit)'
+                    DisplayVersion  = '7.01.0'
+                    InstallLocation = 'C:\Program Files\WinRAR'
+                    PSChildName     = 'WinRAR archiver'
+                }
+            } -ParameterFilter { $Path -like 'HKLM:\*' }
+
+            $res = Get-ToolkitInstalledApplication -AppName 'WinRAR'
+            $res.Installed | Should -BeTrue
+            $res.Version | Should -Be '7.01.0'
+            $res.ExecutablePath | Should -Be 'C:\Program Files\WinRAR'
         }
 
         It 'Detects installed status when candidate path exists' -Skip:(-not $isAppInstallerAvailable) {
@@ -500,6 +539,16 @@ Describe 'Unit: AppInstaller Module' {
             Test-Path (Join-Path $script:tempDesktop 'Zalo.lnk') | Should -BeTrue
         }
 
+        It 'Creates desktop shortcut for WinRAR' -Skip:(-not $isAppInstallerAvailable) {
+            $mockWinRAR = Join-Path $script:tempDesktop 'WinRAR.exe'
+            Set-Content -Path $mockWinRAR -Value 'MOCK_BIN' -Encoding UTF8
+
+            $res = New-ToolkitDesktopShortcut -TargetExecutable $mockWinRAR -ShortcutName 'WinRAR.lnk' -DesktopDirectory $script:tempDesktop
+            $res | Should -Not -BeNullOrEmpty
+            $res.Created | Should -BeTrue
+            Test-Path (Join-Path $script:tempDesktop 'WinRAR.lnk') | Should -BeTrue
+        }
+
         It 'Respects Force flag when shortcut already exists' -Skip:(-not $isAppInstallerAvailable) {
             $mockExe = Join-Path $script:tempDesktop 'testapp2.exe'
             Set-Content -Path $mockExe -Value 'MOCK_BIN' -Encoding UTF8
@@ -618,10 +667,89 @@ Describe 'Unit: AppInstaller Module' {
     }
 
     Context 'Install-ToolkitApplication' {
+        BeforeEach {
+            Mock Repair-ToolkitWinget {
+                return [PSCustomObject]@{
+                    Success      = $true
+                    Healthy      = $true
+                    ActionsTaken = @('Diagnose and repair package manager')
+                    ErrorMessage = $null
+                }
+            }
+        }
+
         It 'Fails fast if internet connectivity pre-flight check fails' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $false }
 
             { Install-ToolkitApplication -AppName 'Chrome' } | Should -Throw '*Internet connectivity is required*'
+        }
+
+        It 'Fails fast and rejects installation on 32-bit operating systems' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-Is64BitOperatingSystem { return $false }
+
+            { Install-ToolkitApplication -AppName 'WinRAR' } | Should -Throw '*Only 64-bit Windows operating systems are supported*'
+        }
+
+        It 'Transparently invokes Repair-ToolkitWinget when package manager is unhealthy during installation' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-ToolkitWingetStatus {
+                return [PSCustomObject]@{ Available = $true; Healthy = $false; SourcesHealthy = $false }
+            }
+            $script:repairInvoked = $false
+            Mock Repair-ToolkitWinget {
+                $script:repairInvoked = $true
+                return [PSCustomObject]@{ Success = $true; Healthy = $true; ActionsTaken = @('Diagnose and repair') }
+            }
+            Mock Get-Command {
+                param($Name)
+                if ($Name -in @('winget', 'Get-ToolkitWingetStatus', 'Repair-ToolkitWinget')) {
+                    return [PSCustomObject]@{ Name = $Name }
+                }
+                return $null
+            }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+            $script:tCheckCount = 0
+            Mock Get-ToolkitInstalledApplication {
+                $script:tCheckCount++
+                if ($script:tCheckCount -eq 1) {
+                    return [PSCustomObject]@{ AppName = 'WinRAR'; DisplayName = 'WinRAR'; Installed = $false; ExecutablePath = $null; Version = $null }
+                }
+                return [PSCustomObject]@{ AppName = 'WinRAR'; DisplayName = 'WinRAR'; Installed = $true; ExecutablePath = 'C:\Program Files\WinRAR\WinRAR.exe'; Version = '7.01.0' }
+            }
+            Mock New-ToolkitDesktopShortcut { return [PSCustomObject]@{ Created = $true } }
+
+            $res = Install-ToolkitApplication -AppName 'WinRAR'
+            $script:repairInvoked | Should -BeTrue
+            $res.Installed | Should -BeTrue
+        }
+
+        It 'Installs WinRAR silently with desktop shortcut and returns structured result' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command {
+                param($Name)
+                if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
+                return $null
+            }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+            $script:winrarCheckCount = 0
+            Mock Get-ToolkitInstalledApplication {
+                $script:winrarCheckCount++
+                if ($script:winrarCheckCount -eq 1) {
+                    return [PSCustomObject]@{ AppName = 'WinRAR'; DisplayName = 'WinRAR'; Installed = $false; ExecutablePath = $null; Version = $null }
+                }
+                return [PSCustomObject]@{ AppName = 'WinRAR'; DisplayName = 'WinRAR'; Installed = $true; ExecutablePath = 'C:\Program Files\WinRAR\WinRAR.exe'; Version = '7.01.0' }
+            }
+            Mock New-ToolkitDesktopShortcut {
+                return [PSCustomObject]@{ Created = $true; ShortcutPath = 'C:\Users\User\Desktop\WinRAR.lnk' }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'WinRAR' -CreateShortcut
+            $res | Should -Not -BeNullOrEmpty
+            $res.AppName | Should -Be 'WinRAR'
+            $res.DisplayName | Should -Be 'WinRAR'
+            $res.Installed | Should -BeTrue
+            $res.ShortcutCreated | Should -BeTrue
+            $res.Status | Should -Be 'OK'
         }
 
         It 'Supports -WhatIf mode returning WhatIf status' -Skip:(-not $isAppInstallerAvailable) {
@@ -1034,7 +1162,7 @@ Describe 'Unit: AppInstaller Module' {
             }
         }
 
-        It 'Batch installs All 7 applications' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Batch installs All 8 applications' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command { return $null }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
@@ -1056,7 +1184,7 @@ Describe 'Unit: AppInstaller Module' {
             }
 
             $res = Install-ToolkitApplication -AppName 'All'
-            $res.Count | Should -Be 7
+            $res.Count | Should -Be 8
             $appNames = $res | ForEach-Object { $_.AppName }
             $appNames | Should -Contain 'UniKey'
             $appNames | Should -Contain 'UltraVNC'
@@ -1065,6 +1193,7 @@ Describe 'Unit: AppInstaller Module' {
             $appNames | Should -Contain 'VCRedistAIO'
             $appNames | Should -Contain 'FoxitReader'
             $appNames | Should -Contain 'Zalo'
+            $appNames | Should -Contain 'WinRAR'
         }
 
         It 'Falls back to official zip archive download and extraction for UniKey when winget fails' -Skip:(-not $isAppInstallerAvailable) {
@@ -1164,10 +1293,6 @@ Describe 'Unit: AppInstaller Module' {
             $armRes = Resolve-ToolkitApplicationDownloadUrl -AppName 'UniKey' -Architecture 'arm64'
             $armRes.PrimaryUrl | Should -Match 'unikey.*-arm64\.zip$'
             $armRes.DetectedArchitecture | Should -Be 'arm64'
-
-            $x86Res = Resolve-ToolkitApplicationDownloadUrl -AppName 'UniKey' -Architecture 'win32'
-            $x86Res.PrimaryUrl | Should -Match 'unikey.*-win32\.zip$'
-            $x86Res.DetectedArchitecture | Should -Be 'win32'
         }
 
         It 'Resolve-ToolkitApplicationDownloadUrl provides resilient fallback endpoints for Zalo' -Skip:(-not $isAppInstallerAvailable) {
@@ -1194,24 +1319,29 @@ Describe 'Unit: AppInstaller Module' {
             $klite.FallbackUrls.Count | Should -BeGreaterThan 0
         }
 
-        It 'Resolve-ToolkitApplicationDownloadUrl resolves UltraVNC with architecture selection for x64 and x86' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Resolve-ToolkitApplicationDownloadUrl resolves UltraVNC targeting x64 installer' -Skip:(-not $isAppInstallerAvailable) {
             $vnc64 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'x64'
             $vnc64.PrimaryUrl | Should -Match 'X64_Setup\.exe$'
             $vnc64.FallbackUrls | Should -Contain 'https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
 
-            $vnc32 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'x86'
-            $vnc32.PrimaryUrl | Should -Match 'X86_Setup\.exe$'
-            $vnc32.FallbackUrls | Should -Contain 'https://github.com/ultravnc/UltraVNC/releases/download/1.5.0.0/UltraVNC_1_5_0_0_X86_Setup.exe'
-
             $vncWin64 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'win64'
             $vncWin64.PrimaryUrl | Should -Match 'X64_Setup\.exe$'
 
-            $vncWin32 = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC' -Architecture 'win32'
-            $vncWin32.PrimaryUrl | Should -Match 'X86_Setup\.exe$'
+            $vncDefault = Resolve-ToolkitApplicationDownloadUrl -AppName 'UltraVNC'
+            $vncDefault.PrimaryUrl | Should -Match 'X64_Setup\.exe$'
         }
 
-        It 'Verifies all 7 catalog applications resolve valid installer or archive URLs ending in exe, zip, or msi' -Skip:(-not $isAppInstallerAvailable) {
-            $allApps = @('UniKey', 'Zalo', 'Chrome', 'FoxitReader', 'VCRedistAIO', 'UltraVNC', 'KLiteCodec')
+        It 'Resolve-ToolkitApplicationDownloadUrl resolves WinRAR x64 download URL' -Skip:(-not $isAppInstallerAvailable) {
+            $winrar = Resolve-ToolkitApplicationDownloadUrl -AppName 'WinRAR'
+            $winrar | Should -Not -BeNullOrEmpty
+            $winrar.AppName | Should -Be 'WinRAR'
+            $winrar.PrimaryUrl | Should -Match 'winrar-x64-.*\.exe$'
+            $winrar.ResolvedDynamically | Should -BeTrue
+            $winrar.FallbackUrls.Count | Should -BeGreaterThan 0
+        }
+
+        It 'Verifies all 8 catalog applications resolve valid installer or archive URLs ending in exe, zip, or msi' -Skip:(-not $isAppInstallerAvailable) {
+            $allApps = @('UniKey', 'Zalo', 'Chrome', 'FoxitReader', 'VCRedistAIO', 'UltraVNC', 'KLiteCodec', 'WinRAR')
             foreach ($app in $allApps) {
                 $resolved = Resolve-ToolkitApplicationDownloadUrl -AppName $app
                 $resolved | Should -Not -BeNullOrEmpty
@@ -1556,7 +1686,7 @@ Describe 'Unit: AppInstaller Module' {
             $engineLine | Should -Match '\[STANDALONE DIRECT DOWNLOAD\]'
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller exposes U, W, B in action catalog' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller exposes 8, U and removes manual W, B from action catalog' -Skip:(-not $isAppInstallerAvailable) {
             $script:capturedActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
@@ -1565,9 +1695,10 @@ Describe 'Unit: AppInstaller Module' {
             Invoke-ToolkitSubmenuAppInstaller -NonInteractive
             $script:capturedActions | Should -Not -BeNullOrEmpty
             $keys = $script:capturedActions | ForEach-Object { $_.Key }
+            $keys | Should -Contain '8'
             $keys | Should -Contain 'U'
-            $keys | Should -Contain 'W'
-            $keys | Should -Contain 'B'
+            $keys | Should -Not -Contain 'W'
+            $keys | Should -Not -Contain 'B'
         }
 
         It 'Invoke-ToolkitSubmenuAppInstaller dispatches Update-WingetPackage -All on hotkey U' -Skip:(-not $isAppInstallerAvailable) {
@@ -1589,34 +1720,42 @@ Describe 'Unit: AppInstaller Module' {
             $script:upgradeAllCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller dispatches Repair-ToolkitWinget on hotkey W' -Skip:(-not $isAppInstallerAvailable) {
-            $script:repairCalled = $false
-            Mock Repair-ToolkitWinget {
-                $script:repairCalled = $true
-                return [PSCustomObject]@{ Success = $true; Healthy = $true; ActionsTaken = @('Reset cache') }
+        It 'Invoke-ToolkitSubmenuAppInstaller dispatches WinRAR installation on hotkey 8' -Skip:(-not $isAppInstallerAvailable) {
+            $script:winrarInstalled = $false
+            $script:winrarShortcut = $false
+            Mock Install-ToolkitApplication {
+                param($AppName, $CreateShortcut)
+                if ($AppName -eq 'WinRAR') {
+                    $script:winrarInstalled = $true
+                    $script:winrarShortcut = [bool]$CreateShortcut
+                }
+                return [PSCustomObject]@{ AppName = $AppName; Installed = $true }
             }
             Mock Wait-UserAcknowledge { }
-            $script:wCount = 0
+            $script:keyCount = 0
             Mock Read-ToolkitMenuChoice {
-                $script:wCount++
-                if ($script:wCount -eq 1) { return 'W' }
+                $script:keyCount++
+                if ($script:keyCount -eq 1) { return '8' }
                 return 'Q'
             }
 
             Invoke-ToolkitSubmenuAppInstaller
-            $script:repairCalled | Should -BeTrue
+            $script:winrarInstalled | Should -BeTrue
+            $script:winrarShortcut | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller dispatches Install-ToolkitWingetLatest on hotkey B' -Skip:(-not $isAppInstallerAvailable) {
-            $script:bootstrapCalled = $false
-            Mock Install-ToolkitWingetLatest {
-                $script:bootstrapCalled = $true
-                return [PSCustomObject]@{ Success = $true; Version = 'v1.9.25200' }
+        It 'Invoke-ToolkitSubmenuAppInstaller rejects manual W hotkey from valid keys and includes standard navigation' -Skip:(-not $isAppInstallerAvailable) {
+            $script:capturedValidKeys = $null
+            Mock Read-ToolkitMenuChoice {
+                param($Prompt, $ValidKeys)
+                $script:capturedValidKeys = $ValidKeys
+                return 'Q'
             }
-            Mock Read-ToolkitMenuChoice { return 'B' }
 
             Invoke-ToolkitSubmenuAppInstaller
-            $script:bootstrapCalled | Should -BeTrue
+            $script:capturedValidKeys | Should -Not -Contain 'W'
+            $script:capturedValidKeys | Should -Contain 'B'
+            $script:capturedValidKeys | Should -Contain '8'
         }
     }
 }

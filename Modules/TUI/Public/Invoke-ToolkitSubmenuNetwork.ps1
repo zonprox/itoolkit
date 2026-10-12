@@ -200,16 +200,12 @@ function Invoke-ToolkitSubmenuNetwork {
         Write-Host ""
         $topLevelActions = @(
             @{ Key = 'A'; Label = 'Apply All Network Fixes' },
-            @{ Key = 'F'; Label = 'Error Code Catalog' },
-            @{ Key = 'U'; Label = 'Rollback Registry' },
-            @{ Key = 'D'; Label = 'Flush & Re-register DNS' },
-            @{ Key = 'H'; Label = 'Release & Renew DHCP' },
-            @{ Key = 'W'; Label = 'Reset Winsock Catalog' },
-            @{ Key = 'T'; Label = 'Reset TCP/IP Stack' },
-            @{ Key = 'G'; Label = 'Flush ARP Cache' },
+            @{ Key = 'N'; Label = 'Reset Network Stack & DNS' },
             @{ Key = 'S'; Label = 'SMB & Sharing Remediation' },
             @{ Key = 'P'; Label = 'Reset Proxy & WPAD' },
-            @{ Key = 'R'; Label = 'Restart Network Adapter' }
+            @{ Key = 'R'; Label = 'Restart Network Adapter' },
+            @{ Key = 'F'; Label = 'Error Code Catalog' },
+            @{ Key = 'U'; Label = 'Rollback Registry' }
         )
         $navActions = @(
             @{ Key = 'B'; Label = 'Back to Main Menu' },
@@ -222,8 +218,8 @@ function Invoke-ToolkitSubmenuNetwork {
             return
         }
 
-        $validKeys = @('A', 'F', 'U', 'D', 'H', 'W', 'T', 'G', 'S', 'P', 'R', 'B', 'Q')
-        $promptText = if ($adapters.Count -gt 0) { "  Select item [1-$($adapters.Count)] or action" } else { "  Select action [A, F, U, D, H, W, T, G, S, P, R, B, Q]" }
+        $validKeys = @('A', 'N', 'S', 'P', 'R', 'F', 'U', 'D', 'H', 'W', 'T', 'G', 'B', 'Q')
+        $promptText = if ($adapters.Count -gt 0) { "  Select item [1-$($adapters.Count)] or action" } else { "  Select action [A, N, S, P, R, F, U, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $adapters.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
@@ -233,6 +229,26 @@ function Invoke-ToolkitSubmenuNetwork {
         if ($selection.Type -eq 'Hotkey') {
             $hk = $selection.Value.ToString().ToUpperInvariant()
             switch ($hk) {
+                'N' {
+                    if (Get-Command -Name 'Set-NetworkRemediation' -ErrorAction SilentlyContinue) {
+                        try {
+                            $res = Set-NetworkRemediation -Fix @('DnsResolution', 'DhcpLease', 'Winsock', 'TcpIpStack', 'DefaultGatewayArp')
+                            if ($null -ne $res -and $res.Success) {
+                                Write-ToolkitStatus -Message "Network stack and DNS reset successfully (DNS, DHCP, Winsock, TCP/IP, ARP)." -Type 'OK'
+                            }
+                            else {
+                                Write-ToolkitStatus -Message "Network stack reset completed with warnings." -Type 'WARN'
+                            }
+                        }
+                        catch {
+                            Write-ToolkitStatus -Message "Failed to reset network stack: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    }
+                    else {
+                        Write-ToolkitStatus -Message "Set-NetworkRemediation command not available." -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
+                }
                 'B' {
                     return
                 }

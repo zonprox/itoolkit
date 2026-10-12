@@ -131,8 +131,7 @@ function Invoke-ToolkitSubmenuAccounts {
             @{ Key = 'D'; Label = 'Query Domain User' },
             @{ Key = 'U'; Label = 'Unlock Domain User' },
             @{ Key = 'T'; Label = 'Test Domain Health' },
-            @{ Key = 'J'; Label = 'Disjoin Domain' },
-            @{ Key = 'R'; Label = 'Refresh Table' }
+            @{ Key = 'J'; Label = 'Disjoin Domain' }
         )
         $navActions = @(
             @{ Key = 'B'; Label = 'Back' },
@@ -146,7 +145,7 @@ function Invoke-ToolkitSubmenuAccounts {
         }
 
         $validKeys = @('A', 'S', 'P', 'D', 'U', 'T', 'J', 'R', 'B', 'Q')
-        $promptText = if ($accounts.Count -gt 0) { "  Select item [1-$($accounts.Count)] or action" } else { "  Select action [A, S, P, D, U, T, J, R, B, Q]" }
+        $promptText = if ($accounts.Count -gt 0) { "  Select item [1-$($accounts.Count)] or action" } else { "  Select action [A, S, P, D, U, T, J, B, Q]" }
         $selection = Read-ToolkitItemSelection -MaxIndex $accounts.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit') {
