@@ -13,7 +13,7 @@ function Show-ToolkitMenuOption {
     Renders a structured, aligned console menu line with bracketed shortcut key,
     optional category badge, descriptive label, and optional status indicator tag ([OK], [WARN], [FAIL]).
 .PARAMETER Key
-    Shortcut key or option number (e.g. '1', '2', 'Q').
+    Shortcut key or option number (e.g. '1', '2', '0').
 .PARAMETER Label
     Descriptive text for the menu action.
 .PARAMETER Status

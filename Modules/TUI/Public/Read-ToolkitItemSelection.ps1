@@ -9,7 +9,7 @@ function Read-ToolkitItemSelection {
 .PARAMETER MaxIndex
     Maximum valid numeric item index (1-based).
 .PARAMETER ValidHotkeys
-    Optional array of allowed action hotkey characters (e.g. 'A', 'B', 'R', 'Q').
+    Optional array of allowed action hotkey characters (e.g. '1', '2', '0').
 .PARAMETER Prompt
     Custom prompt string displayed to the user. Defaults to "  Select item [1-$MaxIndex] or action".
 .OUTPUTS
@@ -17,7 +17,7 @@ function Read-ToolkitItemSelection {
     - Type: 'Index' | 'Hotkey' | 'Exit'
     - Value: [int] for Index, [string] for Hotkey or Exit
 .EXAMPLE
-    $choice = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('B', 'R')
+    $choice = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('1', '2')
     if ($choice.Type -eq 'Index') { ... }
 #>
     [CmdletBinding()]
@@ -55,9 +55,10 @@ function Read-ToolkitItemSelection {
         }
 
         $trimmed = $rawInput.Trim()
+        $cleanNumber = $trimmed.Trim('[', ']').Trim()
 
-        # Handle numeric exit key '0' (strictly numeric navigation, no letter aliases)
-        if ($trimmed -eq '0') {
+        # Handle numeric exit key '0' or '[0]' (strictly numeric navigation, no letter aliases)
+        if ($trimmed -eq '0' -or $cleanNumber -eq '0') {
             return [PSCustomObject]@{
                 Type  = 'Exit'
                 Value = '0'
@@ -65,7 +66,6 @@ function Read-ToolkitItemSelection {
         }
 
         # Handle registered action hotkeys (purely numeric or alphanumeric)
-        $cleanNumber = $trimmed.Trim('[', ']').Trim()
         if ($null -ne $ValidHotkeys -and $ValidHotkeys.Count -gt 0) {
             $upperTrimmed = $trimmed.ToUpper()
             foreach ($k in $ValidHotkeys) {

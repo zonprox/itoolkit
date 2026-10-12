@@ -104,6 +104,18 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $choice | Should -Be '0'
             $script:attemptCount | Should -Be 2
         }
+
+        It 'Read-ToolkitMenuChoice accepts bracketed numeric input and returns canonical key' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '[1]' }
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
+            $choice | Should -Be '1'
+        }
+
+        It 'Read-ToolkitMenuChoice accepts bracketed exit [0] and returns 0' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '[0]' }
+            $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
+            $choice | Should -Be '0'
+        }
     }
 
     Context 'Start-IToolkitMenu Execution Modes & Non-Interactive Contract' {
@@ -256,6 +268,18 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $res.Type | Should -Be 'Exit'
             $res.Value | Should -Be '0'
             $script:attemptCount | Should -Be 2
+        }
+
+        It 'Read-ToolkitItemSelection accepts bracketed numeric exit [0] immediately without retry warnings' -Skip:(-not $isTUIAvailable) {
+            $script:attemptCount = 0
+            Mock Read-Host {
+                $script:attemptCount++
+                return '[0]'
+            }
+            $res = Read-ToolkitItemSelection -MaxIndex 5 -ValidHotkeys @('1', '2') -Prompt 'Select'
+            $res.Type | Should -Be 'Exit'
+            $res.Value | Should -Be '0'
+            $script:attemptCount | Should -Be 1
         }
     }
 

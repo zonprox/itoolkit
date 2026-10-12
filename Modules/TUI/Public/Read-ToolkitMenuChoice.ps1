@@ -9,13 +9,13 @@ function Read-ToolkitMenuChoice {
 .PARAMETER Prompt
     Prompt text displayed to user. Default is 'Select Option'.
 .PARAMETER ValidKeys
-    Array of allowed key selections (e.g. @('1', '2', 'Q')).
+    Array of allowed key selections (e.g. @('1', '2', '0')).
 .PARAMETER Default
     Default key returned if user presses Enter with empty input.
 .OUTPUTS
     [string] Selected menu choice.
 .EXAMPLE
-    $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', 'Q')
+    $choice = Read-ToolkitMenuChoice -Prompt 'Select Option' -ValidKeys @('1', '2', '0')
 #>
     [CmdletBinding()]
     [OutputType([string])]
@@ -58,23 +58,28 @@ function Read-ToolkitMenuChoice {
         }
 
         $trimmed = $rawInput.Trim()
+        $cleanNumber = $trimmed.Trim('[', ']').Trim()
 
         # If no validation set specified, return input directly
         if ($null -eq $ValidKeys -or $ValidKeys.Count -eq 0) {
-            return $trimmed
+            return $cleanNumber
         }
 
-        # Case-insensitive validation against allowed keys
+        # Case-insensitive validation against allowed keys (supports both '1' and bracketed '[1]')
         $matched = $false
+        $matchedKey = $null
         foreach ($k in $ValidKeys) {
-            if ($k.ToString().Equals($trimmed, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $kStr = $k.ToString().Trim().Trim('[', ']').Trim()
+            if ($kStr.Equals($cleanNumber, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $k.ToString().Equals($trimmed, [System.StringComparison]::OrdinalIgnoreCase)) {
                 $matched = $true
+                $matchedKey = $k.ToString()
                 break
             }
         }
 
         if ($matched) {
-            return $trimmed
+            return $matchedKey
         }
 
         Write-Host "  Invalid selection '$trimmed'. Valid options: $($ValidKeys -join ', ')" -ForegroundColor Yellow
