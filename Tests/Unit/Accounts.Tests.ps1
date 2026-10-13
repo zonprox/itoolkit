@@ -253,5 +253,48 @@ Describe 'Unit: User & Domain Account Administration Module' {
             $res.Success | Should -BeTrue
             $res.AccountRemoved | Should -BeTrue
         }
+
+        It 'Rejects empty or whitespace-only username with terminating error' -Skip:(-not $isAccountsAvailable) {
+            { Remove-LocalAccountItem -Username '   ' } | Should -Throw "*cannot be null, empty, or whitespace-only*"
+        }
+
+        It 'Throws clear terminating error when deleting non-existent user without profile targets' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance { return $null }
+            Mock Test-Path { return $false }
+            Mock Remove-LocalUser { throw "User NonExistentUser was not found." }
+
+            { Remove-LocalAccountItem -Username 'NonExistentUser' } | Should -Throw "*was not found*"
+        }
+
+        It 'Cleans up orphaned profile directory when user account is absent from SAM' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance { return $null }
+            Mock Remove-LocalUser { throw "User OrphanUser was not found." }
+            $script:orphanDeleted = $false
+            Mock Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -match 'OrphanUser') { return $true }
+                return $false
+            }
+            Mock Remove-Item {
+                param($LiteralPath)
+                if ($LiteralPath -match 'OrphanUser') { $script:orphanDeleted = $true }
+            }
+
+            $res = Remove-LocalAccountItem -Username 'OrphanUser' -ProfilePath 'C:\Users\OrphanUser'
+            $res.Success | Should -BeTrue
+            $res.AccountRemoved | Should -BeFalse
+            $res.ProfilePathRemoved | Should -BeTrue
+            $script:orphanDeleted | Should -BeTrue
+        }
+
+        It 'Tolerates non-existent user when -Force is passed' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance { return $null }
+            Mock Test-Path { return $false }
+            Mock Remove-LocalUser { throw "User GhostUser was not found." }
+
+            $res = Remove-LocalAccountItem -Username 'GhostUser' -Force
+            $res.Success | Should -BeTrue
+            $res.AccountRemoved | Should -BeFalse
+        }
     }
 }

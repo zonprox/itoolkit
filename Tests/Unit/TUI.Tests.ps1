@@ -1010,6 +1010,28 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:delCalled | Should -BeFalse
         }
 
+        It 'Invoke-ToolkitAccountContextMenu blocks Delete Account (key 5) for whitespace username' -Skip:(-not $isTUIAvailable) {
+            $spaceAcc = [PSCustomObject]@{
+                Name    = '   '
+                Status  = '[ENABLED]'
+                Enabled = $true
+                Locked  = $false
+                SID     = 'S-1-5-21-999-1001'
+                Details = 'Whitespace User'
+            }
+            $script:delCalled = $false
+            Mock Remove-LocalAccountItem { $script:delCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $spaceAcc } | Should -Not -Throw
+            $script:delCalled | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitAccountContextMenu executes Delete Account (key 5) with confirmation and forwards SID' -Skip:(-not $isTUIAvailable) {
             $standardAccount = [PSCustomObject]@{
                 Name    = 'StandardUser'
@@ -1198,6 +1220,51 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
             }
             { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
+            $script:deleteCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu blocks Delete Data File (key 6) when path is a directory' -Skip:(-not $isTUIAvailable) {
+            $dirDataFile = [PSCustomObject]@{
+                Item    = 'folder.pst'
+                Path    = 'C:\Outlook\folder.pst'
+                Type    = 'PST'
+                Profile = 'Outlook'
+            }
+            $script:deleteCalled = $false
+            Mock Remove-OutlookDataFile { $script:deleteCalled = $true }
+            Mock Test-Path {
+                param($LiteralPath, $PathType)
+                if ($PathType -eq 'Container') { return $true }
+                return $false
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $dirDataFile } | Should -Not -Throw
+            $script:deleteCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu blocks Delete Data File (key 6) when path is whitespace' -Skip:(-not $isTUIAvailable) {
+            $spaceDataFile = [PSCustomObject]@{
+                Item    = 'empty'
+                Path    = '   '
+                Type    = 'PST'
+                Profile = 'Outlook'
+            }
+            $script:deleteCalled = $false
+            Mock Remove-OutlookDataFile { $script:deleteCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $spaceDataFile } | Should -Not -Throw
             $script:deleteCalled | Should -BeFalse
         }
 

@@ -97,9 +97,11 @@ function Invoke-ToolkitDataFileContextMenu {
         return
     }
 
-    $filePath = if ($DataFile.PSObject.Properties['Path'] -and -not [string]::IsNullOrWhiteSpace($DataFile.Path)) {
+    $filePath = if ($DataFile -is [string]) {
+        $DataFile
+    } elseif ($DataFile.PSObject.Properties['Path']) {
         [string]$DataFile.Path
-    } elseif ($DataFile.PSObject.Properties['Details'] -and -not [string]::IsNullOrWhiteSpace($DataFile.Details)) {
+    } elseif ($DataFile.PSObject.Properties['Details']) {
         [string]$DataFile.Details
     } else {
         [string]$DataFile
@@ -262,6 +264,18 @@ function Invoke-ToolkitDataFileContextMenu {
                 Wait-UserAcknowledge
             }
             '6' {
+                if ([string]::IsNullOrWhiteSpace($filePath)) {
+                    Write-ToolkitStatus -Message "Invalid or empty data file path." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                if ([System.IO.Directory]::Exists($filePath) -or ((Test-Path -LiteralPath $filePath -PathType Container) -and -not (Test-Path -LiteralPath $filePath -PathType Leaf))) {
+                    Write-ToolkitStatus -Message "Specified path is a directory, not an Outlook data file: '$filePath'." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
                 $outlookRunning = $false
                 try {
                     $procs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)

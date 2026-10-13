@@ -36,6 +36,17 @@ function Test-OutlookDataFileLock {
             }
         }
 
+        # Check if target is a container/directory instead of a data file
+        if ([System.IO.Directory]::Exists($Path) -or ((Test-Path -LiteralPath $Path -PathType Container) -and -not (Test-Path -LiteralPath $Path -PathType Leaf))) {
+            return [PSCustomObject]@{
+                Path           = $Path
+                IsLocked       = $false
+                Exists         = $false
+                OutlookRunning = $outlookRunning
+                ErrorMessage   = "Specified path is a directory, not an Outlook data file: '$Path'"
+            }
+        }
+
         # If file does not physically exist on disk (e.g. mock test environment), report not locked
         if (-not [System.IO.File]::Exists($Path)) {
             return [PSCustomObject]@{

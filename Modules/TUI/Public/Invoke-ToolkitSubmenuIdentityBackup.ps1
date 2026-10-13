@@ -85,9 +85,9 @@ function Invoke-ToolkitAccountContextMenu {
 
     $userName = if ($Account -is [string]) {
         $Account
-    } elseif ($Account.PSObject.Properties['Name'] -and -not [string]::IsNullOrWhiteSpace($Account.Name)) {
+    } elseif ($Account.PSObject.Properties['Name']) {
         [string]$Account.Name
-    } elseif ($Account.PSObject.Properties['Identity'] -and -not [string]::IsNullOrWhiteSpace($Account.Identity)) {
+    } elseif ($Account.PSObject.Properties['Identity']) {
         [string]$Account.Identity
     } else {
         [string]$Account
@@ -220,7 +220,18 @@ function Invoke-ToolkitAccountContextMenu {
                 Wait-UserAcknowledge
             }
             '5' {
+                if ([string]::IsNullOrWhiteSpace($userName)) {
+                    Write-ToolkitStatus -Message "Invalid or empty username." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
                 $cleanName = ($userName.Trim() -replace '^(?:[^\\]+\\|[^\/]+\/)', '').Trim()
+                if ([string]::IsNullOrWhiteSpace($cleanName)) {
+                    Write-ToolkitStatus -Message "Invalid or empty username '$userName'." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
 
                 # Pre-flight safety guardrails check in TUI
                 if ($cleanName -ieq 'Administrator' -or $userName.Trim() -ieq 'Administrator' -or $sid -match '-(?:500)$') {

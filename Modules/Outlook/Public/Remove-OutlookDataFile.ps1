@@ -20,7 +20,7 @@ function Remove-OutlookDataFile {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [Alias('FilePath', 'SourcePath')]
+        [Alias('FilePath', 'SourcePath', 'FullName')]
         [ValidateNotNullOrEmpty()]
         [string]$Path,
 
@@ -41,7 +41,13 @@ function Remove-OutlookDataFile {
         }
 
         # 1. Path Normalization & Extension Validation
+        if ([string]::IsNullOrWhiteSpace($Path)) {
+            throw "The data file path cannot be null, empty, or whitespace-only."
+        }
         $cleanPath = $Path.Trim().Trim('"').Trim("'")
+        if ([string]::IsNullOrWhiteSpace($cleanPath)) {
+            throw "The data file path cannot be null, empty, or whitespace-only."
+        }
         if ($cleanPath -notmatch '(?i)\.(pst|ost)$') {
             throw "The data file path must have a .pst or .ost extension: '$Path'"
         }
@@ -51,6 +57,11 @@ function Remove-OutlookDataFile {
             try {
                 $resolvedPath = [System.IO.Path]::GetFullPath($resolvedPath)
             } catch { $null = $_ }
+        }
+
+        # 2. Reject Directory Paths
+        if ([System.IO.Directory]::Exists($resolvedPath) -or ((Test-Path -LiteralPath $resolvedPath -PathType Container) -and -not (Test-Path -LiteralPath $resolvedPath -PathType Leaf))) {
+            throw "The specified path is a directory, not an Outlook data file: '$Path'"
         }
 
         # 3. Resolve Target Profile
@@ -70,16 +81,30 @@ function Remove-OutlookDataFile {
         }
 
         # 4. ShouldProcess / WhatIf Support
+        $isWhatIf = ($PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf']) -or $WhatIfPreference
         if (-not $PSCmdlet.ShouldProcess($resolvedPath, "Permanently delete Outlook data file and detach from profile '$targetProfile'")) {
-            return [PSCustomObject]@{
-                Path            = $resolvedPath
-                Profile         = $targetProfile
-                FileDeleted     = $true
-                ProfileDetached = $true
-                IsLocked        = $false
-                OutlookRunning  = $false
-                Success         = $true
-                ErrorMessage    = $null
+            if ($isWhatIf) {
+                return [PSCustomObject]@{
+                    Path            = $resolvedPath
+                    Profile         = $targetProfile
+                    FileDeleted     = $true
+                    ProfileDetached = $true
+                    IsLocked        = $false
+                    OutlookRunning  = $false
+                    Success         = $true
+                    ErrorMessage    = $null
+                }
+            } else {
+                return [PSCustomObject]@{
+                    Path            = $resolvedPath
+                    Profile         = $targetProfile
+                    FileDeleted     = $false
+                    ProfileDetached = $false
+                    IsLocked        = $false
+                    OutlookRunning  = $false
+                    Success         = $false
+                    ErrorMessage    = "Action cancelled by user confirmation prompt."
+                }
             }
         }
 
@@ -200,7 +225,7 @@ function Remove-OutlookDataFile {
 
         # 8. Physical File Deletion
         $fileDeleted = $false
-        $fileExists = Test-Path -LiteralPath $resolvedPath
+        $fileExists = Test-Path -LiteralPath $resolvedPath -PathType Leaf
         if ($fileExists) {
             try {
                 Remove-Item -LiteralPath $resolvedPath -Force -ErrorAction Stop

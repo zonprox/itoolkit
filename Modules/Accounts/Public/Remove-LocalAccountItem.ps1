@@ -38,12 +38,18 @@ function Remove-LocalAccountItem {
     )
 
     process {
+        # 0. Clean & Normalize Username
+        if ([string]::IsNullOrWhiteSpace($Username)) {
+            throw "Username cannot be null, empty, or whitespace-only."
+        }
+        $cleanUsername = ($Username.Trim() -replace '^(?:[^\\]+\\|[^\/]+\/)', '').Trim()
+        if ([string]::IsNullOrWhiteSpace($cleanUsername)) {
+            throw "Username cannot be null, empty, or whitespace-only."
+        }
+
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
             Write-ToolkitLog -Message "Validating safety guardrails for local account deletion '$Username'..." -Level "Info" -Component "Accounts"
         }
-
-        # 0. Clean & Normalize Username
-        $cleanUsername = ($Username.Trim() -replace '^(?:[^\\]+\\|[^\/]+\/)', '').Trim()
 
         # 1. Resolve Account SID for Guardrail & Registry Verification
         $targetSid = if (-not [string]::IsNullOrWhiteSpace($SID)) { $SID.Trim() } else { $null }
@@ -132,19 +138,39 @@ function Remove-LocalAccountItem {
         }
 
         # 4. ShouldProcess / WhatIf Support
+        $isWhatIf = ($PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf']) -or $WhatIfPreference
         if (-not $PSCmdlet.ShouldProcess($Username, "Permanently delete local user account, profile directory, and ProfileList registry key")) {
-            return [PSCustomObject]@{
-                Username           = $Username
-                SID                = $targetSid
-                AccountRemoved     = $true
-                ProfilePathRemoved = $true
-                ProfileListRemoved = $true
-                Success            = $true
+            if ($isWhatIf) {
+                return [PSCustomObject]@{
+                    Username           = $Username
+                    SID                = $targetSid
+                    AccountRemoved     = $true
+                    ProfilePathRemoved = $true
+                    ProfileListRemoved = $true
+                    Success            = $true
+                }
+            } else {
+                return [PSCustomObject]@{
+                    Username           = $Username
+                    SID                = $targetSid
+                    AccountRemoved     = $false
+                    ProfilePathRemoved = $false
+                    ProfileListRemoved = $false
+                    Success            = $false
+                    ErrorMessage       = "Action cancelled by user confirmation prompt."
+                }
             }
         }
 
         # 5. Resolve User Profile Path
-        $resolvedProfilePath = $ProfilePath
+        $resolvedProfilePath = if (-not [string]::IsNullOrWhiteSpace($ProfilePath)) {
+            $ProfilePath.Trim().Trim('"').Trim("'")
+        } else {
+            $null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($resolvedProfilePath)) {
+            $resolvedProfilePath = [System.Environment]::ExpandEnvironmentVariables($resolvedProfilePath)
+        }
         if ([string]::IsNullOrWhiteSpace($resolvedProfilePath) -and -not [string]::IsNullOrWhiteSpace($targetSid)) {
             $profileListKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$targetSid"
             if (Test-Path -LiteralPath $profileListKey) {
@@ -186,18 +212,32 @@ function Remove-LocalAccountItem {
 
         if (-not $accountRemoved) {
             try {
-                $comp = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { 'localhost' }
-                $adsiComputer = [ADSI]"WinNT://$comp"
-                $adsiComputer.Delete('user', $cleanUsername)
-                $accountRemoved = $true
-                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                    Write-ToolkitLog -Message "Successfully removed local user '$cleanUsername' via ADSI fallback." -Level "Info" -Component "Accounts"
+                if ($IsWindows) {
+                    $comp = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { 'localhost' }
+                    $adsiComputer = [ADSI]"WinNT://$comp"
+                    $adsiComputer.Delete('user', $cleanUsername)
+                    $accountRemoved = $true
+                    if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                        Write-ToolkitLog -Message "Successfully removed local user '$cleanUsername' via ADSI fallback." -Level "Info" -Component "Accounts"
+                    }
                 }
             } catch {
                 if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
                     Write-ToolkitLog -Message "ADSI user deletion failed for '$cleanUsername': $($_.Exception.Message)" -Level "Error" -Component "Accounts"
                 }
-                throw $_
+            }
+        }
+
+        # Check if user account was not found anywhere
+        if (-not $accountRemoved) {
+            $hasProfileTarget = (-not [string]::IsNullOrWhiteSpace($resolvedProfilePath) -and (Test-Path -LiteralPath $resolvedProfilePath)) -or `
+                                (-not [string]::IsNullOrWhiteSpace($targetSid) -and (Test-Path -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$targetSid"))
+            if ($hasProfileTarget) {
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Account '$cleanUsername' not present in SAM; proceeding with profile and registry cleanup." -Level "Info" -Component "Accounts"
+                }
+            } elseif (-not $Force) {
+                throw "Local user account '$Username' was not found."
             }
         }
 
@@ -206,7 +246,7 @@ function Remove-LocalAccountItem {
         $isSystemPath = $false
         if (-not [string]::IsNullOrWhiteSpace($resolvedProfilePath)) {
             $normProf = $resolvedProfilePath.TrimEnd('\', '/')
-            if ($normProf -in @('', 'C:', 'C:\Users', 'C:\Windows', 'C:\Windows\System32', '/', '/home', '/root', $env:SystemRoot, $env:windir)) {
+            if ($normProf -in @('', 'C:', 'D:', 'E:', 'C:\Users', 'C:\Windows', 'C:\Windows\System32', 'C:\Program Files', 'C:\Program Files (x86)', 'C:\ProgramData', '/', '/home', '/root', '/usr', '/etc', '/var', $env:SystemRoot, $env:windir, $env:ProgramFiles, $env:ProgramData) -or $normProf -match '^[a-zA-Z]:$') {
                 $isSystemPath = $true
             }
         }
