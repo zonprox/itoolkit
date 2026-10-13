@@ -1425,6 +1425,7 @@ Describe 'Unit: AppInstaller Module' {
         }
 
         It 'Detects available winget via App Execution Alias path' -Skip:(-not $isAppInstallerAvailable) {
+            $global:LASTEXITCODE = 0
             Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'winget' }
             Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*winget.exe' }
             Mock Get-Command { return [PSCustomObject]@{ Name = 'winget' } } -ParameterFilter { $Name -eq 'winget' }
@@ -1712,17 +1713,17 @@ Describe 'Unit: AppInstaller Module' {
             }
             Mock Wait-UserAcknowledge { }
             $script:uCount = 0
-            Mock Read-ToolkitMenuChoice {
+            Mock Read-ToolkitItemSelection {
                 $script:uCount++
-                if ($script:uCount -eq 1) { return '9' }
-                return '0'
+                if ($script:uCount -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '9' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
             }
 
             Invoke-ToolkitSubmenuAppInstaller
             $script:upgradeAllCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller dispatches WinRAR installation on key 8' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller dispatches WinRAR installation on key 8 through contextual workflow' -Skip:(-not $isAppInstallerAvailable) {
             $script:winrarInstalled = $false
             $script:winrarShortcut = $false
             Mock Install-ToolkitApplication {
@@ -1735,10 +1736,14 @@ Describe 'Unit: AppInstaller Module' {
             }
             Mock Wait-UserAcknowledge { }
             $script:keyCount = 0
-            Mock Read-ToolkitMenuChoice {
+            Mock Read-ToolkitItemSelection {
                 $script:keyCount++
-                if ($script:keyCount -eq 1) { return '8' }
-                return '0'
+                switch ($script:keyCount) {
+                    1 { return [PSCustomObject]@{ Type = 'Index'; Value = 8 } }
+                    2 { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' } }
+                    3 { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+                    default { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+                }
             }
 
             Invoke-ToolkitSubmenuAppInstaller
@@ -1748,19 +1753,20 @@ Describe 'Unit: AppInstaller Module' {
 
         It 'Invoke-ToolkitSubmenuAppInstaller rejects manual W, B hotkeys from valid keys and enforces numeric navigation' -Skip:(-not $isAppInstallerAvailable) {
             $script:capturedValidKeys = $null
-            Mock Read-ToolkitMenuChoice {
-                param($Prompt, $ValidKeys)
-                $script:capturedValidKeys = $ValidKeys
-                return '0'
+            $script:capturedMaxIndex = 0
+            Mock Read-ToolkitItemSelection {
+                param($MaxIndex, $ValidHotkeys, $Prompt)
+                $script:capturedValidKeys = $ValidHotkeys
+                $script:capturedMaxIndex = $MaxIndex
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
             }
 
             Invoke-ToolkitSubmenuAppInstaller
             $script:capturedValidKeys | Should -Not -Contain 'W'
             $script:capturedValidKeys | Should -Not -Contain 'B'
             $script:capturedValidKeys | Should -Not -Contain 'U'
-            $script:capturedValidKeys | Should -Contain '8'
             $script:capturedValidKeys | Should -Contain '9'
-            $script:capturedValidKeys | Should -Contain '0'
+            $script:capturedMaxIndex | Should -Be 8
         }
     }
 }

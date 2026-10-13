@@ -65,46 +65,50 @@ function Read-ToolkitItemSelection {
             }
         }
 
-        # Handle registered action hotkeys (purely numeric or alphanumeric)
-        if ($null -ne $ValidHotkeys -and $ValidHotkeys.Count -gt 0) {
-            $upperTrimmed = $trimmed.ToUpper()
-            foreach ($k in $ValidHotkeys) {
-                if ($null -ne $k) {
-                    $kStr = $k.ToString().Trim().Trim('[', ']').Trim()
-                    if ($kStr.Equals($cleanNumber, [System.StringComparison]::OrdinalIgnoreCase) -or
-                        $kStr.Equals($upperTrimmed, [System.StringComparison]::OrdinalIgnoreCase)) {
-                        return [PSCustomObject]@{
-                            Type  = 'Hotkey'
-                            Value = $kStr
-                        }
-                    }
-                }
-            }
-        }
+        # Pure numeric enforcement: strictly reject letters and non-digit characters
+        if ($cleanNumber -match '^\d+$') {
+            $parsedIndex = [int]$cleanNumber
 
-        # Handle numeric index selection (supports both '1' and bracketed '[1]')
-        $parsedIndex = 0
-        if ([int]::TryParse($cleanNumber, [ref]$parsedIndex)) {
+            # Prioritize item index check (1..MaxIndex) BEFORE hotkey check
             if ($MaxIndex -gt 0 -and $parsedIndex -ge 1 -and $parsedIndex -le $MaxIndex) {
                 return [PSCustomObject]@{
                     Type  = 'Index'
                     Value = $parsedIndex
                 }
             }
+
+            # Check registered action hotkeys (purely numeric, e.g. '9', '10', '11', '12')
+            if ($null -ne $ValidHotkeys -and $ValidHotkeys.Count -gt 0) {
+                foreach ($k in $ValidHotkeys) {
+                    if ($null -ne $k) {
+                        $kStr = $k.ToString().Trim().Trim('[', ']').Trim()
+                        if ($kStr -eq $cleanNumber) {
+                            return [PSCustomObject]@{
+                                Type  = 'Hotkey'
+                                Value = $kStr
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        # Provide helpful hint on invalid input if not empty
+        # Informative retry warning displaying full valid choices
         if (-not [string]::IsNullOrWhiteSpace($trimmed)) {
-            $hint = ''
+            $options = [System.Collections.Generic.List[string]]::new()
+            if ($MaxIndex -gt 0) { $options.Add("1-$MaxIndex") }
             if ($null -ne $ValidHotkeys -and $ValidHotkeys.Count -gt 0) {
-                $hint = ($ValidHotkeys -join ', ')
+                foreach ($h in $ValidHotkeys) {
+                    if ($null -ne $h) {
+                        $hClean = $h.ToString().Trim().Trim('[', ']').Trim()
+                        if (-not [string]::IsNullOrWhiteSpace($hClean) -and -not $options.Contains($hClean)) {
+                            $options.Add($hClean)
+                        }
+                    }
+                }
             }
-            elseif ($MaxIndex -gt 0) {
-                $hint = "1-$MaxIndex, 0"
-            }
-            else {
-                $hint = "0"
-            }
+            $options.Add('0')
+            $hint = $options -join ', '
             Write-Host "  Invalid selection '$trimmed'. Valid options: $hint" -ForegroundColor Yellow
         }
     }

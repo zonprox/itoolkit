@@ -12,7 +12,8 @@ $script:CoreManifest = Join-Path $ProjectRoot 'Modules/Core/Core.psd1'
 $isCoreAvailable = Test-Path $script:CoreManifest
 
 BeforeAll {
-    $root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+    $script:ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+    $root = $script:ProjectRoot
     $script:CoreManifest = Join-Path $root 'Modules/Core/Core.psd1'
     $manifests = Get-ChildItem -Path (Join-Path $root "Modules") -Filter "*.psd1" -Recurse -ErrorAction SilentlyContinue
     if ($manifests) {
@@ -269,6 +270,50 @@ Describe 'Unit: Core Module Services' {
                 Test-Path -LiteralPath (Join-Path $tempDir 'logs') | Should -BeFalse
             } finally {
                 Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Write-ToolkitLog respects global:ToolkitLogDirectory and env:ITOOLKIT_LOG_DIR' -Skip:(-not $isCoreAvailable) {
+            $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+            try {
+                $global:ToolkitLogDirectory = $tempDir
+                Write-ToolkitLog -Message 'Global log test' -Component 'CoreTest'
+                $logFiles = Get-ChildItem -Path $tempDir -Filter '*.log'
+                $logFiles.Count | Should -BeGreaterThan 0
+                $content = Get-Content -Path $logFiles[0].FullName -Raw
+                $content | Should -Match 'Global log test'
+            } finally {
+                $global:ToolkitLogDirectory = $null
+                Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Write-ToolkitLog auto-discovers application root Logs directory when no parameters are provided' -Skip:(-not $isCoreAvailable) {
+            $savedGlobal = $global:ToolkitLogDirectory
+            $savedEnv = $env:ITOOLKIT_LOG_DIR
+            try {
+                $global:ToolkitLogDirectory = $null
+                $env:ITOOLKIT_LOG_DIR = $null
+                $rootLogs = Join-Path $script:ProjectRoot 'Logs'
+                Write-ToolkitLog -Message 'Root discovery test' -Component 'CoreTest' -NoConsole
+                Test-Path -LiteralPath $rootLogs | Should -BeTrue
+                $logFiles = Get-ChildItem -Path $rootLogs -Filter 'IToolkit_*.log'
+                $logFiles.Count | Should -BeGreaterThan 0
+            } finally {
+                $global:ToolkitLogDirectory = $savedGlobal
+                $env:ITOOLKIT_LOG_DIR = $savedEnv
+            }
+        }
+
+        It 'Write-ToolkitLog falls back gracefully when target log directory cannot be created' -Skip:(-not $isCoreAvailable) {
+            $invalidDir = '/proc/invalid_readonly_log_dir_12345/logs'
+            if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
+                $invalidDir = 'Z:\NonExistentDriveLetterXYZ:\Logs'
+            }
+            try {
+                { Write-ToolkitLog -Message 'Fallback resilience test' -LogDirectory $invalidDir -NoConsole } | Should -Not -Throw
+            } finally {
+                $null = $null
             }
         }
     }

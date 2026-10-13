@@ -18,6 +18,16 @@ $script:LoadedSubModules     = @()
 $script:IToolkitVersion      = '1.0.0'
 $script:IToolkitDryRun       = $false
 
+# Expose global root and default log directory across session
+$global:IToolkitRoot         = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($global:ToolkitLogDirectory)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:ITOOLKIT_LOG_DIR)) {
+        $global:ToolkitLogDirectory = $env:ITOOLKIT_LOG_DIR
+    } else {
+        $global:ToolkitLogDirectory = Join-Path -Path $PSScriptRoot -ChildPath 'Logs'
+    }
+}
+
 Write-Verbose "Initializing IToolkit v$script:IToolkitVersion from: $script:IToolkitRoot"
 
 # Auto-discover and import nested modules under Modules/

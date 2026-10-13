@@ -200,6 +200,9 @@ function Start-IToolkitMenu {
         }
 
         $cleanOption = $MenuOption.Trim().Trim('[', ']').Trim().ToUpperInvariant()
+        if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+            Write-ToolkitLog -Message "Direct menu option executed: $cleanOption" -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
+        }
 
         switch ($cleanOption) {
             '1' { Invoke-ToolkitSubmenuSystemHealth @subParams }
@@ -323,6 +326,10 @@ function Start-IToolkitMenu {
 
         if ([string]::IsNullOrWhiteSpace($choice)) {
             break
+        }
+
+        if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+            Write-ToolkitLog -Message "Interactive menu selection: [$choice]" -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
         }
 
         switch ($choice) {

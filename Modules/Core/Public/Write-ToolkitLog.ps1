@@ -105,14 +105,38 @@ function Write-ToolkitLog {
         # 6. Resolve Log Directory
         $targetLogDir = $LogDirectory
         if ([string]::IsNullOrWhiteSpace($targetLogDir)) {
-            if ($null -ne $script:ToolkitLogDirectory -and -not [string]::IsNullOrWhiteSpace($script:ToolkitLogDirectory)) {
+            if (-not [string]::IsNullOrWhiteSpace($global:ToolkitLogDirectory)) {
+                $targetLogDir = $global:ToolkitLogDirectory
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($script:ToolkitLogDirectory)) {
                 $targetLogDir = $script:ToolkitLogDirectory
             }
-            elseif ($null -ne $env:ProgramData -and (Test-Path -LiteralPath $env:ProgramData)) {
-                $targetLogDir = Join-Path -Path $env:ProgramData -ChildPath 'IToolkit\Logs'
+            elseif (-not [string]::IsNullOrWhiteSpace($env:ITOOLKIT_LOG_DIR)) {
+                $targetLogDir = $env:ITOOLKIT_LOG_DIR
             }
             else {
-                $targetLogDir = Join-Path -Path (Get-Location).Path -ChildPath 'Logs'
+                # Probe upward for IToolkit project root
+                $probeDir = $PSScriptRoot
+                $foundRoot = $null
+                while (-not [string]::IsNullOrWhiteSpace($probeDir)) {
+                    if (Test-Path -LiteralPath (Join-Path -Path $probeDir -ChildPath 'IToolkit.psd1')) {
+                        $foundRoot = $probeDir
+                        break
+                    }
+                    $parent = Split-Path -Path $probeDir -Parent
+                    if ($parent -eq $probeDir) { break }
+                    $probeDir = $parent
+                }
+
+                if (-not [string]::IsNullOrWhiteSpace($foundRoot)) {
+                    $targetLogDir = Join-Path -Path $foundRoot -ChildPath 'Logs'
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace($global:IToolkitRoot)) {
+                    $targetLogDir = Join-Path -Path $global:IToolkitRoot -ChildPath 'Logs'
+                }
+                else {
+                    $targetLogDir = Join-Path -Path (Get-Location).Path -ChildPath 'Logs'
+                }
             }
         }
 
@@ -131,37 +155,90 @@ function Write-ToolkitLog {
             }
         }
 
-        # 7. Ensure Directory Exists and Write to File Resiliently
-        try {
-            if (-not (Test-Path -LiteralPath $targetLogDir)) {
-                $null = [System.IO.Directory]::CreateDirectory($targetLogDir)
-            }
+        # 7. Write to File Resiliently with Graceful Fallback
+        $logFileName = "IToolkit_$dateSuffix.log"
+        $candidateDirs = [System.Collections.Generic.List[string]]::new()
+        if (-not [string]::IsNullOrWhiteSpace($targetLogDir)) {
+            $candidateDirs.Add($targetLogDir)
+        }
+        # Multi-tier fallback directories in case primary location is not writable
+        if (-not [string]::IsNullOrWhiteSpace($env:ProgramData)) {
+            $candidateDirs.Add((Join-Path -Path $env:ProgramData -ChildPath 'IToolkit\Logs'))
+        }
+        $tempPath = [System.IO.Path]::GetTempPath()
+        if (-not [string]::IsNullOrWhiteSpace($tempPath)) {
+            $candidateDirs.Add((Join-Path -Path $tempPath -ChildPath 'IToolkit\Logs'))
+        }
 
-            $logFileName = "IToolkit_$dateSuffix.log"
-            $logFilePath = Join-Path -Path $targetLogDir -ChildPath $logFileName
-
-            # Concurrency & Lock Retry Loop (3 attempts, 50ms pause)
-            $written = $false
-            $attempt = 0
-            while (-not $written -and $attempt -lt 3) {
-                $attempt++
-                try {
-                    [System.IO.File]::AppendAllText($logFilePath, "$logLine`r`n", [System.Text.Encoding]::UTF8)
-                    $written = $true
+        $written = $false
+        foreach ($candidateDir in $candidateDirs) {
+            try {
+                if (-not (Test-Path -LiteralPath $candidateDir)) {
+                    $null = [System.IO.Directory]::CreateDirectory($candidateDir)
                 }
-                catch [System.IO.IOException] {
-                    if ($attempt -lt 3) {
-                        Start-Sleep -Milliseconds 50
+
+                $logFilePath = Join-Path -Path $candidateDir -ChildPath $logFileName
+
+                # Concurrency & Lock Retry Loop (3 attempts, 50ms pause)
+                $attempt = 0
+                while (-not $written -and $attempt -lt 3) {
+                    $attempt++
+                    try {
+                        [System.IO.File]::AppendAllText($logFilePath, "$logLine`r`n", [System.Text.Encoding]::UTF8)
+                        $written = $true
+                    }
+                    catch [System.IO.IOException] {
+                        if ($attempt -lt 3) {
+                            Start-Sleep -Milliseconds 50
+                        }
+                    }
+                    catch {
+                        break
                     }
                 }
-                catch {
-                    Write-Verbose "Could not append log entry: $($_.Exception.Message)"
+
+                if ($written) {
+                    $script:ToolkitActiveLogDirectory = $candidateDir
                     break
                 }
             }
+            catch {
+                Write-Verbose "Logging filesystem error in '$candidateDir': $($_.Exception.Message)"
+                continue
+            }
         }
-        catch {
-            Write-Verbose "Logging filesystem error: $($_.Exception.Message)"
+
+        # 8. Automatic Daily Log Retention & Rotation (default: 30 days)
+        if ($written -and $script:ToolkitLastLogCleanupDate -ne $dateSuffix) {
+            $script:ToolkitLastLogCleanupDate = $dateSuffix
+            try {
+                $retentionDays = 30
+                if (-not [string]::IsNullOrWhiteSpace($env:ITOOLKIT_LOG_RETENTION_DAYS)) {
+                    $parsedDays = 0
+                    if ([int]::TryParse($env:ITOOLKIT_LOG_RETENTION_DAYS, [ref]$parsedDays) -and $parsedDays -gt 0) {
+                        $retentionDays = $parsedDays
+                    }
+                }
+
+                $activeDir = $script:ToolkitActiveLogDirectory
+                if (-not [string]::IsNullOrWhiteSpace($activeDir) -and (Test-Path -LiteralPath $activeDir)) {
+                    $cutoffDate = (Get-Date).AddDays(-$retentionDays)
+                    $oldFiles = Get-ChildItem -LiteralPath $activeDir -Filter 'IToolkit_*.log' -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.LastWriteTime -lt $cutoffDate }
+
+                    foreach ($oldFile in $oldFiles) {
+                        try {
+                            Remove-Item -LiteralPath $oldFile.FullName -Force -ErrorAction SilentlyContinue
+                        }
+                        catch {
+                            $null = $_
+                        }
+                    }
+                }
+            }
+            catch {
+                $null = $_
+            }
         }
 
         if ($PassThru) {

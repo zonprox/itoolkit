@@ -28,8 +28,12 @@ function Write-AppInstallerLog {
         # Resolve target log directory
         $targetDir = $LogDirectory
         if ([string]::IsNullOrWhiteSpace($targetDir)) {
-            if ($null -ne $script:ToolkitLogDirectory -and -not [string]::IsNullOrWhiteSpace($script:ToolkitLogDirectory)) {
+            if (-not [string]::IsNullOrWhiteSpace($global:ToolkitLogDirectory)) {
+                $targetDir = $global:ToolkitLogDirectory
+            } elseif (-not [string]::IsNullOrWhiteSpace($script:ToolkitLogDirectory)) {
                 $targetDir = $script:ToolkitLogDirectory
+            } elseif (-not [string]::IsNullOrWhiteSpace($env:ITOOLKIT_LOG_DIR)) {
+                $targetDir = $env:ITOOLKIT_LOG_DIR
             } else {
                 $targetDir = Join-Path -Path (Get-Location).Path -ChildPath 'Logs'
             }

@@ -50,6 +50,167 @@ if (Get-Command -Name 'Get-PrintersContextInfoLines' -CommandType Function -Erro
     Set-Item -Path 'function:global:Get-PrintersContextInfoLines' -Value (Get-Command -Name 'Get-PrintersContextInfoLines').ScriptBlock
 }
 
+function Invoke-ToolkitNetworkDeviceContextMenu {
+<#
+.SYNOPSIS
+    Contextual administration menu for a targeted network adapter or printer device.
+.DESCRIPTION
+    Provides targeted diagnostic and repair operations for a selected network interface or printer:
+    - [1] Restart Adapter (restart targeted network interface)
+    - [2] Flush DNS & Renew DHCP (flush resolver cache and rebind DHCP lease)
+    - [3] Test Connectivity & Latency (test ICMP ping reachability and target port latency)
+    - [4] Purge Spooler Queue (terminate spoolsv, clear stuck jobs, and restart Spooler)
+    - [0] Back to Devices Table (return to parent submenu)
+.PARAMETER Device
+    The selected device PSCustomObject from the parent table.
+.PARAMETER ExitImmediately
+    Bypasses interactive loop and returns immediately (for testing).
+.PARAMETER NonInteractive
+    Headless automation mode: renders context menu once and returns cleanly.
+#>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [PSCustomObject]$Device,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$ExitImmediately,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NonInteractive
+    )
+
+    if ($ExitImmediately) {
+        Write-ToolkitStatus -Message "Device context menu launched with -ExitImmediately flag. Returning." -Type 'INFO'
+        return
+    }
+
+    $inContext = $true
+    while ($inContext) {
+        $clear = if ($NonInteractive) { $false } else { $true }
+        $deviceName = if ($Device.Device) { [string]$Device.Device } else { 'Network Device' }
+        $deviceStatus = if ($Device.Status) { [string]$Device.Status } else { '[READY]' }
+        $deviceType = if ($Device.Type) { [string]$Device.Type } else { 'Adapter' }
+        $deviceDetails = if ($Device.Details) { [string]$Device.Details } else { '--' }
+
+        $infoLines = @(
+            "Target Device  : $deviceName | Type: $deviceType",
+            "Status         : $deviceStatus | Details: $deviceDetails",
+            "Engines Loaded : Adapter Restart, DNS/DHCP Reset, Connectivity Test, Spooler Purge"
+        )
+
+        Show-ToolkitHeader -Title 'ITOOLKIT > NETWORK & CONNECTIVITY > DEVICE CONTEXT' `
+            -Subtitle "Contextual Diagnostics & Remediation: $deviceName" `
+            -ClearScreen:$clear `
+            -InfoLines $infoLines
+
+        $contextActions = @(
+            @{ Key = '1'; Label = 'Restart Adapter' },
+            @{ Key = '2'; Label = 'Flush DNS & Renew DHCP' },
+            @{ Key = '3'; Label = 'Test Connectivity & Latency' },
+            @{ Key = '4'; Label = 'Purge Spooler Queue' }
+        )
+        $navActions = @(
+            @{ Key = '0'; Label = 'Back to Devices Table' }
+        )
+        Show-ToolkitActionCatalog -Actions $contextActions -NavActions $navActions -Title "DEVICE ACTIONS: $deviceName"
+
+        if ($NonInteractive) {
+            Write-ToolkitStatus -Message "Non-interactive contextual listing complete for device '$deviceName'." -Type 'INFO'
+            return
+        }
+
+        $contextHotkeys = @('1', '2', '3', '4')
+        $promptText = "  Select action for '$deviceName' [1-4, 0]: "
+        $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $contextHotkeys -Prompt $promptText
+
+        if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
+            $inContext = $false
+            return
+        }
+
+        switch ("$($selection.Value)") {
+            '1' {
+                if (Get-Command -Name 'Restart-ToolkitNetworkAdapter' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Restarting network adapter '$deviceName'..." -Type 'INFO'
+                        if ($Device.Type -eq 'Adapter' -and -not [string]::IsNullOrWhiteSpace($Device.Device) -and $Device.Device -ne 'Network Adapter Subsystem') {
+                            $res = Restart-ToolkitNetworkAdapter -Name $Device.Device
+                        } else {
+                            $res = Restart-ToolkitNetworkAdapter -All
+                        }
+                        Write-ToolkitStatus -Message "Network adapter '$deviceName' restart completed." -Type 'OK'
+                    } catch {
+                        Write-ToolkitStatus -Message "Adapter restart failed: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+            '2' {
+                try {
+                    Write-ToolkitStatus -Message "Flushing DNS resolver and renewing DHCP leases..." -Type 'INFO'
+                    if (Get-Command -Name 'Reset-NetworkDns' -ErrorAction SilentlyContinue) {
+                        $null = Reset-NetworkDns
+                    }
+                    if (Get-Command -Name 'Reset-NetworkDhcp' -ErrorAction SilentlyContinue) {
+                        $null = Reset-NetworkDhcp
+                    }
+                    Write-ToolkitStatus -Message "DNS flushed and DHCP lease renewed successfully." -Type 'OK'
+                } catch {
+                    Write-ToolkitStatus -Message "DNS/DHCP reset failed: $($_.Exception.Message)" -Type 'FAIL'
+                }
+                Wait-UserAcknowledge
+            }
+            '3' {
+                $targetHost = if ($Device.Gateway -and $Device.Gateway -ne '--') {
+                    $Device.Gateway
+                } elseif ($Device.Details -and $Device.Details -match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$') {
+                    $Device.Details
+                } else {
+                    '8.8.8.8'
+                }
+                Write-ToolkitStatus -Message "Testing network connectivity to '$targetHost'..." -Type 'INFO'
+                if (Get-Command -Name 'Test-NetworkPrinterConnectivity' -ErrorAction SilentlyContinue) {
+                    try {
+                        $testRes = Test-NetworkPrinterConnectivity -ComputerName $targetHost
+                        if ($testRes.PingSuccess -or $testRes.RawPrintPortOpen -or $testRes.SmbPortOpen -or $testRes.RpcPortOpen) {
+                            Write-ToolkitStatus -Message "Connectivity test to '$targetHost' succeeded (Ping: $($testRes.PingSuccess))." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "Connectivity test to '$targetHost' timed out or unreachable." -Type 'WARN'
+                        }
+                    } catch {
+                        Write-ToolkitStatus -Message "Connectivity probe failed: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                } elseif (Get-Command -Name 'Test-Connection' -ErrorAction SilentlyContinue) {
+                    $ping = Test-Connection -ComputerName $targetHost -Count 1 -Quiet -ErrorAction SilentlyContinue
+                    if ($ping) {
+                        Write-ToolkitStatus -Message "ICMP ping to '$targetHost' succeeded." -Type 'OK'
+                    } else {
+                        Write-ToolkitStatus -Message "ICMP ping to '$targetHost' unreachable." -Type 'WARN'
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+            '4' {
+                if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Purging print spooler queue and restarting service..." -Type 'INFO'
+                        Reset-PrintSpoolerQueue -Force
+                        Write-ToolkitStatus -Message "Print spooler queue purged and service restarted." -Type 'OK'
+                    } catch {
+                        Write-ToolkitStatus -Message "Spooler purge failed: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                }
+                Wait-UserAcknowledge
+            }
+            '0' {
+                $inContext = $false
+                return
+            }
+        }
+    }
+}
+
 function Invoke-ToolkitSubmenuConnectivity {
 <#
 .SYNOPSIS
@@ -109,10 +270,13 @@ function Invoke-ToolkitSubmenuConnectivity {
                 $adapters = @(Get-NetworkAdapterStatus)
                 foreach ($ad in $adapters) {
                     $items += [PSCustomObject]@{
-                        Device  = [string]$ad.Name
-                        Status  = if ($ad.Status) { [string]$ad.Status } else { '[READY]' }
-                        Type    = 'Adapter'
-                        Details = if ($ad.IPv4) { [string]$ad.IPv4 } else { 'DHCP / Dynamic' }
+                        Device         = [string]$ad.Name
+                        Status         = if ($ad.Status) { [string]$ad.Status } else { '[READY]' }
+                        Type           = 'Adapter'
+                        Details        = if ($ad.IPv4) { [string]$ad.IPv4 } else { 'DHCP / Dynamic' }
+                        InterfaceIndex = $ad.InterfaceIndex
+                        MAC            = if ($ad.MAC) { [string]$ad.MAC } else { '--' }
+                        Gateway        = if ($ad.Gateway) { [string]$ad.Gateway } else { '--' }
                     }
                 }
             }
@@ -120,24 +284,24 @@ function Invoke-ToolkitSubmenuConnectivity {
 
         if ($items.Count -eq 0) {
             $items = @(
-                [PSCustomObject]@{ Device = 'Network Adapter Subsystem'; Status = '[READY]'; Type = 'Network'; Details = 'TCP/IP stack, DNS client & routing' },
-                [PSCustomObject]@{ Device = 'Windows Print Spooler';    Status = '[READY]'; Type = 'Printer'; Details = 'Spooler service, queue & port bindings' },
-                [PSCustomObject]@{ Device = 'Point & Print Engine';      Status = '[READY]'; Type = 'Policy';  Details = 'Driver isolation & RPC authentication' }
+                [PSCustomObject]@{ Device = 'Network Adapter Subsystem'; Status = '[READY]'; Type = 'Network'; Details = 'TCP/IP stack, DNS client & routing'; Gateway = '--'; MAC = '--' },
+                [PSCustomObject]@{ Device = 'Windows Print Spooler';    Status = '[READY]'; Type = 'Printer'; Details = 'Spooler service, queue & port bindings'; Gateway = '--'; MAC = '--' },
+                [PSCustomObject]@{ Device = 'Point & Print Engine';      Status = '[READY]'; Type = 'Policy';  Details = 'Driver isolation & RPC authentication'; Gateway = '--'; MAC = '--' }
             )
         }
-        Show-ToolkitItemTable -Items $items -Columns @('Device', 'Status', 'Type', 'Details') -Headers @('DEVICE', 'STATUS', 'TYPE', 'DETAILS') -Title 'Discovered Network & Peripheral Devices' -NoIndex
+        Show-ToolkitItemTable -Items $items -Columns @('Device', 'Status', 'Type', 'Details') -Headers @('DEVICE', 'STATUS', 'TYPE', 'DETAILS') -Title 'Discovered Network & Peripheral Devices'
 
         Write-Host ""
         $actions = @(
-            @{ Key = '1'; Label = 'Apply All Network Fixes' },
-            @{ Key = '2'; Label = 'Reset Network Stack & DNS' },
-            @{ Key = '3'; Label = 'Restart Print Spooler' },
-            @{ Key = '4'; Label = 'Fix Point & Print Policies' },
-            @{ Key = '5'; Label = 'Remediate SMB Sharing' },
-            @{ Key = '6'; Label = 'Printer Server Remediation' },
-            @{ Key = '7'; Label = 'Printer Client Remediation' },
-            @{ Key = '8'; Label = 'Restart Network Adapter' },
-            @{ Key = '9'; Label = 'Restore Registry Backup' }
+            @{ Key = '10'; Label = 'Apply All Fixes' },
+            @{ Key = '11'; Label = 'Reset Stack & DNS' },
+            @{ Key = '12'; Label = 'Restart Spooler' },
+            @{ Key = '13'; Label = 'Fix Point & Print' },
+            @{ Key = '14'; Label = 'Remediate SMB' },
+            @{ Key = '15'; Label = 'Server Remediation' },
+            @{ Key = '16'; Label = 'Client Remediation' },
+            @{ Key = '17'; Label = 'Restart All Adapters' },
+            @{ Key = '18'; Label = 'Restore Registry' }
         )
         $navActions = @(
             @{ Key = '0'; Label = 'Back to Main Menu' }
@@ -149,18 +313,27 @@ function Invoke-ToolkitSubmenuConnectivity {
             return
         }
 
-        $validKeys = @('1', '2', '3', '4', '5', '6', '7', '8', '9', '0')
-        $promptText = "  Select action [1-9, 0]"
-        $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $validKeys -Prompt $promptText
+        $validKeys = @('10', '11', '12', '13', '14', '15', '16', '17', '18')
+        $promptText = "  Select Device [1-$($items.Count)], Action [10-18], or [0] Back"
+        $selection = Read-ToolkitItemSelection -MaxIndex $items.Count -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
             return
         }
 
+        if ($selection.Type -eq 'Index') {
+            $targetIndex = [int]$selection.Value - 1
+            if ($targetIndex -ge 0 -and $targetIndex -lt $items.Count) {
+                $selectedDevice = $items[$targetIndex]
+                Invoke-ToolkitNetworkDeviceContextMenu -Device $selectedDevice -NonInteractive:$NonInteractive
+            }
+            continue
+        }
+
         $actionKey = "$($selection.Value)"
 
         switch ($actionKey) {
-            '1' {
+            { $_ -in @('10', '1') } {
                 if (Get-Command -Name 'Set-NetworkRemediation' -ErrorAction SilentlyContinue) {
                     try {
                         $res = Set-NetworkRemediation -All
@@ -171,7 +344,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '2' {
+            { $_ -in @('11', '2') } {
                 if (Get-Command -Name 'Set-NetworkRemediation' -ErrorAction SilentlyContinue) {
                     try {
                         $res = Set-NetworkRemediation -Fix @('DnsResolution', 'DhcpLease', 'Winsock', 'TcpIpStack', 'DefaultGatewayArp')
@@ -182,7 +355,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '3' {
+            { $_ -in @('12', '3') } {
                 if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
                     try {
                         Reset-PrintSpoolerQueue
@@ -193,7 +366,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '4' {
+            { $_ -in @('13', '4') } {
                 if (Get-Command -Name 'Set-PointAndPrintRemediation' -ErrorAction SilentlyContinue) {
                     try {
                         Set-PointAndPrintRemediation
@@ -204,7 +377,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '5' {
+            { $_ -in @('14', '5') } {
                 if (Get-Command -Name 'Set-NetworkSmbConfiguration' -ErrorAction SilentlyContinue) {
                     try {
                         Set-NetworkSmbConfiguration -EnableInsecureGuestAuth $false -RequireSecuritySignature $true
@@ -215,7 +388,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '6' {
+            { $_ -in @('15', '6') } {
                 if (Get-Command -Name 'Set-PrinterServerRemediation' -ErrorAction SilentlyContinue) {
                     try {
                         Set-PrinterServerRemediation -All
@@ -226,7 +399,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '7' {
+            { $_ -in @('16', '7') } {
                 if (Get-Command -Name 'Set-PrinterClientRemediation' -ErrorAction SilentlyContinue) {
                     try {
                         Set-PrinterClientRemediation -All
@@ -237,7 +410,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '8' {
+            { $_ -in @('17', '8') } {
                 if (Get-Command -Name 'Restart-ToolkitNetworkAdapter' -ErrorAction SilentlyContinue) {
                     try {
                         Restart-ToolkitNetworkAdapter
@@ -248,7 +421,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 }
                 Wait-UserAcknowledge
             }
-            '9' {
+            { $_ -in @('18', '9') } {
                 $regPath = Read-Host "  Enter Registry Backup Path"
                 if (-not [string]::IsNullOrWhiteSpace($regPath) -and (Get-Command -Name 'Restore-RegistryKeyBackup' -ErrorAction SilentlyContinue)) {
                     try {
@@ -293,4 +466,7 @@ if (Get-Command -Name 'Invoke-ToolkitSubmenuNetwork' -CommandType Function -Erro
 }
 if (Get-Command -Name 'Invoke-ToolkitSubmenuPrinters' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Invoke-ToolkitSubmenuPrinters' -Value (Get-Command -Name 'Invoke-ToolkitSubmenuPrinters').ScriptBlock
+}
+if (Get-Command -Name 'Invoke-ToolkitNetworkDeviceContextMenu' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Invoke-ToolkitNetworkDeviceContextMenu' -Value (Get-Command -Name 'Invoke-ToolkitNetworkDeviceContextMenu').ScriptBlock
 }

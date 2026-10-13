@@ -80,6 +80,14 @@ if (-not (Test-Path -LiteralPath $runtimeLogDir)) {
     }
 }
 
+if ([string]::IsNullOrWhiteSpace($LogDirectory)) {
+    $LogDirectory = $runtimeLogDir
+}
+$global:ToolkitLogDirectory = $LogDirectory
+$env:ITOOLKIT_LOG_DIR = $LogDirectory
+$global:IToolkitRoot = $scriptDir
+$env:ITOOLKIT_ROOT = $scriptDir
+
 # Helper: Detect administrative privileges
 function Test-IsAdminLocal {
     # If Test-IsAdmin cmdlet is already available in session, use it
@@ -251,7 +259,14 @@ if (Test-Path -LiteralPath $windowsCleanupManifest) {
     }
 }
 
-# 4. Handle non-interactive execution or immediate exit
+# 4. Audit session launch
+if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+    $privilegeStr = if ($isAdmin) { 'Administrator (Elevated)' } else { 'Standard User (Non-Elevated)' }
+    $modeStr = if ($ExitImmediately) { 'ExitImmediately' } elseif ($NonInteractive) { 'NonInteractive' } else { 'Interactive' }
+    Write-ToolkitLog -Message "IToolkit session initialized | Version: 1.0.0 | User: $env:USERNAME | OS: $([System.Environment]::OSVersion.VersionString) | PS: $($PSVersionTable.PSVersion) | Privilege: $privilegeStr | Mode: $modeStr" -Level INFO -Component 'Start-IToolkit' -NoConsole
+}
+
+# 5. Handle non-interactive execution or immediate exit
 if ($ExitImmediately) {
     if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
         $menuCmd = Get-Command -Name 'Start-IToolkitMenu'
@@ -270,6 +285,9 @@ if ($ExitImmediately) {
             $menuParams['NonInteractive'] = $true
         }
         Start-IToolkitMenu @menuParams
+    }
+    if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+        Write-ToolkitLog -Message "IToolkit session completed." -Level INFO -Component 'Start-IToolkit' -NoConsole
     }
     exit 0
 }
@@ -292,10 +310,13 @@ if ($NonInteractive) {
         }
         Start-IToolkitMenu @menuParams
     }
+    if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+        Write-ToolkitLog -Message "IToolkit session completed." -Level INFO -Component 'Start-IToolkit' -NoConsole
+    }
     exit 0
 }
 
-# 5. Launch interactive TUI menu
+# 6. Launch interactive TUI menu
 if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
     $menuCmd = Get-Command -Name 'Start-IToolkitMenu'
     $menuParams = @{}
@@ -313,4 +334,8 @@ if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
 } else {
     Write-Host '[IToolkit] Core modules loaded successfully.' -ForegroundColor Green
     Write-Host '[IToolkit] Ready for administration commands.' -ForegroundColor Cyan
+}
+
+if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+    Write-ToolkitLog -Message "IToolkit session completed." -Level INFO -Component 'Start-IToolkit' -NoConsole
 }
