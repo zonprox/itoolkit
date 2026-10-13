@@ -125,7 +125,7 @@ function Invoke-ToolkitSubmenuConnectivity {
                 [PSCustomObject]@{ Device = 'Point & Print Engine';      Status = '[READY]'; Type = 'Policy';  Details = 'Driver isolation & RPC authentication' }
             )
         }
-        Show-ToolkitItemTable -Items $items -Columns @('Device', 'Status', 'Type', 'Details') -Headers @('DEVICE', 'STATUS', 'TYPE', 'DETAILS') -Title 'Discovered Network & Peripheral Devices'
+        Show-ToolkitItemTable -Items $items -Columns @('Device', 'Status', 'Type', 'Details') -Headers @('DEVICE', 'STATUS', 'TYPE', 'DETAILS') -Title 'Discovered Network & Peripheral Devices' -NoIndex
 
         Write-Host ""
         $actions = @(

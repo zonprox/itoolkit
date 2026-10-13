@@ -133,7 +133,7 @@ function Invoke-ToolkitSubmenuSystemHealth {
             [PSCustomObject]@{ Subsystem = 'System Logs & Dumps'; Status = '[READY]'; Method = 'Clear-WindowsSystemLogs'; Details = 'Purge WER dumps, memory dumps, logs' },
             [PSCustomObject]@{ Subsystem = 'Temporary Files & Caches'; Status = '[READY]'; Method = 'Clear-WindowsTempCache'; Details = 'Purge temp caches older than 24h' }
         )
-        Show-ToolkitItemTable -Items $healthItems -Columns @('Subsystem', 'Status', 'Method', 'Details') -Headers @('SUBSYSTEM', 'STATUS', 'METHOD', 'DETAILS') -Title 'System Health & Maintenance Subsystems'
+        Show-ToolkitItemTable -Items $healthItems -Columns @('Subsystem', 'Status', 'Method', 'Details') -Headers @('SUBSYSTEM', 'STATUS', 'METHOD', 'DETAILS') -Title 'System Health & Maintenance Subsystems' -NoIndex
 
         Write-Host ""
         $healthActions = @(

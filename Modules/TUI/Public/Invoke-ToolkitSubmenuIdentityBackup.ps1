@@ -129,7 +129,7 @@ function Invoke-ToolkitSubmenuIdentityBackup {
                 [PSCustomObject]@{ Identity = 'Backup Manifest Engine';  Status = '[READY]'; Type = 'Storage'; Details = 'SHA-256 file verification catalog' }
             )
         }
-        Show-ToolkitItemTable -Items $items -Columns @('Identity', 'Status', 'Type', 'Details') -Headers @('IDENTITY', 'STATUS', 'TYPE', 'DETAILS') -Title 'Managed Accounts & Identity Artifacts'
+        Show-ToolkitItemTable -Items $items -Columns @('Identity', 'Status', 'Type', 'Details') -Headers @('IDENTITY', 'STATUS', 'TYPE', 'DETAILS') -Title 'Managed Accounts & Identity Artifacts' -NoIndex
 
         Write-Host ""
         $actions = @(

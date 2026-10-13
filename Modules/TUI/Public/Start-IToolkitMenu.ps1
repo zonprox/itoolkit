@@ -223,7 +223,6 @@ function Start-IToolkitMenu {
                     Invoke-ToolkitSubmenuSoftwareOptimization @subParams
                 }
             }
-            '9' { Invoke-ToolkitSubmenuSystemHealth @subParams }
             'N' {
                 if (Get-Command -Name 'Invoke-ToolkitSubmenuNetwork' -ErrorAction SilentlyContinue) {
                     Invoke-ToolkitSubmenuNetwork @subParams
@@ -279,6 +278,12 @@ function Start-IToolkitMenu {
             'DEBLOAT'              { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
             'OPTIMIZATION'         { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
             'SOFTWAREOPTIMIZATION' { Invoke-ToolkitSubmenuSoftwareOptimization @subParams }
+            '9' {
+                if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
+                    Clear-ToolkitTelemetryCache
+                }
+                Write-ToolkitStatus -Message "Telemetry cache cleared." -Type 'OK'
+            }
             'R' {
                 if (Get-Command -Name 'Clear-ToolkitTelemetryCache' -ErrorAction SilentlyContinue) {
                     Clear-ToolkitTelemetryCache

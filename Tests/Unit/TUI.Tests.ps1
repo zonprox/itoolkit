@@ -253,6 +253,44 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             )
             { Show-ToolkitItemTable -Items $items -Columns @('Name', 'Status', 'Details') -Title 'Test Table' } | Should -Not -Throw
         }
+
+        It 'Show-ToolkitItemTable suppresses row index prefixes [1], [2] when -NoIndex is supplied' -Skip:(-not $isTUIAvailable) {
+            $capturedLines = [System.Collections.Generic.List[string]]::new()
+            Mock Write-Host {
+                param($Object)
+                if ($null -ne $Object) {
+                    $capturedLines.Add("$Object")
+                }
+            }
+            $items = @(
+                [PSCustomObject]@{ Name = 'TestItem1'; Status = 'OK'; Details = 'Detail 1' },
+                [PSCustomObject]@{ Name = 'TestItem2'; Status = 'WARN'; Details = 'Detail 2' }
+            )
+            Show-ToolkitItemTable -Items $items -Columns @('Name', 'Status', 'Details') -Title 'Test Table' -NoIndex
+
+            $allOutput = $capturedLines -join "`n"
+            $allOutput | Should -Not -Match '\[1\]'
+            $allOutput | Should -Not -Match '\[2\]'
+        }
+
+        It 'Show-ToolkitItemTable renders row index prefixes [1], [2] when -NoIndex is omitted' -Skip:(-not $isTUIAvailable) {
+            $capturedLines = [System.Collections.Generic.List[string]]::new()
+            Mock Write-Host {
+                param($Object)
+                if ($null -ne $Object) {
+                    $capturedLines.Add("$Object")
+                }
+            }
+            $items = @(
+                [PSCustomObject]@{ Name = 'TestItem1'; Status = 'OK'; Details = 'Detail 1' },
+                [PSCustomObject]@{ Name = 'TestItem2'; Status = 'WARN'; Details = 'Detail 2' }
+            )
+            Show-ToolkitItemTable -Items $items -Columns @('Name', 'Status', 'Details') -Title 'Test Table'
+
+            $allOutput = $capturedLines -join "`n"
+            $allOutput | Should -Match '\[1\]'
+            $allOutput | Should -Match '\[2\]'
+        }
     }
 
     Context 'Read-ToolkitItemSelection Input Parsing & Safeguards' {
@@ -324,6 +362,17 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             Mock Read-ToolkitItemSelection { throw "CRITICAL: Read-ToolkitItemSelection must not be called in non-interactive mode for $Name!" }
 
             { & $Command -NonInteractive } | Should -Not -Throw
+        }
+
+        It '<Name>: Invokes Show-ToolkitItemTable with -NoIndex to prevent row index collisions' -TestCases $submenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command)
+            $script:passedNoIndex = $false
+            Mock Show-ToolkitItemTable {
+                param($Items, $Columns, $Headers, $Title, [switch]$NoIndex)
+                $script:passedNoIndex = [bool]$NoIndex
+            }
+            { & $Command -NonInteractive } | Should -Not -Throw
+            $script:passedNoIndex | Should -BeTrue
         }
     }
 
@@ -410,7 +459,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:softCalled | Should -BeTrue
         }
 
-        It 'Start-IToolkitMenu gracefully maps legacy options (6, 7, 8, 9, N) to corresponding Core Pillars' -Skip:(-not $isTUIAvailable) {
+        It 'Start-IToolkitMenu gracefully maps legacy options (6, 7, 8, N) to corresponding Core Pillars' -Skip:(-not $isTUIAvailable) {
             $script:calls = [System.Collections.Generic.List[string]]::new()
             Mock Invoke-ToolkitSubmenuSystemHealth { $script:calls.Add('Health') }
             Mock Invoke-ToolkitSubmenuConnectivity { $script:calls.Add('Conn') }
@@ -419,13 +468,33 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             Start-IToolkitMenu -MenuOption '6' -NonInteractive
             Start-IToolkitMenu -MenuOption '7' -NonInteractive
             Start-IToolkitMenu -MenuOption '8' -NonInteractive
-            Start-IToolkitMenu -MenuOption '9' -NonInteractive
             Start-IToolkitMenu -MenuOption 'N' -NonInteractive
             Start-IToolkitMenu -MenuOption 'NETWORK' -NonInteractive
 
             $script:calls | Should -Contain 'Soft'
             $script:calls | Should -Contain 'Health'
             $script:calls | Should -Contain 'Conn'
+        }
+
+        It 'Start-IToolkitMenu routes Option 9 to Clear-ToolkitTelemetryCache instead of Invoke-ToolkitSubmenuSystemHealth' -Skip:(-not $isTUIAvailable) {
+            $script:cacheCleared = $false
+            $script:healthCalled = $false
+            Mock Clear-ToolkitTelemetryCache { $script:cacheCleared = $true }
+            Mock Invoke-ToolkitSubmenuSystemHealth { $script:healthCalled = $true }
+
+            Start-IToolkitMenu -MenuOption '9' -NonInteractive
+
+            $script:cacheCleared | Should -BeTrue
+            $script:healthCalled | Should -BeFalse
+        }
+
+        It 'Start-IToolkitMenu routes bracketed Option [9] to Clear-ToolkitTelemetryCache' -Skip:(-not $isTUIAvailable) {
+            $script:cacheCleared = $false
+            Mock Clear-ToolkitTelemetryCache { $script:cacheCleared = $true }
+
+            Start-IToolkitMenu -MenuOption '[9]' -NonInteractive
+
+            $script:cacheCleared | Should -BeTrue
         }
 
         It 'Start-IToolkitMenu interactive choices 1-5 dispatch to corresponding Core Pillars' -Skip:(-not $isTUIAvailable) {

@@ -146,7 +146,7 @@ function Invoke-ToolkitSubmenuOfficeSuite {
                 [PSCustomObject]@{ Item = 'Microsoft Outlook';   Status = '[READY]'; Type = 'Application'; Details = 'Messaging client and mail profiles' }
             )
         }
-        Show-ToolkitItemTable -Items $items -Columns @('Item', 'Status', 'Type', 'Details') -Headers @('ITEM', 'STATUS', 'TYPE', 'DETAILS') -Title 'Productivity Applications & Data Files'
+        Show-ToolkitItemTable -Items $items -Columns @('Item', 'Status', 'Type', 'Details') -Headers @('ITEM', 'STATUS', 'TYPE', 'DETAILS') -Title 'Productivity Applications & Data Files' -NoIndex
 
         Write-Host ""
         $actions = @(
