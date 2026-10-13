@@ -131,4 +131,71 @@ Describe 'Unit: User & Domain Account Administration Module' {
             $res.Success | Should -BeTrue
         }
     }
+
+    Context 'Permanent Local Account Deletion (Remove-LocalAccountItem)' {
+        It 'Blocks deletion of built-in Administrator account by name' -Skip:(-not $isAccountsAvailable) {
+            { Remove-LocalAccountItem -Username 'Administrator' } | Should -Throw "*built-in Administrator*"
+        }
+
+        It 'Blocks deletion of built-in Administrator account by SID -500' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance {
+                return [PSCustomObject]@{
+                    Name         = 'RenamedAdmin'
+                    SID          = 'S-1-5-21-987654321-500'
+                    LocalAccount = $true
+                }
+            }
+            { Remove-LocalAccountItem -Username 'RenamedAdmin' } | Should -Throw "*built-in Administrator*"
+        }
+
+        It 'Blocks deletion of currently logged-in user' -Skip:(-not $isAccountsAvailable) {
+            $currUser = if ($env:USERNAME) { $env:USERNAME } else { [System.Environment]::UserName }
+            Mock Get-CimInstance {
+                return [PSCustomObject]@{
+                    Name         = $currUser
+                    SID          = 'S-1-5-21-987654321-1002'
+                    LocalAccount = $true
+                }
+            }
+            { Remove-LocalAccountItem -Username $currUser } | Should -Throw "*currently logged-in user*"
+        }
+
+        It 'Permanently removes user account, profile directory, and ProfileList registry key' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance {
+                return [PSCustomObject]@{
+                    Name         = 'ContractorUser'
+                    SID          = 'S-1-5-21-987654321-1005'
+                    LocalAccount = $true
+                }
+            }
+            Mock Test-Path { return $true }
+            Mock Remove-LocalUser { }
+            $script:deletedItems = [System.Collections.Generic.List[string]]::new()
+            Mock Remove-Item {
+                param($LiteralPath)
+                $script:deletedItems.Add($LiteralPath)
+            }
+
+            $res = Remove-LocalAccountItem -Username 'ContractorUser'
+            $res.Success | Should -BeTrue
+            $res.AccountRemoved | Should -BeTrue
+            Assert-MockCalled Remove-LocalUser -Times 1
+            $res.ProfilePathRemoved | Should -BeTrue
+            $res.ProfileListRemoved | Should -BeTrue
+            $script:deletedItems | Should -Contain "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-21-987654321-1005"
+        }
+
+        It 'Supports WhatIf dry run without deleting' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance {
+                return [PSCustomObject]@{
+                    Name         = 'WhatIfUser'
+                    SID          = 'S-1-5-21-987654321-1006'
+                    LocalAccount = $true
+                }
+            }
+            $res = Remove-LocalAccountItem -Username 'WhatIfUser' -WhatIf
+            $res.Success | Should -BeTrue
+            $res.AccountRemoved | Should -BeTrue
+        }
+    }
 }

@@ -131,7 +131,8 @@ function Invoke-ToolkitAccountContextMenu {
             @{ Key = '1'; Label = 'Toggle State (Enable/Disable)' },
             @{ Key = '2'; Label = 'Unlock Account' },
             @{ Key = '3'; Label = 'Reset Password' },
-            @{ Key = '4'; Label = 'Inspect Account Details' }
+            @{ Key = '4'; Label = 'Inspect Account Details' },
+            @{ Key = '5'; Label = 'Permanently Delete User Account' }
         )
         $contextNav = @(
             @{ Key = '0'; Label = 'Back to Accounts List' }
@@ -143,7 +144,7 @@ function Invoke-ToolkitAccountContextMenu {
             return
         }
 
-        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4') -Prompt "  Select action for '$userName' [1-4, 0]"
+        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5') -Prompt "  Select action for '$userName' [1-5, 0]"
         if ($null -eq $choice -or $choice.Type -eq 'Exit' -or $choice.Value -eq '0') {
             $inContext = $false
             return
@@ -217,6 +218,51 @@ function Invoke-ToolkitAccountContextMenu {
                 }
                 Show-ToolkitDetailPanel -Details $detailList -Title "ACCOUNT ATTRIBUTES: $userName"
                 Wait-UserAcknowledge
+            }
+            '5' {
+                # Pre-flight safety guardrails check in TUI
+                if ($userName -eq 'Administrator' -or $sid -match '-(?:500)$') {
+                    Write-ToolkitStatus -Message "Deletion blocked: Cannot delete the built-in Administrator account (SID-500)." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                $currentLoggedUser = if ($env:USERNAME) { $env:USERNAME } else { [System.Environment]::UserName }
+                if (-not [string]::IsNullOrWhiteSpace($currentLoggedUser) -and $userName -ieq $currentLoggedUser) {
+                    Write-ToolkitStatus -Message "Deletion blocked: Cannot delete the currently logged-in user '$userName'." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                $confirm = Read-Host "  Confirm permanent deletion of account '$userName' and user profile? [y/N]"
+                if ($confirm -match '^(?i)y(es)?$') {
+                    if (Get-Command -Name 'Remove-LocalAccountItem' -ErrorAction SilentlyContinue) {
+                        try {
+                            Write-ToolkitStatus -Message "Permanently deleting user account '$userName'..." -Type 'INFO'
+                            $delRes = Remove-LocalAccountItem -Username $userName
+                            if ($delRes -and $delRes.Success) {
+                                Write-ToolkitStatus -Message "Account '$userName' and associated profile permanently deleted." -Type 'OK'
+                                Wait-UserAcknowledge
+                                $inContext = $false
+                                return
+                            } else {
+                                Write-ToolkitStatus -Message "Deletion routine processed for '$userName'." -Type 'INFO'
+                                Wait-UserAcknowledge
+                                $inContext = $false
+                                return
+                            }
+                        } catch {
+                            Write-ToolkitStatus -Message "Account deletion failed: $($_.Exception.Message)" -Type 'FAIL'
+                            Wait-UserAcknowledge
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Remove-LocalAccountItem command unavailable." -Type 'WARN'
+                        Wait-UserAcknowledge
+                    }
+                } else {
+                    Write-ToolkitStatus -Message "Permanent deletion cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                }
             }
             '0' {
                 $inContext = $false

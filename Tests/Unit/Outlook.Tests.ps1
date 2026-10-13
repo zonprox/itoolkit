@@ -703,6 +703,79 @@ Describe 'Unit: Outlook Data Management Module' {
         }
     }
 
+    Context 'Permanent Data File Deletion (Remove-OutlookDataFile)' {
+        It 'Rejects non-pst/ost extensions with terminating error' -Skip:(-not $isOutlookAvailable) {
+            { Remove-OutlookDataFile -Path 'C:\Outlook\data.txt' } | Should -Throw "*must have a .pst or .ost extension*"
+        }
+
+        It 'Blocks deletion and reports failure when Outlook process is active' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'OUTLOOK') { return @([PSCustomObject]@{ ProcessName = 'OUTLOOK'; Id = 1234 }) }
+                return @()
+            }
+            $res = Remove-OutlookDataFile -Path 'C:\Outlook\active.pst'
+            $res.Success | Should -BeFalse
+            $res.OutlookRunning | Should -BeTrue
+            $res.ErrorMessage | Should -Match "Outlook is running"
+        }
+
+        It 'Blocks deletion and reports failure when file is locked by external process' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{
+                    Path           = 'C:\Outlook\locked.pst'
+                    IsLocked       = $true
+                    Exists         = $true
+                    OutlookRunning = $false
+                    ErrorMessage   = 'Exclusive file lock violation'
+                }
+            }
+            $res = Remove-OutlookDataFile -Path 'C:\Outlook\locked.pst'
+            $res.Success | Should -BeFalse
+            $res.IsLocked | Should -BeTrue
+            $res.ErrorMessage | Should -Match "locked by an external process"
+        }
+
+        It 'Permanently deletes file and detaches registry profile references' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{
+                    Path           = 'C:\Outlook\valid.pst'
+                    IsLocked       = $false
+                    Exists         = $true
+                    OutlookRunning = $false
+                    ErrorMessage   = $null
+                }
+            }
+            Mock Test-Path { return $true }
+            Mock Get-ChildItem {
+                return @([PSCustomObject]@{ PSPath = 'HKCU:\Software\Microsoft\Office\16.0\Outlook\Profiles\Outlook\sub1' })
+            }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    '001f6700' = [System.Text.Encoding]::Unicode.GetBytes("C:\Outlook\valid.pst`0")
+                }
+            }
+            $script:propRemoved = $false
+            Mock Remove-ItemProperty { $script:propRemoved = $true }
+            $script:itemDeleted = $false
+            Mock Remove-Item { $script:itemDeleted = $true }
+
+            $res = Remove-OutlookDataFile -Path 'C:\Outlook\valid.pst' -ProfileName 'Outlook'
+            $res.Success | Should -BeTrue
+            $res.FileDeleted | Should -BeTrue
+            $res.ProfileDetached | Should -BeTrue
+            $script:itemDeleted | Should -BeTrue
+        }
+
+        It 'Supports WhatIf dry run without deleting' -Skip:(-not $isOutlookAvailable) {
+            $res = Remove-OutlookDataFile -Path 'C:\Outlook\test.pst' -WhatIf
+            $res.Success | Should -BeTrue
+            $res.FileDeleted | Should -BeTrue
+        }
+    }
+
     Context 'Private Helper: Get-OutlookComApplication' {
         It 'Safely handles platform detection without throwing' -Skip:(-not $isOutlookAvailable) {
             InModuleScope 'Outlook' {

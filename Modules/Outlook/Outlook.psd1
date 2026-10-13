@@ -25,7 +25,8 @@
         'Public/Get-OutlookPstThreshold.ps1',
         'Public/Test-OutlookDataFileLock.ps1',
         'Public/New-OutlookDataFile.ps1',
-        'Public/Set-OutlookDefaultDataFile.ps1'
+        'Public/Set-OutlookDefaultDataFile.ps1',
+        'Public/Remove-OutlookDataFile.ps1'
     )
 
     # Explicit Whitelist of Public Functions (Strictly hides Private helpers)
@@ -41,7 +42,8 @@
         'Get-OutlookPstThreshold',
         'Test-OutlookDataFileLock',
         'New-OutlookDataFile',
-        'Set-OutlookDefaultDataFile'
+        'Set-OutlookDefaultDataFile',
+        'Remove-OutlookDataFile'
     )
 
     CmdletsToExport        = @()

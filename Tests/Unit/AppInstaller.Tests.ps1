@@ -1687,7 +1687,7 @@ Describe 'Unit: AppInstaller Module' {
             $engineLine | Should -Match '\[STANDALONE DIRECT DOWNLOAD\]'
         }
 
-        It 'Invoke-ToolkitSubmenuAppInstaller exposes 8, 9 and removes manual W, B, U from action catalog' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Invoke-ToolkitSubmenuAppInstaller exposes 9-12 and removes 1-8 and manual W, B, U from action catalog' -Skip:(-not $isAppInstallerAvailable) {
             $script:capturedActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
@@ -1696,8 +1696,11 @@ Describe 'Unit: AppInstaller Module' {
             Invoke-ToolkitSubmenuAppInstaller -NonInteractive
             $script:capturedActions | Should -Not -BeNullOrEmpty
             $keys = $script:capturedActions | ForEach-Object { $_.Key }
-            $keys | Should -Contain '8'
+            $keys | Should -Not -Contain '8'
             $keys | Should -Contain '9'
+            $keys | Should -Contain '10'
+            $keys | Should -Contain '11'
+            $keys | Should -Contain '12'
             $keys | Should -Not -Contain 'W'
             $keys | Should -Not -Contain 'B'
             $keys | Should -Not -Contain 'U'

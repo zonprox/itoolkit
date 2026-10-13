@@ -752,7 +752,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
     }
 
     Context 'Pillar 5: Software & System Optimization Submenu Workflow' {
-        It 'Invoke-ToolkitSubmenuSoftwareOptimization renders action catalog exposing numeric keys 1-12' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization renders action catalog exposing utility keys 9-12 without duplicating items 1-8' -Skip:(-not $isTUIAvailable) {
             $script:softActions = $null
             Mock Show-ToolkitActionCatalog {
                 param($Actions, $NavActions, $Title)
@@ -761,8 +761,11 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitSubmenuSoftwareOptimization -NonInteractive } | Should -Not -Throw
             $script:softActions | Should -Not -BeNullOrEmpty
             $keys = $script:softActions | ForEach-Object { $_.Key }
-            for ($k = 1; $k -le 12; $k++) {
+            for ($k = 9; $k -le 12; $k++) {
                 $keys | Should -Contain ([string]$k)
+            }
+            for ($k = 1; $k -le 8; $k++) {
+                $keys | Should -Not -Contain ([string]$k)
             }
             $keys | Should -Not -Contain 'A'
             $keys | Should -Not -Contain 'U'
@@ -779,9 +782,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 $label | Should -Not -Match '^Install\s'
                 $label | Should -Not -Match '\(.*\)'
             }
-            # Assert applications are indexed 1..8 and category actions use keys 9..12
-            ($script:softActions | Where-Object { $_.Key -eq '1' }).Label | Should -Be 'Google Chrome'
-            ($script:softActions | Where-Object { $_.Key -eq '8' }).Label | Should -Be 'WinRAR'
+            # Assert category actions use keys 9..12 exclusively
             ($script:softActions | Where-Object { $_.Key -eq '9' }).Label | Should -Be 'Update All Winget Apps'
             ($script:softActions | Where-Object { $_.Key -eq '10' }).Label | Should -Be 'Win11Debloat'
             ($script:softActions | Where-Object { $_.Key -eq '11' }).Label | Should -Be 'Browser Debloat'
@@ -879,7 +880,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:routedAccount | Should -Not -BeNullOrEmpty
         }
 
-        It 'Invoke-ToolkitAccountContextMenu renders action catalog exposing numeric keys 1-4 and 0 back' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitAccountContextMenu renders action catalog exposing numeric keys 1-5 and 0 back' -Skip:(-not $isTUIAvailable) {
             $script:capturedAccActions = $null
             $script:capturedAccNav = $null
             Mock Show-ToolkitActionCatalog {
@@ -889,7 +890,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitAccountContextMenu -Account $script:testAccount -NonInteractive } | Should -Not -Throw
             $keys = $script:capturedAccActions | ForEach-Object { $_.Key }
-            for ($k = 1; $k -le 4; $k++) {
+            for ($k = 1; $k -le 5; $k++) {
                 $keys | Should -Contain ([string]$k)
             }
             ($script:capturedAccNav | ForEach-Object { $_.Key }) | Should -Contain '0'
@@ -950,6 +951,70 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:pwdResetCalled | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitAccountContextMenu blocks Delete Account (key 5) for built-in Administrator (SID-500)' -Skip:(-not $isTUIAvailable) {
+            $script:delCalled = $false
+            Mock Remove-LocalAccountItem { $script:delCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $script:testAccount } | Should -Not -Throw
+            $script:delCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitAccountContextMenu blocks Delete Account (key 5) for currently logged-in user' -Skip:(-not $isTUIAvailable) {
+            $currUser = if ($env:USERNAME) { $env:USERNAME } else { [System.Environment]::UserName }
+            $activeAccount = [PSCustomObject]@{
+                Name    = $currUser
+                Status  = '[ENABLED]'
+                Enabled = $true
+                Locked  = $false
+                SID     = 'S-1-5-21-1234567890-1002'
+                Details = 'Standard User'
+            }
+            $script:delCalled = $false
+            Mock Remove-LocalAccountItem { $script:delCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $activeAccount } | Should -Not -Throw
+            $script:delCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitAccountContextMenu executes Delete Account (key 5) with confirmation and returns cleanly' -Skip:(-not $isTUIAvailable) {
+            $standardAccount = [PSCustomObject]@{
+                Name    = 'StandardUser'
+                Status  = '[ENABLED]'
+                Enabled = $true
+                Locked  = $false
+                SID     = 'S-1-5-21-1234567890-1008'
+                Details = 'Standard User'
+            }
+            $script:delUser = $null
+            Mock Remove-LocalAccountItem {
+                param($Username)
+                $script:delUser = $Username
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Read-Host { return 'y' }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $standardAccount } | Should -Not -Throw
+            $script:delUser | Should -Be 'StandardUser'
+        }
+
         It 'Invoke-ToolkitAccountContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {
             Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
             { Invoke-ToolkitAccountContextMenu -Account $script:testAccount } | Should -Not -Throw
@@ -984,7 +1049,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:routedFile | Should -Not -BeNullOrEmpty
         }
 
-        It 'Invoke-ToolkitDataFileContextMenu renders action catalog exposing numeric keys 1-5 and 0 back' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitDataFileContextMenu renders action catalog exposing numeric keys 1-6 and 0 back' -Skip:(-not $isTUIAvailable) {
             $script:capturedFileActions = $null
             $script:capturedFileNav = $null
             Mock Show-ToolkitActionCatalog {
@@ -994,7 +1059,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile -NonInteractive } | Should -Not -Throw
             $keys = $script:capturedFileActions | ForEach-Object { $_.Key }
-            for ($k = 1; $k -le 5; $k++) {
+            for ($k = 1; $k -le 6; $k++) {
                 $keys | Should -Contain ([string]$k)
             }
             ($script:capturedFileNav | ForEach-Object { $_.Key }) | Should -Contain '0'
@@ -1072,6 +1137,66 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
             $script:defaultPath | Should -Be 'C:\Data\archive.pst'
             $script:defaultProf | Should -Be 'MainProfile'
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu blocks Delete Data File (key 6) when Outlook process is active' -Skip:(-not $isTUIAvailable) {
+            $script:deleteCalled = $false
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'OUTLOOK') { return @([PSCustomObject]@{ ProcessName = 'OUTLOOK'; Id = 9999 }) }
+                return @()
+            }
+            Mock Remove-OutlookDataFile { $script:deleteCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
+            $script:deleteCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu blocks Delete Data File (key 6) when file is locked' -Skip:(-not $isTUIAvailable) {
+            $script:deleteCalled = $false
+            Mock Get-Process { return @() }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{ IsLocked = $true; ErrorMessage = 'Sharing violation' }
+            }
+            Mock Remove-OutlookDataFile { $script:deleteCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
+            $script:deleteCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu executes Delete Data File (key 6) with confirmation and returns cleanly' -Skip:(-not $isTUIAvailable) {
+            $script:deletedPath = $null
+            Mock Get-Process { return @() }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{ IsLocked = $false; OutlookRunning = $false }
+            }
+            Mock Read-Host { return 'y' }
+            Mock Remove-OutlookDataFile {
+                param($Path, $ProfileName)
+                $script:deletedPath = $Path
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
+            $script:deletedPath | Should -Be 'C:\Data\archive.pst'
         }
 
         It 'Invoke-ToolkitDataFileContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {

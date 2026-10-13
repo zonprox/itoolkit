@@ -66,6 +66,7 @@
         'Test-OutlookDataFileLock',
         'New-OutlookDataFile',
         'Set-OutlookDefaultDataFile',
+        'Remove-OutlookDataFile',
 
         # Office & Excel Troubleshooting Services
         'Set-ExcelHardwareAcceleration',
@@ -128,6 +129,7 @@
         'Test-DomainReachability',
         'Join-ToolkitDomain',
         'Disconnect-ToolkitDomain',
+        'Remove-LocalAccountItem',
 
         # Windows Repair & Maintenance Services
         'Invoke-WindowsSfcScan',

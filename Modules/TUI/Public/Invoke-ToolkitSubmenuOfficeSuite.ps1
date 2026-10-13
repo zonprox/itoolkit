@@ -153,7 +153,8 @@ function Invoke-ToolkitDataFileContextMenu {
             @{ Key = '2'; Label = 'Expand PST Limit (100GB)' },
             @{ Key = '3'; Label = 'Backup Data File' },
             @{ Key = '4'; Label = 'Relocate Data File' },
-            @{ Key = '5'; Label = 'Set Default Delivery File' }
+            @{ Key = '5'; Label = 'Set Default Delivery File' },
+            @{ Key = '6'; Label = 'Permanently Delete Data File' }
         )
         $contextNav = @(
             @{ Key = '0'; Label = 'Back to Data Files Table' }
@@ -165,7 +166,7 @@ function Invoke-ToolkitDataFileContextMenu {
             return
         }
 
-        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5') -Prompt "  Select action for '$fileName' [1-5, 0]"
+        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5', '6') -Prompt "  Select action for '$fileName' [1-6, 0]"
         if ($null -eq $choice -or $choice.Type -eq 'Exit' -or $choice.Value -eq '0') {
             $inContext = $false
             return
@@ -256,6 +257,57 @@ function Invoke-ToolkitDataFileContextMenu {
                     Write-ToolkitStatus -Message "Set-OutlookDefaultDataFile command unavailable." -Type 'WARN'
                 }
                 Wait-UserAcknowledge
+            }
+            '6' {
+                $outlookRunning = $false
+                try {
+                    $procs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
+                    if ($procs.Count -gt 0) { $outlookRunning = $true }
+                } catch { $null = $_ }
+
+                if ($outlookRunning) {
+                    Write-ToolkitStatus -Message "Deletion blocked: Outlook is currently running. Please close Outlook first." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                if (Get-Command -Name 'Test-OutlookDataFileLock' -ErrorAction SilentlyContinue) {
+                    $lockTest = Test-OutlookDataFileLock -Path $filePath
+                    if ($null -ne $lockTest -and $lockTest.IsLocked) {
+                        Write-ToolkitStatus -Message "Deletion blocked: File '$fileName' is locked by an external process ($($lockTest.ErrorMessage))." -Type 'FAIL'
+                        Wait-UserAcknowledge
+                        continue
+                    }
+                }
+
+                $confirm = Read-Host "  Confirm permanent deletion of '$fileName'? [y/N]"
+                if ($confirm -match '^(?i)y(es)?$') {
+                    if (Get-Command -Name 'Remove-OutlookDataFile' -ErrorAction SilentlyContinue) {
+                        try {
+                            Write-ToolkitStatus -Message "Permanently deleting '$fileName'..." -Type 'INFO'
+                            $delRes = Remove-OutlookDataFile -Path $filePath -ProfileName $profileName
+                            if ($delRes -and $delRes.Success) {
+                                Write-ToolkitStatus -Message "Data file '$fileName' permanently deleted from disk and profile." -Type 'OK'
+                                Wait-UserAcknowledge
+                                $inContext = $false
+                                return
+                            } else {
+                                $err = if ($delRes -and $delRes.ErrorMessage) { $delRes.ErrorMessage } else { "Unknown deletion failure." }
+                                Write-ToolkitStatus -Message "Failed to delete '$fileName': $err" -Type 'FAIL'
+                                Wait-UserAcknowledge
+                            }
+                        } catch {
+                            Write-ToolkitStatus -Message "Deletion failed: $($_.Exception.Message)" -Type 'FAIL'
+                            Wait-UserAcknowledge
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Remove-OutlookDataFile command unavailable." -Type 'WARN'
+                        Wait-UserAcknowledge
+                    }
+                } else {
+                    Write-ToolkitStatus -Message "Permanent deletion cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                }
             }
             '0' {
                 $inContext = $false

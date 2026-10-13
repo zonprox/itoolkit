@@ -25,7 +25,8 @@
         'Public/Reset-BuiltInAdministratorPassword.ps1',
         'Public/Test-DomainReachability.ps1',
         'Public/Join-ToolkitDomain.ps1',
-        'Public/Disconnect-ToolkitDomain.ps1'
+        'Public/Disconnect-ToolkitDomain.ps1',
+        'Public/Remove-LocalAccountItem.ps1'
     )
 
     # Explicit Whitelist of Public Cmdlets
@@ -41,7 +42,8 @@
         'Reset-BuiltInAdministratorPassword',
         'Test-DomainReachability',
         'Join-ToolkitDomain',
-        'Disconnect-ToolkitDomain'
+        'Disconnect-ToolkitDomain',
+        'Remove-LocalAccountItem'
     )
 
     CmdletsToExport        = @()

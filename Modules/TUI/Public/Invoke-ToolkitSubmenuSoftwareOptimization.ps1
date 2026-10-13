@@ -353,14 +353,6 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
 
         Write-Host ""
         $installerActions = @(
-            @{ Key = '1'; Label = 'Google Chrome' },
-            @{ Key = '2'; Label = 'Foxit Reader' },
-            @{ Key = '3'; Label = 'UniKey' },
-            @{ Key = '4'; Label = 'UltraVNC' },
-            @{ Key = '5'; Label = 'K-Lite Codec Pack' },
-            @{ Key = '6'; Label = 'Visual C++ Redistributable AIO' },
-            @{ Key = '7'; Label = 'Zalo PC' },
-            @{ Key = '8'; Label = 'WinRAR' },
             @{ Key = '9'; Label = 'Update All Winget Apps' },
             @{ Key = '10'; Label = 'Win11Debloat' },
             @{ Key = '11'; Label = 'Browser Debloat' },
@@ -377,7 +369,8 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
         }
 
         $categoryHotkeys = @('9', '10', '11', '12')
-        $selection = Read-ToolkitItemSelection -MaxIndex 8 -ValidHotkeys $categoryHotkeys -Prompt '  Select Application [1-8], Category Action [9-12], or [0] Back'
+        $promptText = "  Select Item [1-$($appsList.Count)], Action [9-12], or [0] Back"
+        $selection = Read-ToolkitItemSelection -MaxIndex $appsList.Count -ValidHotkeys $categoryHotkeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
             $inSubmenu = $false
