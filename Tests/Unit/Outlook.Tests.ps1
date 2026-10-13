@@ -708,6 +708,16 @@ Describe 'Unit: Outlook Data Management Module' {
             { Remove-OutlookDataFile -Path 'C:\Outlook\data.txt' } | Should -Throw "*must have a .pst or .ost extension*"
         }
 
+        It 'Accepts and normalizes quoted paths and trailing whitespace' -Skip:(-not $isOutlookAvailable) {
+            $res1 = Remove-OutlookDataFile -Path '"C:\Outlook\quoted.pst"' -WhatIf
+            $res1.Success | Should -BeTrue
+            $res1.FileDeleted | Should -BeTrue
+
+            $res2 = Remove-OutlookDataFile -Path '  C:\Outlook\spaced.ost   ' -WhatIf
+            $res2.Success | Should -BeTrue
+            $res2.FileDeleted | Should -BeTrue
+        }
+
         It 'Blocks deletion and reports failure when Outlook process is active' -Skip:(-not $isOutlookAvailable) {
             Mock Get-Process {
                 param($Name)
@@ -765,6 +775,36 @@ Describe 'Unit: Outlook Data Management Module' {
             $res = Remove-OutlookDataFile -Path 'C:\Outlook\valid.pst' -ProfileName 'Outlook'
             $res.Success | Should -BeTrue
             $res.FileDeleted | Should -BeTrue
+            $res.ProfileDetached | Should -BeTrue
+            $script:itemDeleted | Should -BeTrue
+        }
+
+        It 'Detaches registry profile references matching ANSI property tags (001e6700)' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{
+                    Path           = 'C:\Outlook\ansi.pst'
+                    IsLocked       = $false
+                    Exists         = $true
+                    OutlookRunning = $false
+                    ErrorMessage   = $null
+                }
+            }
+            Mock Test-Path { return $true }
+            Mock Get-ChildItem {
+                return @([PSCustomObject]@{ PSPath = 'HKCU:\Software\Microsoft\Office\15.0\Outlook\Profiles\Outlook\subAnsi' })
+            }
+            Mock Get-ItemProperty {
+                return [PSCustomObject]@{
+                    '001e6700' = [System.Text.Encoding]::Default.GetBytes("C:\Outlook\ansi.pst`0")
+                }
+            }
+            $script:itemDeleted = $false
+            Mock Remove-Item { $script:itemDeleted = $true }
+            Mock Remove-ItemProperty { }
+
+            $res = Remove-OutlookDataFile -Path 'C:\Outlook\ansi.pst' -ProfileName 'Outlook'
+            $res.Success | Should -BeTrue
             $res.ProfileDetached | Should -BeTrue
             $script:itemDeleted | Should -BeTrue
         }

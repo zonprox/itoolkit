@@ -220,15 +220,17 @@ function Invoke-ToolkitAccountContextMenu {
                 Wait-UserAcknowledge
             }
             '5' {
+                $cleanName = ($userName.Trim() -replace '^(?:[^\\]+\\|[^\/]+\/)', '').Trim()
+
                 # Pre-flight safety guardrails check in TUI
-                if ($userName -eq 'Administrator' -or $sid -match '-(?:500)$') {
+                if ($cleanName -ieq 'Administrator' -or $userName.Trim() -ieq 'Administrator' -or $sid -match '-(?:500)$') {
                     Write-ToolkitStatus -Message "Deletion blocked: Cannot delete the built-in Administrator account (SID-500)." -Type 'FAIL'
                     Wait-UserAcknowledge
                     continue
                 }
 
                 $currentLoggedUser = if ($env:USERNAME) { $env:USERNAME } else { [System.Environment]::UserName }
-                if (-not [string]::IsNullOrWhiteSpace($currentLoggedUser) -and $userName -ieq $currentLoggedUser) {
+                if (-not [string]::IsNullOrWhiteSpace($currentLoggedUser) -and ($cleanName -ieq $currentLoggedUser -or $userName.Trim() -ieq $currentLoggedUser)) {
                     Write-ToolkitStatus -Message "Deletion blocked: Cannot delete the currently logged-in user '$userName'." -Type 'FAIL'
                     Wait-UserAcknowledge
                     continue
@@ -239,7 +241,11 @@ function Invoke-ToolkitAccountContextMenu {
                     if (Get-Command -Name 'Remove-LocalAccountItem' -ErrorAction SilentlyContinue) {
                         try {
                             Write-ToolkitStatus -Message "Permanently deleting user account '$userName'..." -Type 'INFO'
-                            $delRes = Remove-LocalAccountItem -Username $userName
+                            $delParams = @{ Username = $userName }
+                            if (-not [string]::IsNullOrWhiteSpace($sid) -and $sid -ne 'Local Account') {
+                                $delParams['SID'] = $sid
+                            }
+                            $delRes = Remove-LocalAccountItem @delParams
                             if ($delRes -and $delRes.Success) {
                                 Write-ToolkitStatus -Message "Account '$userName' and associated profile permanently deleted." -Type 'OK'
                                 Wait-UserAcknowledge

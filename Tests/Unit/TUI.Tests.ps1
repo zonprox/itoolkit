@@ -988,7 +988,29 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:delCalled | Should -BeFalse
         }
 
-        It 'Invoke-ToolkitAccountContextMenu executes Delete Account (key 5) with confirmation and returns cleanly' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitAccountContextMenu blocks Delete Account (key 5) for Administrator with domain prefix' -Skip:(-not $isTUIAvailable) {
+            $domainAdminAcc = [PSCustomObject]@{
+                Name    = '.\Administrator'
+                Status  = '[ENABLED]'
+                Enabled = $true
+                Locked  = $false
+                SID     = 'Local Account'
+                Details = 'Local Account'
+            }
+            $script:delCalled = $false
+            Mock Remove-LocalAccountItem { $script:delCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $domainAdminAcc } | Should -Not -Throw
+            $script:delCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitAccountContextMenu executes Delete Account (key 5) with confirmation and forwards SID' -Skip:(-not $isTUIAvailable) {
             $standardAccount = [PSCustomObject]@{
                 Name    = 'StandardUser'
                 Status  = '[ENABLED]'
@@ -998,9 +1020,11 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 Details = 'Standard User'
             }
             $script:delUser = $null
+            $script:delSid = $null
             Mock Remove-LocalAccountItem {
-                param($Username)
+                param($Username, $SID)
                 $script:delUser = $Username
+                $script:delSid = $SID
                 return [PSCustomObject]@{ Success = $true }
             }
             Mock Read-Host { return 'y' }
@@ -1013,6 +1037,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitAccountContextMenu -Account $standardAccount } | Should -Not -Throw
             $script:delUser | Should -Be 'StandardUser'
+            $script:delSid | Should -Be 'S-1-5-21-1234567890-1008'
         }
 
         It 'Invoke-ToolkitAccountContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {

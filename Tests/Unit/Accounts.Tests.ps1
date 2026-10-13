@@ -137,6 +137,12 @@ Describe 'Unit: User & Domain Account Administration Module' {
             { Remove-LocalAccountItem -Username 'Administrator' } | Should -Throw "*built-in Administrator*"
         }
 
+        It 'Blocks deletion of built-in Administrator account with domain prefix and whitespace' -Skip:(-not $isAccountsAvailable) {
+            { Remove-LocalAccountItem -Username '.\Administrator' } | Should -Throw "*built-in Administrator*"
+            { Remove-LocalAccountItem -Username 'DOMAIN\Administrator' } | Should -Throw "*built-in Administrator*"
+            { Remove-LocalAccountItem -Username '  Administrator  ' } | Should -Throw "*built-in Administrator*"
+        }
+
         It 'Blocks deletion of built-in Administrator account by SID -500' -Skip:(-not $isAccountsAvailable) {
             Mock Get-CimInstance {
                 return [PSCustomObject]@{
@@ -146,6 +152,12 @@ Describe 'Unit: User & Domain Account Administration Module' {
                 }
             }
             { Remove-LocalAccountItem -Username 'RenamedAdmin' } | Should -Throw "*built-in Administrator*"
+        }
+
+        It 'Blocks deletion of renamed Administrator passed via -SID or pipeline object' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance { return $null }
+            { Remove-LocalAccountItem -Username 'CustomAdmin' -SID 'S-1-5-21-987654321-500' } | Should -Throw "*built-in Administrator*"
+            { [PSCustomObject]@{ Name = 'CustomAdmin'; SID = 'S-1-5-21-987654321-500' } | Remove-LocalAccountItem } | Should -Throw "*built-in Administrator*"
         }
 
         It 'Blocks deletion of currently logged-in user' -Skip:(-not $isAccountsAvailable) {
@@ -158,6 +170,20 @@ Describe 'Unit: User & Domain Account Administration Module' {
                 }
             }
             { Remove-LocalAccountItem -Username $currUser } | Should -Throw "*currently logged-in user*"
+        }
+
+        It 'Blocks deletion of currently logged-in user with domain prefix or whitespace' -Skip:(-not $isAccountsAvailable) {
+            $currUser = if ($env:USERNAME) { $env:USERNAME } else { [System.Environment]::UserName }
+            Mock Get-CimInstance {
+                return [PSCustomObject]@{
+                    Name         = $currUser
+                    SID          = 'S-1-5-21-987654321-1002'
+                    LocalAccount = $true
+                }
+            }
+            { Remove-LocalAccountItem -Username ".\$currUser" } | Should -Throw "*currently logged-in user*"
+            { Remove-LocalAccountItem -Username "MYPC\$currUser" } | Should -Throw "*currently logged-in user*"
+            { Remove-LocalAccountItem -Username "  $currUser  " } | Should -Throw "*currently logged-in user*"
         }
 
         It 'Permanently removes user account, profile directory, and ProfileList registry key' -Skip:(-not $isAccountsAvailable) {
@@ -183,6 +209,36 @@ Describe 'Unit: User & Domain Account Administration Module' {
             $res.ProfilePathRemoved | Should -BeTrue
             $res.ProfileListRemoved | Should -BeTrue
             $script:deletedItems | Should -Contain "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-21-987654321-1005"
+        }
+
+        It 'Expands registry ProfileImagePath with environment variables and removes profile directory' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance {
+                return [PSCustomObject]@{
+                    Name         = 'ExpUser'
+                    SID          = 'S-1-5-21-987654321-1007'
+                    LocalAccount = $true
+                }
+            }
+            Mock Test-Path { return $true }
+            Mock Get-ItemProperty {
+                param($LiteralPath, $Name)
+                if ($Name -eq 'ProfileImagePath') {
+                    return [PSCustomObject]@{ ProfileImagePath = '%SystemDrive%\Users\ExpUser' }
+                }
+                return $null
+            }
+            Mock Remove-LocalUser { }
+            $script:deletedPaths = [System.Collections.Generic.List[string]]::new()
+            Mock Remove-Item {
+                param($LiteralPath)
+                $script:deletedPaths.Add($LiteralPath)
+            }
+
+            $res = Remove-LocalAccountItem -Username 'ExpUser'
+            $res.Success | Should -BeTrue
+            $res.ProfilePathRemoved | Should -BeTrue
+            $expDrive = if ($env:SystemDrive) { $env:SystemDrive } else { 'C:' }
+            $script:deletedPaths | Should -Contain "$expDrive\Users\ExpUser"
         }
 
         It 'Supports WhatIf dry run without deleting' -Skip:(-not $isAccountsAvailable) {

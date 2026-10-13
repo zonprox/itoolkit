@@ -32,13 +32,21 @@ function Remove-OutlookDataFile {
     )
 
     process {
-        # 1. Extension Validation
-        if ($Path -notmatch '(?i)\.(pst|ost)$') {
+        # Ensure private helper is loaded if running outside imported module
+        if (-not (Get-Command -Name 'ConvertFrom-MapiBinaryProperty' -ErrorAction SilentlyContinue)) {
+            $privHelper = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'Private/ConvertFrom-MapiBinaryProperty.ps1'
+            if (Test-Path -LiteralPath $privHelper) {
+                . $privHelper
+            }
+        }
+
+        # 1. Path Normalization & Extension Validation
+        $cleanPath = $Path.Trim().Trim('"').Trim("'")
+        if ($cleanPath -notmatch '(?i)\.(pst|ost)$') {
             throw "The data file path must have a .pst or .ost extension: '$Path'"
         }
 
-        # 2. Path Normalization
-        $resolvedPath = [System.Environment]::ExpandEnvironmentVariables($Path.Trim())
+        $resolvedPath = [System.Environment]::ExpandEnvironmentVariables($cleanPath)
         if (-not ($resolvedPath -match '^[a-zA-Z]:[/\\]' -and [System.IO.Path]::DirectorySeparatorChar -ne [char]92)) {
             try {
                 $resolvedPath = [System.IO.Path]::GetFullPath($resolvedPath)
@@ -120,8 +128,24 @@ function Remove-OutlookDataFile {
         $candidateProfileKeys = @(
             "HKCU:\Software\Microsoft\Office\16.0\Outlook\Profiles\$targetProfile",
             "HKCU:\Software\Microsoft\Office\15.0\Outlook\Profiles\$targetProfile",
+            "HKCU:\Software\Microsoft\Office\14.0\Outlook\Profiles\$targetProfile",
             "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles\$targetProfile"
         )
+        if (Test-Path -LiteralPath 'HKCU:\Software\Microsoft\Office') {
+            try {
+                $officeVers = Get-ChildItem -LiteralPath 'HKCU:\Software\Microsoft\Office' -ErrorAction SilentlyContinue
+                foreach ($v in $officeVers) {
+                    $basePath = if ($v.PSPath) { [string]$v.PSPath } else { [string]$v.FullName }
+                    if (-not [string]::IsNullOrWhiteSpace($basePath)) {
+                        $dynKey = "$basePath\Outlook\Profiles\$targetProfile"
+                        if ($candidateProfileKeys -notcontains $dynKey) {
+                            $candidateProfileKeys += $dynKey
+                        }
+                    }
+                }
+            } catch { $null = $_ }
+        }
+
         $targetTags = @('001f6700', '001f6620', '001e6700', '001e6620')
         $profileDetached = $false
 
@@ -143,14 +167,18 @@ function Remove-OutlookDataFile {
                                     }
                                     elseif ($val -is [byte[]]) {
                                         try {
-                                            $currentStr = [System.Text.Encoding]::Unicode.GetString($val).TrimEnd([char]0)
+                                            if ($tag -like '001e*') {
+                                                $currentStr = [System.Text.Encoding]::Default.GetString($val).TrimEnd([char]0)
+                                            } else {
+                                                $currentStr = [System.Text.Encoding]::Unicode.GetString($val).TrimEnd([char]0)
+                                            }
                                         } catch { $null = $_ }
                                     }
                                     elseif ($val -is [string]) {
                                         $currentStr = $val.Trim()
                                     }
 
-                                    if (-not [string]::IsNullOrWhiteSpace($currentStr) -and ($currentStr -ieq $resolvedPath -or $currentStr -ieq $Path)) {
+                                    if (-not [string]::IsNullOrWhiteSpace($currentStr) -and ($currentStr -ieq $resolvedPath -or $currentStr -ieq $cleanPath -or $currentStr -ieq $Path)) {
                                         $matchFound = $true
                                         Remove-ItemProperty -LiteralPath $subkey.PSPath -Name $tag -Force -ErrorAction SilentlyContinue
                                         $profileDetached = $true

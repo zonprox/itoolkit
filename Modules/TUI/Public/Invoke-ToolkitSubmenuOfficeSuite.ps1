@@ -104,6 +104,9 @@ function Invoke-ToolkitDataFileContextMenu {
     } else {
         [string]$DataFile
     }
+    if (-not [string]::IsNullOrWhiteSpace($filePath)) {
+        $filePath = $filePath.Trim().Trim('"').Trim("'")
+    }
 
     $fileName = if ($DataFile.PSObject.Properties['Item'] -and -not [string]::IsNullOrWhiteSpace($DataFile.Item)) {
         [string]$DataFile.Item

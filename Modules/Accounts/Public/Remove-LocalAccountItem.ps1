@@ -27,6 +27,9 @@ function Remove-LocalAccountItem {
         [ValidateNotNullOrEmpty()]
         [string]$Username,
 
+        [Parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
+        [string]$SID,
+
         [Parameter(Mandatory = $false)]
         [switch]$Force,
 
@@ -39,20 +42,26 @@ function Remove-LocalAccountItem {
             Write-ToolkitLog -Message "Validating safety guardrails for local account deletion '$Username'..." -Level "Info" -Component "Accounts"
         }
 
+        # 0. Clean & Normalize Username
+        $cleanUsername = ($Username.Trim() -replace '^(?:[^\\]+\\|[^\/]+\/)', '').Trim()
+
         # 1. Resolve Account SID for Guardrail & Registry Verification
-        $targetSid = $null
-        try {
-            $userAcc = Get-CimInstance -ClassName Win32_UserAccount -Filter "LocalAccount = True and Name = '$Username'" -ErrorAction SilentlyContinue
-            if ($null -ne $userAcc -and $userAcc.SID) {
-                $targetSid = [string]$userAcc.SID
-            }
-        } catch { $null = $_ }
+        $targetSid = if (-not [string]::IsNullOrWhiteSpace($SID)) { $SID.Trim() } else { $null }
+
+        if ([string]::IsNullOrWhiteSpace($targetSid)) {
+            try {
+                $userAcc = Get-CimInstance -ClassName Win32_UserAccount -Filter "LocalAccount = True and Name = '$cleanUsername'" -ErrorAction SilentlyContinue
+                if ($null -ne $userAcc -and $userAcc.SID) {
+                    $targetSid = [string]$userAcc.SID
+                }
+            } catch { $null = $_ }
+        }
 
         if ([string]::IsNullOrWhiteSpace($targetSid)) {
             try {
                 if (Get-Command -Name 'Get-LocalAccountList' -ErrorAction SilentlyContinue) {
                     $accList = Get-LocalAccountList
-                    $matchAcc = $accList | Where-Object { $_.Name -ieq $Username } | Select-Object -First 1
+                    $matchAcc = $accList | Where-Object { $_.Name -ieq $cleanUsername -or $_.Name -ieq $Username } | Select-Object -First 1
                     if ($matchAcc -and $matchAcc.SID) {
                         $targetSid = [string]$matchAcc.SID
                     }
@@ -60,8 +69,29 @@ function Remove-LocalAccountItem {
             } catch { $null = $_ }
         }
 
+        if ([string]::IsNullOrWhiteSpace($targetSid)) {
+            try {
+                if (Get-Command -Name 'Get-LocalUser' -ErrorAction SilentlyContinue) {
+                    $lu = Get-LocalUser -Name $cleanUsername -ErrorAction SilentlyContinue
+                    if ($lu -and $lu.SID) {
+                        $targetSid = [string]$lu.SID.Value
+                    }
+                }
+            } catch { $null = $_ }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($targetSid) -and $IsWindows) {
+            try {
+                $ntAccount = [System.Security.Principal.NTAccount]::new($cleanUsername)
+                $sidObj = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier])
+                if ($sidObj) {
+                    $targetSid = [string]$sidObj.Value
+                }
+            } catch { $null = $_ }
+        }
+
         # 2. Guardrail A: Built-in Administrator Protection (SID ending in -500 or named 'Administrator')
-        if ($Username -ieq 'Administrator' -or ($targetSid -and $targetSid -match '-(?:500)$')) {
+        if ($cleanUsername -ieq 'Administrator' -or $Username.Trim() -ieq 'Administrator' -or ($targetSid -and $targetSid -match '-(?:500)$')) {
             $adminBlockMsg = "Deletion blocked: '$Username' is the built-in Administrator account (SID-500). Deletion of the built-in Administrator is strictly prohibited."
             if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
                 Write-ToolkitLog -Message $adminBlockMsg -Level "Error" -Component "Accounts"
@@ -74,7 +104,26 @@ function Remove-LocalAccountItem {
         if ([string]::IsNullOrWhiteSpace($currentUser)) {
             try { $currentUser = [System.Environment]::UserName } catch { $null = $_ }
         }
-        if (-not [string]::IsNullOrWhiteSpace($currentUser) -and $Username -ieq $currentUser) {
+        $currentSid = $null
+        if ($IsWindows) {
+            try {
+                $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            } catch { $null = $_ }
+        }
+
+        $isCurrentUserMatch = $false
+        if (-not [string]::IsNullOrWhiteSpace($currentUser)) {
+            if ($cleanUsername -ieq $currentUser -or $Username.Trim() -ieq $currentUser) {
+                $isCurrentUserMatch = $true
+            }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($currentSid) -and -not [string]::IsNullOrWhiteSpace($targetSid)) {
+            if ($targetSid -ieq $currentSid) {
+                $isCurrentUserMatch = $true
+            }
+        }
+
+        if ($isCurrentUserMatch) {
             $userBlockMsg = "Deletion blocked: Cannot delete currently logged-in user '$Username'. Deletion of active session user is strictly prohibited."
             if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
                 Write-ToolkitLog -Message $userBlockMsg -Level "Error" -Component "Accounts"
@@ -102,13 +151,18 @@ function Remove-LocalAccountItem {
                 try {
                     $prop = Get-ItemProperty -LiteralPath $profileListKey -Name 'ProfileImagePath' -ErrorAction SilentlyContinue
                     if ($null -ne $prop -and $prop.ProfileImagePath) {
-                        $resolvedProfilePath = [string]$prop.ProfileImagePath
+                        $rawProf = [string]$prop.ProfileImagePath
+                        $expandedProf = [System.Environment]::ExpandEnvironmentVariables($rawProf)
+                        if ($expandedProf -match '^%SystemDrive%' -and [string]::IsNullOrWhiteSpace($env:SystemDrive)) {
+                            $expandedProf = $expandedProf -replace '^%SystemDrive%', 'C:'
+                        }
+                        $resolvedProfilePath = $expandedProf
                     }
                 } catch { $null = $_ }
             }
         }
         if ([string]::IsNullOrWhiteSpace($resolvedProfilePath)) {
-            $defaultUserDir = if ($env:SystemDrive) { "$($env:SystemDrive)\Users\$Username" } else { "C:\Users\$Username" }
+            $defaultUserDir = if ($env:SystemDrive) { "$($env:SystemDrive)\Users\$cleanUsername" } else { "C:\Users\$cleanUsername" }
             if (Test-Path -LiteralPath $defaultUserDir) {
                 $resolvedProfilePath = $defaultUserDir
             }
@@ -118,10 +172,10 @@ function Remove-LocalAccountItem {
         $accountRemoved = $false
         if (Get-Command -Name 'Remove-LocalUser' -ErrorAction SilentlyContinue) {
             try {
-                Remove-LocalUser -Name $Username -ErrorAction Stop
+                Remove-LocalUser -Name $cleanUsername -ErrorAction Stop
                 $accountRemoved = $true
                 if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                    Write-ToolkitLog -Message "Successfully removed local user '$Username' via Remove-LocalUser." -Level "Info" -Component "Accounts"
+                    Write-ToolkitLog -Message "Successfully removed local user '$cleanUsername' via Remove-LocalUser." -Level "Info" -Component "Accounts"
                 }
             } catch {
                 if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
@@ -134,14 +188,14 @@ function Remove-LocalAccountItem {
             try {
                 $comp = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { 'localhost' }
                 $adsiComputer = [ADSI]"WinNT://$comp"
-                $adsiComputer.Delete('user', $Username)
+                $adsiComputer.Delete('user', $cleanUsername)
                 $accountRemoved = $true
                 if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                    Write-ToolkitLog -Message "Successfully removed local user '$Username' via ADSI fallback." -Level "Info" -Component "Accounts"
+                    Write-ToolkitLog -Message "Successfully removed local user '$cleanUsername' via ADSI fallback." -Level "Info" -Component "Accounts"
                 }
             } catch {
                 if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                    Write-ToolkitLog -Message "ADSI user deletion failed for '$Username': $($_.Exception.Message)" -Level "Error" -Component "Accounts"
+                    Write-ToolkitLog -Message "ADSI user deletion failed for '$cleanUsername': $($_.Exception.Message)" -Level "Error" -Component "Accounts"
                 }
                 throw $_
             }
@@ -149,7 +203,15 @@ function Remove-LocalAccountItem {
 
         # 7. Clean up User Profile Directory
         $profileRemoved = $false
-        if (-not [string]::IsNullOrWhiteSpace($resolvedProfilePath) -and (Test-Path -LiteralPath $resolvedProfilePath)) {
+        $isSystemPath = $false
+        if (-not [string]::IsNullOrWhiteSpace($resolvedProfilePath)) {
+            $normProf = $resolvedProfilePath.TrimEnd('\', '/')
+            if ($normProf -in @('', 'C:', 'C:\Users', 'C:\Windows', 'C:\Windows\System32', '/', '/home', '/root', $env:SystemRoot, $env:windir)) {
+                $isSystemPath = $true
+            }
+        }
+
+        if (-not $isSystemPath -and -not [string]::IsNullOrWhiteSpace($resolvedProfilePath) -and (Test-Path -LiteralPath $resolvedProfilePath)) {
             try {
                 Remove-Item -LiteralPath $resolvedProfilePath -Recurse -Force -ErrorAction Stop
                 $profileRemoved = $true
