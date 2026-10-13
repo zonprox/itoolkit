@@ -48,6 +48,9 @@ function Remove-OutlookDataFile {
         if ([string]::IsNullOrWhiteSpace($cleanPath)) {
             throw "The data file path cannot be null, empty, or whitespace-only."
         }
+        if ($cleanPath -match '[\*\?]') {
+            throw "The data file path cannot contain wildcard characters ('*', '?'): '$Path'"
+        }
         if ($cleanPath -notmatch '(?i)\.(pst|ost)$') {
             throw "The data file path must have a .pst or .ost extension: '$Path'"
         }
@@ -151,6 +154,7 @@ function Remove-OutlookDataFile {
 
         # 7. Detach Data File Association from Outlook Profile Registry
         $candidateProfileKeys = @(
+            "HKCU:\Software\Microsoft\Office\Outlook\Profiles\$targetProfile",
             "HKCU:\Software\Microsoft\Office\16.0\Outlook\Profiles\$targetProfile",
             "HKCU:\Software\Microsoft\Office\15.0\Outlook\Profiles\$targetProfile",
             "HKCU:\Software\Microsoft\Office\14.0\Outlook\Profiles\$targetProfile",
@@ -173,6 +177,8 @@ function Remove-OutlookDataFile {
 
         $targetTags = @('001f6700', '001f6620', '001e6700', '001e6620')
         $profileDetached = $false
+        $normClean = ($cleanPath -replace '[\\/]', '\').TrimEnd('\')
+        $normResolved = ($resolvedPath -replace '[\\/]', '\').TrimEnd('\')
 
         foreach ($profileKey in $candidateProfileKeys) {
             if (Test-Path -LiteralPath $profileKey) {
@@ -203,10 +209,13 @@ function Remove-OutlookDataFile {
                                         $currentStr = $val.Trim()
                                     }
 
-                                    if (-not [string]::IsNullOrWhiteSpace($currentStr) -and ($currentStr -ieq $resolvedPath -or $currentStr -ieq $cleanPath -or $currentStr -ieq $Path)) {
-                                        $matchFound = $true
-                                        Remove-ItemProperty -LiteralPath $subkey.PSPath -Name $tag -Force -ErrorAction SilentlyContinue
-                                        $profileDetached = $true
+                                    if (-not [string]::IsNullOrWhiteSpace($currentStr)) {
+                                        $normCurrent = ($currentStr -replace '[\\/]', '\').TrimEnd('\')
+                                        if ($normCurrent -ieq $normClean -or $normCurrent -ieq $normResolved -or $currentStr -ieq $resolvedPath -or $currentStr -ieq $cleanPath -or $currentStr -ieq $Path) {
+                                            $matchFound = $true
+                                            Remove-ItemProperty -LiteralPath $subkey.PSPath -Name $tag -Force -ErrorAction SilentlyContinue
+                                            $profileDetached = $true
+                                        }
                                     }
                                 }
                             }

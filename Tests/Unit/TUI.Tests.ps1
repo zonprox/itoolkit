@@ -1062,6 +1062,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:delSid | Should -Be 'S-1-5-21-1234567890-1008'
         }
 
+        It 'Invoke-ToolkitAccountContextMenu binds Username property and blocks SID-500' -Skip:(-not $isTUIAvailable) {
+            $userObj = [PSCustomObject]@{ Username = 'Admin500'; SID = 'S-1-5-21-999-500'; Status = '[ENABLED]' }
+            $script:delCalled = $false
+            Mock Remove-LocalAccountItem { $script:delCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $userObj } | Should -Not -Throw
+            $script:delCalled | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitAccountContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {
             Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
             { Invoke-ToolkitAccountContextMenu -Account $script:testAccount } | Should -Not -Throw
@@ -1289,6 +1304,45 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
             $script:deletedPath | Should -Be 'C:\Data\archive.pst'
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu binds FilePath and FullName properties from objects' -Skip:(-not $isTUIAvailable) {
+            $fpObj = [PSCustomObject]@{ FilePath = 'C:\Data\filepath.pst'; Item = 'filepath.pst' }
+            $script:delPath = $null
+            Mock Get-Process { return @() }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{ IsLocked = $false; OutlookRunning = $false }
+            }
+            Mock Read-Host { return 'y' }
+            Mock Remove-OutlookDataFile {
+                param($Path)
+                $script:delPath = $Path
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $fpObj } | Should -Not -Throw
+            $script:delPath | Should -Be 'C:\Data\filepath.pst'
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu blocks Delete Data File (key 6) when path contains wildcards' -Skip:(-not $isTUIAvailable) {
+            $wildDataFile = [PSCustomObject]@{ Path = 'C:\Data\*.pst'; Item = '*.pst' }
+            $script:deleteCalled = $false
+            Mock Remove-OutlookDataFile { $script:deleteCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $wildDataFile } | Should -Not -Throw
+            $script:deleteCalled | Should -BeFalse
         }
 
         It 'Invoke-ToolkitDataFileContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {

@@ -101,6 +101,10 @@ function Invoke-ToolkitDataFileContextMenu {
         $DataFile
     } elseif ($DataFile.PSObject.Properties['Path']) {
         [string]$DataFile.Path
+    } elseif ($DataFile.PSObject.Properties['FilePath']) {
+        [string]$DataFile.FilePath
+    } elseif ($DataFile.PSObject.Properties['FullName']) {
+        [string]$DataFile.FullName
     } elseif ($DataFile.PSObject.Properties['Details']) {
         [string]$DataFile.Details
     } else {
@@ -266,6 +270,12 @@ function Invoke-ToolkitDataFileContextMenu {
             '6' {
                 if ([string]::IsNullOrWhiteSpace($filePath)) {
                     Write-ToolkitStatus -Message "Invalid or empty data file path." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                if ($filePath -match '[\*\?]') {
+                    Write-ToolkitStatus -Message "Data file path cannot contain wildcard characters: '$filePath'." -Type 'FAIL'
                     Wait-UserAcknowledge
                     continue
                 }

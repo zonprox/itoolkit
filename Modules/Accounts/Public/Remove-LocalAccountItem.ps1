@@ -54,6 +54,11 @@ function Remove-LocalAccountItem {
         # 1. Resolve Account SID for Guardrail & Registry Verification
         $targetSid = if (-not [string]::IsNullOrWhiteSpace($SID)) { $SID.Trim() } else { $null }
 
+        # Detect if Username or cleanUsername is already a SID
+        if ([string]::IsNullOrWhiteSpace($targetSid) -and ($cleanUsername -match '^S-1-\d+')) {
+            $targetSid = $cleanUsername
+        }
+
         if ([string]::IsNullOrWhiteSpace($targetSid)) {
             try {
                 $userAcc = Get-CimInstance -ClassName Win32_UserAccount -Filter "LocalAccount = True and Name = '$cleanUsername'" -ErrorAction SilentlyContinue
@@ -96,8 +101,28 @@ function Remove-LocalAccountItem {
             } catch { $null = $_ }
         }
 
+        # Resolve orphaned ProfileList entry to find SID if account was not found in SAM
+        if ([string]::IsNullOrWhiteSpace($targetSid) -and (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList')) {
+            try {
+                $profSubkeys = @(Get-ChildItem -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList' -ErrorAction SilentlyContinue)
+                foreach ($sk in $profSubkeys) {
+                    $prop = Get-ItemProperty -LiteralPath $sk.PSPath -Name 'ProfileImagePath' -ErrorAction SilentlyContinue
+                    if ($null -ne $prop -and $prop.ProfileImagePath) {
+                        $rawImg = [string]$prop.ProfileImagePath
+                        $expImg = [System.Environment]::ExpandEnvironmentVariables($rawImg)
+                        $leaf = Split-Path -Leaf $expImg
+                        $cleanOverride = if (-not [string]::IsNullOrWhiteSpace($ProfilePath)) { [System.Environment]::ExpandEnvironmentVariables($ProfilePath.Trim().Trim('"').Trim("'")) } else { $null }
+                        if ($leaf -ieq $cleanUsername -or ($cleanOverride -and $expImg -ieq $cleanOverride)) {
+                            $targetSid = Split-Path -Leaf $sk.PSPath
+                            break
+                        }
+                    }
+                }
+            } catch { $null = $_ }
+        }
+
         # 2. Guardrail A: Built-in Administrator Protection (SID ending in -500 or named 'Administrator')
-        if ($cleanUsername -ieq 'Administrator' -or $Username.Trim() -ieq 'Administrator' -or ($targetSid -and $targetSid -match '-(?:500)$')) {
+        if ($cleanUsername -ieq 'Administrator' -or $Username.Trim() -ieq 'Administrator' -or $cleanUsername -match '-(?:500)$' -or $Username.Trim() -match '-(?:500)$' -or ($targetSid -and $targetSid -match '-(?:500)$')) {
             $adminBlockMsg = "Deletion blocked: '$Username' is the built-in Administrator account (SID-500). Deletion of the built-in Administrator is strictly prohibited."
             if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
                 Write-ToolkitLog -Message $adminBlockMsg -Level "Error" -Component "Accounts"
@@ -107,6 +132,9 @@ function Remove-LocalAccountItem {
 
         # 3. Guardrail B: Currently Active / Logged-in User Protection
         $currentUser = $env:USERNAME
+        if ([string]::IsNullOrWhiteSpace($currentUser)) {
+            $currentUser = $env:USER
+        }
         if ([string]::IsNullOrWhiteSpace($currentUser)) {
             try { $currentUser = [System.Environment]::UserName } catch { $null = $_ }
         }
@@ -123,8 +151,8 @@ function Remove-LocalAccountItem {
                 $isCurrentUserMatch = $true
             }
         }
-        if (-not [string]::IsNullOrWhiteSpace($currentSid) -and -not [string]::IsNullOrWhiteSpace($targetSid)) {
-            if ($targetSid -ieq $currentSid) {
+        if (-not [string]::IsNullOrWhiteSpace($currentSid)) {
+            if ((-not [string]::IsNullOrWhiteSpace($targetSid) -and $targetSid -ieq $currentSid) -or $cleanUsername -ieq $currentSid -or $Username.Trim() -ieq $currentSid) {
                 $isCurrentUserMatch = $true
             }
         }

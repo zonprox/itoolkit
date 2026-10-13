@@ -24,6 +24,26 @@ function Test-OutlookDataFileLock {
         $outlookProcs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
         $outlookRunning = ($outlookProcs.Count -gt 0)
 
+        # Validate path
+        if ([string]::IsNullOrWhiteSpace($Path)) {
+            return [PSCustomObject]@{
+                Path           = $Path
+                IsLocked       = $false
+                Exists         = $false
+                OutlookRunning = $outlookRunning
+                ErrorMessage   = "Path cannot be null, empty, or whitespace-only."
+            }
+        }
+        if ($Path -match '[\*\?]') {
+            return [PSCustomObject]@{
+                Path           = $Path
+                IsLocked       = $false
+                Exists         = $false
+                OutlookRunning = $outlookRunning
+                ErrorMessage   = "Path cannot contain wildcard characters: '$Path'"
+            }
+        }
+
         # Check path existence (Test-Path supports Pester mocks; File::Exists verifies filesystem)
         $pathExists = Test-Path -LiteralPath $Path
         if (-not $pathExists) {

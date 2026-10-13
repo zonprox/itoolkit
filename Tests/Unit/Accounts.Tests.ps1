@@ -287,6 +287,69 @@ Describe 'Unit: User & Domain Account Administration Module' {
             $script:orphanDeleted | Should -BeTrue
         }
 
+        It 'Blocks deletion when built-in Administrator SID-500 is passed directly as -Username' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance { return $null }
+            { Remove-LocalAccountItem -Username 'S-1-5-21-987654321-500' } | Should -Throw "*built-in Administrator*"
+            { Remove-LocalAccountItem -Username '  S-1-5-21-987654321-500  ' } | Should -Throw "*built-in Administrator*"
+        }
+
+        It 'Blocks deletion of active user when user SID matches current user SID' -Skip:(-not $isAccountsAvailable) {
+            $currUser = if ($env:USERNAME) { $env:USERNAME } else { [System.Environment]::UserName }
+            Mock Get-CimInstance {
+                return [PSCustomObject]@{
+                    Name         = 'OtherName'
+                    SID          = 'S-1-5-21-987654321-1002'
+                    LocalAccount = $true
+                }
+            }
+            # Mock Translate / WindowsIdentity if Windows or pass current user SID directly
+            { Remove-LocalAccountItem -Username $currUser } | Should -Throw "*currently logged-in user*"
+        }
+
+        It 'Discovers orphaned ProfileList registry entry and cleans it up when account is absent from SAM' -Skip:(-not $isAccountsAvailable) {
+            Mock Get-CimInstance { return $null }
+            Mock Remove-LocalUser { throw "User OrphanRegistryUser was not found." }
+            $script:deletedReg = $false
+            $script:deletedDir = $false
+            Mock Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -match 'ProfileList') { return $true }
+                if ($LiteralPath -match 'OrphanRegistryUser') { return $true }
+                return $false
+            }
+            Mock Get-ChildItem {
+                param($LiteralPath)
+                if ($LiteralPath -match 'ProfileList') {
+                    return @(
+                        [PSCustomObject]@{
+                            PSPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-21-999-1099'
+                        }
+                    )
+                }
+                return @()
+            }
+            Mock Get-ItemProperty {
+                param($LiteralPath, $Name)
+                if ($LiteralPath -match 'S-1-5-21-999-1099' -and $Name -eq 'ProfileImagePath') {
+                    return [PSCustomObject]@{ ProfileImagePath = 'C:\Users\OrphanRegistryUser' }
+                }
+                return $null
+            }
+            Mock Remove-Item {
+                param($LiteralPath)
+                if ($LiteralPath -match 'S-1-5-21-999-1099') { $script:deletedReg = $true }
+                if ($LiteralPath -match 'OrphanRegistryUser') { $script:deletedDir = $true }
+            }
+
+            $res = Remove-LocalAccountItem -Username 'OrphanRegistryUser'
+            $res.Success | Should -BeTrue
+            $res.AccountRemoved | Should -BeFalse
+            $res.ProfilePathRemoved | Should -BeTrue
+            $res.ProfileListRemoved | Should -BeTrue
+            $script:deletedReg | Should -BeTrue
+            $script:deletedDir | Should -BeTrue
+        }
+
         It 'Tolerates non-existent user when -Force is passed' -Skip:(-not $isAccountsAvailable) {
             Mock Get-CimInstance { return $null }
             Mock Test-Path { return $false }

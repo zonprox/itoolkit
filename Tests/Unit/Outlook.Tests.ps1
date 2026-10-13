@@ -828,6 +828,60 @@ Describe 'Unit: Outlook Data Management Module' {
             { Remove-OutlookDataFile -Path 'C:\Outlook\directory.pst' } | Should -Throw "*is a directory, not an Outlook data file*"
         }
 
+        It 'Rejects wildcard paths with terminating error' -Skip:(-not $isOutlookAvailable) {
+            { Remove-OutlookDataFile -Path '*.pst' } | Should -Throw "*cannot contain wildcard characters*"
+            { Remove-OutlookDataFile -Path 'C:\Outlook\?.ost' } | Should -Throw "*cannot contain wildcard characters*"
+        }
+
+        It 'Test-OutlookDataFileLock rejects wildcards and whitespace paths' -Skip:(-not $isOutlookAvailable) {
+            $lockRes1 = Test-OutlookDataFileLock -Path '*.pst'
+            $lockRes1.Exists | Should -BeFalse
+            $lockRes1.ErrorMessage | Should -Match 'wildcard'
+
+            $lockRes2 = Test-OutlookDataFileLock -Path '   '
+            $lockRes2.Exists | Should -BeFalse
+            $lockRes2.ErrorMessage | Should -Match 'whitespace'
+        }
+
+        It 'Detaches profile registry association from modern Office Outlook key (HKCU:\Software\Microsoft\Office\Outlook\Profiles)' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-OutlookDataFileLock {
+                return [PSCustomObject]@{ Path = 'C:\Outlook\modern.pst'; IsLocked = $false; Exists = $true; OutlookRunning = $false; ErrorMessage = $null }
+            }
+            Mock Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -like '*Office\Outlook\Profiles\ModernProfile*') { return $true }
+                if ($LiteralPath -eq 'C:\Outlook\modern.pst') { return $true }
+                return $false
+            }
+            Mock Get-ChildItem {
+                param($LiteralPath)
+                if ($LiteralPath -like '*Office\Outlook\Profiles\ModernProfile*') {
+                    return @(
+                        [PSCustomObject]@{ PSPath = 'HKCU:\Software\Microsoft\Office\Outlook\Profiles\ModernProfile\GUID123' }
+                    )
+                }
+                return @()
+            }
+            Mock Get-ItemProperty {
+                param($LiteralPath)
+                if ($LiteralPath -like '*GUID123*') {
+                    return [PSCustomObject]@{
+                        '001f6700' = [System.Text.Encoding]::Unicode.GetBytes("C:\Outlook\modern.pst`0")
+                    }
+                }
+                return $null
+            }
+            $script:modernDetached = $false
+            Mock Remove-Item { $script:modernDetached = $true }
+            Mock Remove-ItemProperty { }
+
+            $res = Remove-OutlookDataFile -Path 'C:\Outlook\modern.pst' -ProfileName 'ModernProfile'
+            $res.Success | Should -BeTrue
+            $res.ProfileDetached | Should -BeTrue
+            $script:modernDetached | Should -BeTrue
+        }
+
         It 'Accepts pipeline objects with FullName property' -Skip:(-not $isOutlookAvailable) {
             $obj = [PSCustomObject]@{ FullName = 'C:\Outlook\piped.pst' }
             $res = $obj | Remove-OutlookDataFile -WhatIf

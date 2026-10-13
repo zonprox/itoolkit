@@ -89,6 +89,10 @@ function Invoke-ToolkitAccountContextMenu {
         [string]$Account.Name
     } elseif ($Account.PSObject.Properties['Identity']) {
         [string]$Account.Identity
+    } elseif ($Account.PSObject.Properties['Username']) {
+        [string]$Account.Username
+    } elseif ($Account.PSObject.Properties['AccountName']) {
+        [string]$Account.AccountName
     } else {
         [string]$Account
     }
@@ -234,14 +238,33 @@ function Invoke-ToolkitAccountContextMenu {
                 }
 
                 # Pre-flight safety guardrails check in TUI
-                if ($cleanName -ieq 'Administrator' -or $userName.Trim() -ieq 'Administrator' -or $sid -match '-(?:500)$') {
+                if ($cleanName -ieq 'Administrator' -or $userName.Trim() -ieq 'Administrator' -or $cleanName -match '-(?:500)$' -or $userName.Trim() -match '-(?:500)$' -or $sid -match '-(?:500)$') {
                     Write-ToolkitStatus -Message "Deletion blocked: Cannot delete the built-in Administrator account (SID-500)." -Type 'FAIL'
                     Wait-UserAcknowledge
                     continue
                 }
 
-                $currentLoggedUser = if ($env:USERNAME) { $env:USERNAME } else { [System.Environment]::UserName }
-                if (-not [string]::IsNullOrWhiteSpace($currentLoggedUser) -and ($cleanName -ieq $currentLoggedUser -or $userName.Trim() -ieq $currentLoggedUser)) {
+                $currentLoggedUser = if ($env:USERNAME) { $env:USERNAME } elseif ($env:USER) { $env:USER } else { [System.Environment]::UserName }
+                $currentLoggedSid = $null
+                if ($IsWindows) {
+                    try {
+                        $currentLoggedSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+                    } catch { $null = $_ }
+                }
+
+                $isCurrentMatch = $false
+                if (-not [string]::IsNullOrWhiteSpace($currentLoggedUser)) {
+                    if ($cleanName -ieq $currentLoggedUser -or $userName.Trim() -ieq $currentLoggedUser) {
+                        $isCurrentMatch = $true
+                    }
+                }
+                if (-not [string]::IsNullOrWhiteSpace($currentLoggedSid)) {
+                    if ((-not [string]::IsNullOrWhiteSpace($sid) -and $sid -ieq $currentLoggedSid) -or $cleanName -ieq $currentLoggedSid -or $userName.Trim() -ieq $currentLoggedSid) {
+                        $isCurrentMatch = $true
+                    }
+                }
+
+                if ($isCurrentMatch) {
                     Write-ToolkitStatus -Message "Deletion blocked: Cannot delete the currently logged-in user '$userName'." -Type 'FAIL'
                     Wait-UserAcknowledge
                     continue
