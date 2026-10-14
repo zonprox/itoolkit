@@ -6,7 +6,7 @@
     Author                 = 'IToolkit Team'
     CompanyName            = 'Enterprise IT Administration'
     Copyright              = '(c) 2026 IToolkit. All rights reserved.'
-    Description            = 'Office and Excel troubleshooting: hardware acceleration toggles, UI cache reset (Excel16.xlb), temporary cache purge, COM add-in management, GDI handle leak remediation, and ClickToRun repair.'
+    Description            = 'Office, Word, Excel, and PowerPoint troubleshooting: hardware acceleration toggles, UI and font cache resets, temporary cache purge, COM add-in management, GDI handle leak remediation, template/startup addin isolation, registry data reset, orphaned lock clearance, and ClickToRun repair.'
 
     # PowerShell Engine Compatibility
     PowerShellVersion      = '5.1'
@@ -22,7 +22,20 @@
         'Public/Reset-ExcelResiliency.ps1',
         'Public/Get-ExcelGdiHandleUsage.ps1',
         'Public/Stop-ExcelGdiLeakers.ps1',
-        'Public/Start-OfficeClickToRunRepair.ps1'
+        'Public/Start-OfficeClickToRunRepair.ps1',
+        'Public/Reset-WordTemplate.ps1',
+        'Public/Reset-WordStartupAddin.ps1',
+        'Public/Reset-WordRegistryData.ps1',
+        'Public/Clear-WordOrphanedLocks.ps1',
+        'Public/Stop-OfficeProcess.ps1',
+        'Public/Repair-OfficeClickToRunService.ps1',
+        'Public/Reset-OfficeIdentityCache.ps1',
+        'Public/Clear-ExcelStartupFolder.ps1',
+        'Public/Reset-ExcelDdeSettings.ps1',
+        'Public/Set-PowerPointHardwareAcceleration.ps1',
+        'Public/Reset-PowerPointCache.ps1',
+        'Public/Reset-PowerPointResiliency.ps1',
+        'Public/Uninstall-OfficeSuiteCleanly.ps1'
     )
 
     # Explicit Whitelist of Public Functions (Strictly hides Private helpers)
@@ -35,7 +48,20 @@
         'Reset-ExcelResiliency',
         'Get-ExcelGdiHandleUsage',
         'Stop-ExcelGdiLeakers',
-        'Start-OfficeClickToRunRepair'
+        'Start-OfficeClickToRunRepair',
+        'Reset-WordTemplate',
+        'Reset-WordStartupAddin',
+        'Reset-WordRegistryData',
+        'Clear-WordOrphanedLocks',
+        'Stop-OfficeProcess',
+        'Repair-OfficeClickToRunService',
+        'Reset-OfficeIdentityCache',
+        'Clear-ExcelStartupFolder',
+        'Reset-ExcelDdeSettings',
+        'Set-PowerPointHardwareAcceleration',
+        'Reset-PowerPointCache',
+        'Reset-PowerPointResiliency',
+        'Uninstall-OfficeSuiteCleanly'
     )
 
     CmdletsToExport        = @()
@@ -44,7 +70,7 @@
 
     PrivateData            = @{
         PSData = @{
-            Tags = @('IToolkit', 'Office', 'Excel', 'ClickToRun', 'GDI', 'COMAddins')
+            Tags = @('IToolkit', 'Office', 'Word', 'Excel', 'PowerPoint', 'ClickToRun', 'GDI', 'COMAddins')
         }
     }
 }

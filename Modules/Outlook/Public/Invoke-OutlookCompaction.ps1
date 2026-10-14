@@ -6,18 +6,24 @@ function Invoke-OutlookCompaction {
     Resolves Outlook executable path reliably across Office 16.0, 15.0, C2R, and MSI,
     launches profile management UI (/manageprofiles), and displays clear step-by-step
     guidance for data file compaction.
+    Supports -WhatIf and provides alias Invoke-OutlookPstCompaction.
 .PARAMETER FilePath
     Optional path to the specific PST/OST file to compact.
 .OUTPUTS
     None.
 #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    [Alias('Invoke-OutlookPstCompaction')]
     param(
         [Parameter(Mandatory = $false, Position = 0)]
         [string]$FilePath
     )
 
     process {
+        if (-not $PSCmdlet.ShouldProcess("Outlook Data File", "Launch profile manager for compaction")) {
+            return
+        }
+
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
             if (-not [string]::IsNullOrWhiteSpace($FilePath)) {
                 Write-ToolkitLog -Message "Preparing compaction for data file: '$FilePath'..." -Level 'INFO' -Component 'Outlook:Compaction'

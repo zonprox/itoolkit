@@ -39,7 +39,6 @@ function Invoke-BrowserDebloat {
         $allowedDomains = @(
             'raw.githubusercontent.com',
             'github.com',
-            'otp.landian.vip',
             'debloat.yashg.dev'
         )
 

@@ -45,7 +45,6 @@ function Invoke-Win11Debloat {
         $allowedDomains = @(
             'raw.githubusercontent.com',
             'github.com',
-            'otp.landian.vip',
             'debloat.raphi.re'
         )
 

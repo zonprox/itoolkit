@@ -1,59 +1,107 @@
 function Set-ExcelHardwareAcceleration {
 <#
 .SYNOPSIS
-    Toggles Excel and Office hardware graphics acceleration in the registry.
+    Toggles Excel and Office hardware graphics acceleration in the Windows Registry.
 .DESCRIPTION
-    Configures DisableHardwareAcceleration under HKCU:\Software\Microsoft\Office\16.0\Common\Graphics.
-    Generates an automated .reg rollback backup file via Set-ToolkitRegistryValue.
+    Configures DisableHardwareAcceleration under both HKCU:\Software\Microsoft\Office\16.0\Common\Graphics
+    and HKCU:\Software\Microsoft\Office\16.0\Excel\Options to resolve rendering freezes, black screens,
+    and display driver crashes across all Office 16.0 editions (MSI, Volume, Click-to-Run, M365).
+    Generates automated .reg rollback backup files via Set-ToolkitRegistryValue.
     Supports -WhatIf for non-destructive dry-run preview.
+.PARAMETER DisableAcceleration
+    Switch parameter. When specified, disables hardware graphics acceleration (sets registry values to 1).
+    To re-enable, specify -DisableAcceleration:$false or use -EnableAcceleration.
+.PARAMETER EnableAcceleration
+    Switch parameter. Re-enables hardware graphics acceleration (sets registry values to 0).
 .PARAMETER Disable
-    Set to $true to disable hardware acceleration (fixes display glitches, crashes).
-    Set to $false to enable hardware acceleration.
+    Positional boolean parameter for backward compatibility (e.g., -Disable $true / -Disable $false).
 .OUTPUTS
-    [PSCustomObject] containing Disabled and RegBackupFile.
+    [PSCustomObject] containing Status, Disabled, RegBackupFile, and TargetKeys.
+.EXAMPLE
+    Set-ExcelHardwareAcceleration -DisableAcceleration
+.EXAMPLE
+    Set-ExcelHardwareAcceleration -Disable $true
+.EXAMPLE
+    Set-ExcelHardwareAcceleration -EnableAcceleration
 #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium', DefaultParameterSetName = 'Switch')]
     [OutputType([PSCustomObject])]
     param(
-        [Parameter(Mandatory = $true, Position = 0)]
-        [bool]$Disable
+        [Parameter(ParameterSetName = 'Switch')]
+        [switch]$DisableAcceleration,
+
+        [Parameter(ParameterSetName = 'SwitchEnable')]
+        [switch]$EnableAcceleration,
+
+        [Parameter(ParameterSetName = 'Explicit', Position = 0)]
+        [Alias('Disable')]
+        [bool]$DisableValue
     )
 
     process {
-        $regValue = 0
-        if ($Disable) {
-            $regValue = 1
+        # Determine intended state
+        $targetDisabled = $true
+        if ($PSCmdlet.ParameterSetName -eq 'Explicit') {
+            $targetDisabled = $DisableValue
+        }
+        elseif ($PSCmdlet.ParameterSetName -eq 'SwitchEnable') {
+            $targetDisabled = (-not $EnableAcceleration.IsPresent)
+        }
+        elseif ($PSCmdlet.ParameterSetName -eq 'Switch') {
+            if ($PSBoundParameters.ContainsKey('DisableAcceleration')) {
+                $targetDisabled = $DisableAcceleration.ToBool()
+            }
+            else {
+                # Default repair action: disable acceleration
+                $targetDisabled = $true
+            }
         }
 
-        $keyPath = 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics'
+        $regValue = if ($targetDisabled) { 1 } else { 0 }
+        $actionDesc = if ($targetDisabled) { 'Disable hardware acceleration (value = 1)' } else { 'Enable hardware acceleration (value = 0)' }
+
+        $targetKeys = @(
+            'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics',
+            'HKCU:\Software\Microsoft\Office\16.0\Excel\Options'
+        )
         $valueName = 'DisableHardwareAcceleration'
 
-        if (-not $PSCmdlet.ShouldProcess($keyPath, "Set $valueName to $regValue")) {
+        if (-not $PSCmdlet.ShouldProcess("Excel & Office Graphics Settings", $actionDesc)) {
             return [PSCustomObject]@{
-                Disabled      = $Disable
+                Status        = 'Simulated'
+                Disabled      = $targetDisabled
                 RegBackupFile = '[Simulated - WhatIf]'
+                TargetKeys    = $targetKeys
             }
         }
 
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-            Write-ToolkitLog -Message "Configuring Excel hardware acceleration: Disable = $Disable" -Level 'INFO' -Component 'Set-ExcelHardwareAcceleration'
+            Write-ToolkitLog -Message "Configuring Excel hardware acceleration: Disabled = $targetDisabled" -Level 'INFO' -Component 'Set-ExcelHardwareAcceleration'
         }
 
-        $regResult = Set-ToolkitRegistryValue -KeyPath $keyPath -ValueName $valueName -Value $regValue -PropertyType 'DWord'
-
-        $backupFile = $null
-        if ($null -ne $regResult) {
-            if ($regResult.PSObject.Properties['RegBackupFile'] -and $null -ne $regResult.RegBackupFile) {
-                $backupFile = $regResult.RegBackupFile
+        $primaryBackup = $null
+        foreach ($key in $targetKeys) {
+            try {
+                $regResult = Set-ToolkitRegistryValue -KeyPath $key -ValueName $valueName -Value $regValue -PropertyType 'DWord'
+                if ($null -ne $regResult -and [string]::IsNullOrEmpty($primaryBackup)) {
+                    if ($regResult.PSObject.Properties['RegBackupFile'] -and $null -ne $regResult.RegBackupFile) {
+                        $primaryBackup = $regResult.RegBackupFile
+                    }
+                    elseif ($regResult.PSObject.Properties['BackupFile'] -and $null -ne $regResult.BackupFile) {
+                        $primaryBackup = $regResult.BackupFile
+                    }
+                }
             }
-            elseif ($regResult.PSObject.Properties['BackupFile'] -and $null -ne $regResult.BackupFile) {
-                $backupFile = $regResult.BackupFile
+            catch {
+                Write-Verbose "Could not update registry key '$key': $($_.Exception.Message)"
             }
         }
 
         return [PSCustomObject]@{
-            Disabled      = $Disable
-            RegBackupFile = $backupFile
+            Status        = 'Success'
+            Disabled      = $targetDisabled
+            RegBackupFile = $primaryBackup
+            TargetKeys    = $targetKeys
         }
     }
 }

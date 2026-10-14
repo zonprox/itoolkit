@@ -6,7 +6,7 @@
     Author                 = 'IToolkit Team'
     CompanyName            = 'Enterprise IT Administration'
     Copyright              = '(c) 2026 IToolkit. All rights reserved.'
-    Description            = 'Outlook and PST data management: discovery, safe relocation with SHA-256 verification, profile re-mapping, threshold expansion, compaction guidance, and backup/restore.'
+    Description            = 'Outlook and PST data management: discovery, safe relocation with SHA-256 verification, profile re-mapping, threshold expansion, compaction guidance, backup/restore, stuck outbox clearing, send/receive reset, roam cache purge, navigation pane reset, and data file size testing.'
 
     # PowerShell Engine Compatibility
     PowerShellVersion      = '5.1'
@@ -26,7 +26,12 @@
         'Public/Test-OutlookDataFileLock.ps1',
         'Public/New-OutlookDataFile.ps1',
         'Public/Set-OutlookDefaultDataFile.ps1',
-        'Public/Remove-OutlookDataFile.ps1'
+        'Public/Remove-OutlookDataFile.ps1',
+        'Public/Clear-OutlookStuckOutbox.ps1',
+        'Public/Reset-OutlookSendReceiveSettings.ps1',
+        'Public/Clear-OutlookRoamCache.ps1',
+        'Public/Reset-OutlookNavigationPane.ps1',
+        'Public/Test-OutlookDataFileSize.ps1'
     )
 
     # Explicit Whitelist of Public Functions (Strictly hides Private helpers)
@@ -43,12 +48,19 @@
         'Test-OutlookDataFileLock',
         'New-OutlookDataFile',
         'Set-OutlookDefaultDataFile',
-        'Remove-OutlookDataFile'
+        'Remove-OutlookDataFile',
+        'Clear-OutlookStuckOutbox',
+        'Reset-OutlookSendReceiveSettings',
+        'Clear-OutlookRoamCache',
+        'Reset-OutlookNavigationPane',
+        'Test-OutlookDataFileSize'
     )
 
     CmdletsToExport        = @()
     VariablesToExport      = @()
-    AliasesToExport        = @()
+    AliasesToExport        = @(
+        'Invoke-OutlookPstCompaction'
+    )
 
     PrivateData            = @{
         PSData = @{

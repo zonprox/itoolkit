@@ -67,8 +67,13 @@
         'New-OutlookDataFile',
         'Set-OutlookDefaultDataFile',
         'Remove-OutlookDataFile',
+        'Clear-OutlookStuckOutbox',
+        'Reset-OutlookSendReceiveSettings',
+        'Clear-OutlookRoamCache',
+        'Reset-OutlookNavigationPane',
+        'Test-OutlookDataFileSize',
 
-        # Office & Excel Troubleshooting Services
+        # Office, Word, Excel & PowerPoint Troubleshooting Services
         'Set-ExcelHardwareAcceleration',
         'Reset-ExcelUiCache',
         'Clear-OfficeTempCache',
@@ -78,6 +83,19 @@
         'Get-ExcelGdiHandleUsage',
         'Stop-ExcelGdiLeakers',
         'Start-OfficeClickToRunRepair',
+        'Reset-WordTemplate',
+        'Reset-WordStartupAddin',
+        'Reset-WordRegistryData',
+        'Clear-WordOrphanedLocks',
+        'Stop-OfficeProcess',
+        'Repair-OfficeClickToRunService',
+        'Reset-OfficeIdentityCache',
+        'Clear-ExcelStartupFolder',
+        'Reset-ExcelDdeSettings',
+        'Set-PowerPointHardwareAcceleration',
+        'Reset-PowerPointCache',
+        'Reset-PowerPointResiliency',
+        'Uninstall-OfficeSuiteCleanly',
 
         # Printers Troubleshooting Services
         'Get-PrintSpoolerStatus',
@@ -150,7 +168,6 @@
         'Test-InternetConnectivity',
         'Invoke-BrowserDebloat',
         'Invoke-Win11Debloat',
-        'Invoke-OfficeToolPlus',
 
         # Quick App Installer & Default App Services
         'Get-ToolkitInstalledApplication',
@@ -185,6 +202,11 @@
         'Invoke-ToolkitSubmenuSystemHealth',
         'Get-OfficeSuiteContextInfoLines',
         'Invoke-ToolkitSubmenuOfficeSuite',
+        'Invoke-ToolkitSubmenuOfficeCommon',
+        'Invoke-ToolkitSubmenuOfficeWord',
+        'Invoke-ToolkitSubmenuOfficeExcel',
+        'Invoke-ToolkitSubmenuOfficePowerPoint',
+        'Invoke-ToolkitSubmenuOfficeOutlook',
         'Get-ConnectivityContextInfoLines',
         'Invoke-ToolkitSubmenuConnectivity',
         'Get-IdentityBackupContextInfoLines',
@@ -215,7 +237,9 @@
 
     CmdletsToExport        = @()
     VariablesToExport      = @()
-    AliasesToExport        = @()
+    AliasesToExport        = @(
+        'Invoke-OutlookPstCompaction'
+    )
 
     # Private Metadata
     PrivateData            = @{

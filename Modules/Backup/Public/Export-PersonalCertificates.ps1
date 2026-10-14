@@ -32,111 +32,29 @@ function Export-PersonalCertificates {
     )
 
     process {
-        # Cross-platform compatibility stubs for Linux / non-Windows execution
-        if (-not (Get-Command -Name 'Export-Certificate' -ErrorAction SilentlyContinue)) {
-            Set-Item -Path 'function:global:Export-Certificate' -Value { [CmdletBinding()] param([Parameter(ValueFromRemainingArguments = $true)]$args) }
-        }
-        if (-not (Get-Command -Name 'Export-PfxCertificate' -ErrorAction SilentlyContinue)) {
-            Set-Item -Path 'function:global:Export-PfxCertificate' -Value { [CmdletBinding()] param([Parameter(ValueFromRemainingArguments = $true)]$args) }
+        if (-not (Get-Command -Name 'Export-ToolkitCertificates' -ErrorAction SilentlyContinue)) {
+            $helperScript = Join-Path -Path $PSScriptRoot -ChildPath 'Export-ToolkitCertificates.ps1'
+            if (Test-Path -LiteralPath $helperScript) {
+                . $helperScript
+            }
         }
 
-        if (-not (Test-Path -LiteralPath $DestinationPath)) {
-            $null = New-Item -ItemType Directory -Path $DestinationPath -Force -ErrorAction SilentlyContinue
-        }
+        $rawResults = Export-ToolkitCertificates -DestinationPath $DestinationPath `
+                                                -StoreNames $StoreNames `
+                                                -StoreLocations $StoreLocations `
+                                                -Password $Password
 
         $results = [System.Collections.Generic.List[PSCustomObject]]::new()
-        $certs = [System.Collections.Generic.List[psobject]]::new()
-
-        foreach ($location in $StoreLocations) {
-            foreach ($store in $StoreNames) {
-                $storePath = "Cert:\$location\$store"
-                try {
-                    $found = Get-ChildItem -Path $storePath -ErrorAction SilentlyContinue
-                    if ($found) {
-                        foreach ($c in $found) {
-                            $certs.Add($c)
-                        }
-                    }
-                }
-                catch {
-                    Write-Verbose "Could not access certificate store '$storePath': $($_.Exception.Message)"
-                }
+        if ($rawResults) {
+            foreach ($r in $rawResults) {
+                $results.Add([PSCustomObject]@{
+                    Thumbprint    = $r.Thumbprint
+                    Subject       = $r.Subject
+                    HasPrivateKey = $r.HasPrivateKey
+                    ExportFormat  = $r.Format
+                    FilePath      = $r.ExportPath
+                })
             }
-        }
-
-        foreach ($cert in $certs) {
-            $thumb = [System.Guid]::NewGuid().ToString('N').ToUpper()
-            if ($cert.PSObject.Properties['Thumbprint']) {
-                $thumb = [string]$cert.Thumbprint
-            }
-
-            $subject = 'CN=Personal Certificate'
-            if ($cert.PSObject.Properties['Subject']) {
-                $subject = [string]$cert.Subject
-            }
-
-            $hasKey = $false
-            if ($cert.PSObject.Properties['HasPrivateKey']) {
-                $hasKey = [bool]$cert.HasPrivateKey
-            }
-
-            $exportFormat = 'CER'
-            $outPath = Join-Path -Path $DestinationPath -ChildPath "$thumb.cer" -ErrorAction SilentlyContinue
-            if ([string]::IsNullOrWhiteSpace($outPath)) {
-                $sep = '\'
-                if ($DestinationPath -match '/') {
-                    $sep = '/'
-                }
-                $outPath = "$($DestinationPath.TrimEnd('/\'))$sep$thumb.cer"
-            }
-
-            if ($hasKey) {
-                $pfxPath = Join-Path -Path $DestinationPath -ChildPath "$thumb.pfx" -ErrorAction SilentlyContinue
-                if ([string]::IsNullOrWhiteSpace($pfxPath)) {
-                    $sep = '\'
-                    if ($DestinationPath -match '/') {
-                        $sep = '/'
-                    }
-                    $pfxPath = "$($DestinationPath.TrimEnd('/\'))$sep$thumb.pfx"
-                }
-                $pfxSuccess = $false
-                try {
-                    Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $Password -ErrorAction Stop
-                    $exportFormat = 'PFX'
-                    $outPath = $pfxPath
-                    $pfxSuccess = $true
-                }
-                catch {
-                    if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                        Write-ToolkitLog -Message "Private key not exportable for cert $thumb. Falling back to .cer" -Level 'WARN' -Component 'Backup:Certs'
-                    }
-                }
-
-                if (-not $pfxSuccess) {
-                    try {
-                        Export-Certificate -Cert $cert -FilePath $outPath -Type CERT -ErrorAction SilentlyContinue
-                    }
-                    catch {
-                        Write-Verbose "Public certificate export failed for '$thumb': $($_.Exception.Message)"
-                    }
-                }
-            }
-            else {
-                try {
-                    Export-Certificate -Cert $cert -FilePath $outPath -Type CERT -ErrorAction SilentlyContinue
-                }
-                catch {
-                    Write-Verbose "Public certificate export failed for '$thumb': $($_.Exception.Message)"
-                }
-            }
-
-            $results.Add([PSCustomObject]@{
-                Thumbprint    = $thumb
-                Subject       = $subject
-                HasPrivateKey = $hasKey
-                ExportFormat  = $exportFormat
-                FilePath      = $outPath
-            })
         }
 
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {

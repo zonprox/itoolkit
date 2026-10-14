@@ -912,4 +912,142 @@ Describe 'Unit: Outlook Data Management Module' {
             }
         }
     }
+
+    Context 'Stuck Outbox Clearing (Clear-OutlookStuckOutbox)' {
+        It 'Clear-OutlookStuckOutbox warns when Outlook is running without -Force' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @([PSCustomObject]@{ ProcessName = 'OUTLOOK' }) }
+            $res = Clear-OutlookStuckOutbox
+            $res.Status | Should -Be 'Warning'
+            $res.ClearedMessages | Should -Be 0
+            $res.ErrorMessage | Should -Match 'currently running'
+        }
+
+        It 'Clear-OutlookStuckOutbox stops Outlook and clears messages via COM when -Force is passed' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @([PSCustomObject]@{ ProcessName = 'OUTLOOK' }) }
+            Mock Stop-ToolkitProcess { [PSCustomObject]@{ Terminated = $true } }
+
+            $mockItem = [PSCustomObject]@{}
+            $mockItem | Add-Member -MemberType ScriptMethod -Name Delete -Value { $script:deleted = $true }
+
+            $mockFolder = [PSCustomObject]@{ Items = @($mockItem) }
+            $mockFolder.Items | Add-Member -MemberType ScriptMethod -Name Item -Value { param($i) return $mockItem }
+
+            $mockNs = [PSCustomObject]@{}
+            $mockNs | Add-Member -MemberType ScriptMethod -Name Logon -Value { param($p, $pw, $d, $f) }
+            $mockNs | Add-Member -MemberType ScriptMethod -Name GetDefaultFolder -Value { param($id) return $mockFolder }
+
+            $mockApp = [PSCustomObject]@{}
+            $mockApp | Add-Member -MemberType ScriptMethod -Name GetNamespace -Value { param($ns) return $mockNs }
+            $mockApp | Add-Member -MemberType ScriptMethod -Name Quit -Value { }
+
+            Mock Get-OutlookComApplication { return $mockApp } -ModuleName 'Outlook'
+            Mock Remove-ToolkitComObject { }
+            Mock Set-ToolkitRegistryValue { }
+
+            $res = Clear-OutlookStuckOutbox -Force
+            $res.Status | Should -Be 'Success'
+            $res.ClearedMessages | Should -Be 1
+        }
+
+        It 'Clear-OutlookStuckOutbox supports WhatIf simulation' -Skip:(-not $isOutlookAvailable) {
+            $res = Clear-OutlookStuckOutbox -WhatIf
+            $res.Status | Should -Be 'Success'
+            $res.Method | Should -Be 'WhatIf'
+        }
+    }
+
+    Context 'Send/Receive Settings Reset (Reset-OutlookSendReceiveSettings)' {
+        It 'Creates timestamped .srs.bak file and removes corrupted .srs' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-Path { return $true }
+            Mock Copy-Item { }
+            Mock Remove-Item { }
+
+            $res = Reset-OutlookSendReceiveSettings -ProfileName 'Outlook' -Backup
+            $res.Status | Should -Be 'Success'
+            $res.BackupFile | Should -Match '\.srs\.bak_\d{8}_\d{6}$'
+            $res.RecreatedNotice | Should -Match 'auto'
+        }
+
+        It 'Supports WhatIf without modifying filesystem' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-Path { return $true }
+            $res = Reset-OutlookSendReceiveSettings -ProfileName 'Outlook' -WhatIf
+            $res.Status | Should -Be 'Success'
+            $res.BackupFile | Should -Match 'WhatIf'
+        }
+    }
+
+    Context 'RoamCache Stream Purge (Clear-OutlookRoamCache)' {
+        It 'Purges general stream cache files while STRICTLY PRESERVING Stream_Autocomplete_*.dat' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-Path { return $true }
+
+            $testFiles = @(
+                [PSCustomObject]@{ Name = 'Stream_Autocomplete_0_ABCDEF.dat'; FullName = '/tmp/Stream_Autocomplete_0_ABCDEF.dat' },
+                [PSCustomObject]@{ Name = 'Stream_Calendar_1_123456.dat'; FullName = '/tmp/Stream_Calendar_1_123456.dat' },
+                [PSCustomObject]@{ Name = 'Stream_Rules_2_789012.dat'; FullName = '/tmp/Stream_Rules_2_789012.dat' }
+            )
+            Mock Get-ChildItem { return $testFiles }
+            $script:removedFiles = [System.Collections.Generic.List[string]]::new()
+            Mock Remove-Item { param($LiteralPath) $script:removedFiles.Add($LiteralPath) }
+
+            $res = Clear-OutlookRoamCache -PreserveAutocomplete
+            $res.Status | Should -Be 'Success'
+            $res.PreservedCount | Should -Be 1
+            $res.PurgedCount | Should -Be 2
+            $script:removedFiles | Should -Not -Contain '/tmp/Stream_Autocomplete_0_ABCDEF.dat'
+            $script:removedFiles | Should -Contain '/tmp/Stream_Calendar_1_123456.dat'
+        }
+
+        It 'Allows purging autocomplete only when PreserveAutocomplete is explicitly false' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-Path { return $true }
+            $testFiles = @([PSCustomObject]@{ Name = 'Stream_Autocomplete_0.dat'; FullName = '/tmp/Stream_Autocomplete_0.dat' })
+            Mock Get-ChildItem { return $testFiles }
+            Mock Remove-Item { }
+
+            $res = Clear-OutlookRoamCache -PreserveAutocomplete:$false
+            $res.PurgedCount | Should -Be 1
+            $res.PreservedCount | Should -Be 0
+        }
+    }
+
+    Context 'Navigation Pane Reset (Reset-OutlookNavigationPane)' {
+        It 'Clears NavPane registry value and deletes profile XML view definitions' -Skip:(-not $isOutlookAvailable) {
+            Mock Get-Process { return @() }
+            Mock Test-Path { return $true }
+            Mock Get-ItemProperty { return [PSCustomObject]@{ NavPane = [byte[]]@(0x01, 0x02) } }
+            Mock Remove-ItemProperty { }
+            Mock Copy-Item { }
+            Mock Remove-Item { }
+
+            $res = Reset-OutlookNavigationPane -ProfileName 'Outlook'
+            $res.Status | Should -Be 'Success'
+            $res.RegCleared | Should -BeTrue
+            $res.XmlRemoved | Should -BeTrue
+        }
+    }
+
+    Context 'Data File Size Testing (Test-OutlookDataFileSize)' {
+        It 'Evaluates file size and flags Healthy vs Warning vs Critical against threshold' -Skip:(-not $isOutlookAvailable) {
+            Mock Test-Path { return $true }
+            Mock Get-Item { return [PSCustomObject]@{ FullName = 'C:\Data\archive.pst'; Length = 45GB } }
+            Mock Get-OutlookPstThreshold { return [PSCustomObject]@{ MaxLargeFileSizeMB = 51200; WarnLargeFileSizeMB = 48640 } }
+
+            $res = Test-OutlookDataFileSize -FilePath 'C:\Data\archive.pst'
+            $res.Status | Should -Be 'Healthy'
+            $res.PercentOfMax | Should -BeLessThan 95
+
+            Mock Get-Item { return [PSCustomObject]@{ FullName = 'C:\Data\archive.pst'; Length = 48GB } }
+            $resWarn = Test-OutlookDataFileSize -FilePath 'C:\Data\archive.pst'
+            $resWarn.Status | Should -Be 'Warning'
+            $resWarn.NeedsExpansion | Should -BeTrue
+
+            Mock Get-Item { return [PSCustomObject]@{ FullName = 'C:\Data\archive.pst'; Length = 52GB } }
+            $resCrit = Test-OutlookDataFileSize -FilePath 'C:\Data\archive.pst'
+            $resCrit.Status | Should -Be 'Critical'
+            $resCrit.NeedsExpansion | Should -BeTrue
+        }
+    }
 }

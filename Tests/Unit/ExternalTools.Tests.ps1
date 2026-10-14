@@ -1,7 +1,7 @@
 # ==============================================================================
 # ExternalTools.Tests.ps1
 # Unit test suite for Modules/ExternalTools (Features 49, 50, 51)
-# Covers: Test-InternetConnectivity, Invoke-BrowserDebloat, Invoke-Win11Debloat, Invoke-OfficeToolPlus.
+# Covers: Test-InternetConnectivity, Invoke-BrowserDebloat, Invoke-Win11Debloat.
 # ==============================================================================
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -126,55 +126,13 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
         }
     }
 
-    Context 'Office Tool Plus Launcher' {
-        It 'Invoke-OfficeToolPlus checks internet and prompts confirmation before launch' -Skip:(-not $isExtToolsAvailable) {
-            Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $true }
-            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
-
-            $res = Invoke-OfficeToolPlus
-            $res.ToolName | Should -Be 'OfficeToolPlus'
-            $res.ScriptUrl | Should -Be 'https://otp.landian.vip/'
-            $res.Launched | Should -BeTrue
-        }
-
-        It 'Invoke-OfficeToolPlus rejects non-HTTPS URL' -Skip:(-not $isExtToolsAvailable) {
-            Mock Test-InternetConnectivity { return $true }
-            { Invoke-OfficeToolPlus -ScriptUrl 'http://otp.landian.vip/' } | Should -Throw "*HTTPS*"
-        }
-
-        It 'Invoke-OfficeToolPlus rejects unapproved domain' -Skip:(-not $isExtToolsAvailable) {
-            Mock Test-InternetConnectivity { return $true }
-            { Invoke-OfficeToolPlus -ScriptUrl 'https://unauthorized-domain.com/' } | Should -Throw "*whitelist*"
-        }
-
-        It 'Invoke-OfficeToolPlus aborts if offline' -Skip:(-not $isExtToolsAvailable) {
-            Mock Test-InternetConnectivity { return $false }
-            { Invoke-OfficeToolPlus } | Should -Throw
-        }
-
-        It 'Invoke-OfficeToolPlus cancels if user declines prompt' -Skip:(-not $isExtToolsAvailable) {
-            Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $false }
-
-            $res = Invoke-OfficeToolPlus
-            $res.Launched | Should -BeFalse
-        }
-
-        It 'Invoke-OfficeToolPlus supports WhatIf' -Skip:(-not $isExtToolsAvailable) {
-            Mock Test-InternetConnectivity { return $true }
-            $res = Invoke-OfficeToolPlus -WhatIf
-            $res.Launched | Should -BeFalse
-        }
-    }
-
     Context 'Submenu Telemetry & Non-Interactive Execution' {
-        It 'Get-ExternalToolsContextInfoLines enumerates all 3 tools' -Skip:(-not $isExtToolsAvailable) {
+        It 'Get-ExternalToolsContextInfoLines enumerates 2 tools' -Skip:(-not $isExtToolsAvailable) {
             $lines = Get-ExternalToolsContextInfoLines
-            $lines.Count | Should -BeGreaterThan 3
+            $lines.Count | Should -Be 3
             ($lines -join "`n") | Should -Match 'Win11Debloat'
             ($lines -join "`n") | Should -Match 'BrowserDebloat'
-            ($lines -join "`n") | Should -Match 'Office Tool Plus'
+            ($lines -join "`n") | Should -Not -Match 'Office Tool Plus'
         }
 
         It 'Invoke-ToolkitSubmenuExternalTools completes cleanly with -NonInteractive' -Skip:(-not $isExtToolsAvailable) {

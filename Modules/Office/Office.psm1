@@ -11,6 +11,14 @@ param()
 
 $moduleRoot = $PSScriptRoot
 
+# 0. Cross-platform compatibility stubs for Windows-only cmdlets (enables Pester mocking on non-Windows)
+$windowsCmdlets = @('Get-Service', 'Stop-Service', 'Start-Service', 'Set-Service', 'Get-ScheduledTask', 'Unregister-ScheduledTask')
+foreach ($cmdName in $windowsCmdlets) {
+    if (-not (Get-Command -Name $cmdName -ErrorAction SilentlyContinue)) {
+        Set-Item -Path "function:global:$cmdName" -Value { [CmdletBinding()] param([Parameter(ValueFromRemainingArguments = $true)]$args) }
+    }
+}
+
 # 1. Dot-source Private helper scripts first (available to public functions, not exported)
 $privatePath = Join-Path -Path $moduleRoot -ChildPath 'Private'
 if (Test-Path -LiteralPath $privatePath) {

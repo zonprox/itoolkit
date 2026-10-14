@@ -53,7 +53,7 @@ function Export-RegistryKeyBackup {
         }
 
         if (-not (Test-Path -LiteralPath $targetDir)) {
-            $null = New-Item -ItemType Directory -LiteralPath $targetDir -Force
+            $null = New-Item -ItemType Directory -Path $targetDir -Force
         }
 
         # Build sanitized filename

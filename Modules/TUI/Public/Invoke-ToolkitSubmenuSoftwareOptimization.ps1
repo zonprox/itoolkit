@@ -63,8 +63,7 @@ function Get-ExternalToolsContextInfoLines {
     return @(
         "Tool 1 : Win11Debloat [READY]",
         "Tool 2 : BrowserDebloat [READY]",
-        "Tool 3 : Office Tool Plus [READY]",
-        "Status : All 3 external tools configured"
+        "Status : All 2 external tools configured"
     )
 }
 
@@ -251,7 +250,7 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
     - Batch installation of all applications with desktop shortcuts and defaults
     - Winget mass package update
     - Windows 11 bloatware and telemetry debloat scripts
-    - Browser debloat and Office Tool Plus launchers
+    - Browser debloat launcher
     - Internet connectivity verification
 .PARAMETER ExitImmediately
     Bypasses interactive loop and returns immediately (for automated testing).
@@ -355,8 +354,7 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
         $installerActions = @(
             @{ Key = '9'; Label = 'Update All Winget Apps' },
             @{ Key = '10'; Label = 'Win11Debloat' },
-            @{ Key = '11'; Label = 'Browser Debloat' },
-            @{ Key = '12'; Label = 'Office Tool Plus' }
+            @{ Key = '11'; Label = 'Browser Debloat' }
         )
         $navActions = @(
             @{ Key = '0'; Label = 'Back to Main Menu' }
@@ -368,8 +366,8 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
             return
         }
 
-        $categoryHotkeys = @('9', '10', '11', '12')
-        $promptText = "  Select Item [1-$($appsList.Count)], Action [9-12], or [0] Back"
+        $categoryHotkeys = @('9', '10', '11')
+        $promptText = "  Select Item [1-$($appsList.Count)], Action [9-11], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex $appsList.Count -ValidHotkeys $categoryHotkeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
@@ -409,14 +407,6 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
                 '11' {
                     if (Get-Command -Name 'Invoke-BrowserDebloat' -ErrorAction SilentlyContinue) {
                         Invoke-BrowserDebloat | Format-List
-                    }
-                    Wait-UserAcknowledge
-                }
-                '12' {
-                    if (Get-Command -Name 'Invoke-OfficeToolPlus' -ErrorAction SilentlyContinue) {
-                        Invoke-OfficeToolPlus | Format-List
-                    } else {
-                        Write-ToolkitStatus -Message "Invoke-OfficeToolPlus command not available." -Type 'WARN'
                     }
                     Wait-UserAcknowledge
                 }

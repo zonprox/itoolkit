@@ -61,7 +61,7 @@ function Test-OutlookDataFileLock {
             return [PSCustomObject]@{
                 Path           = $Path
                 IsLocked       = $false
-                Exists         = $false
+                Exists         = $true
                 OutlookRunning = $outlookRunning
                 ErrorMessage   = "Specified path is a directory, not an Outlook data file: '$Path'"
             }

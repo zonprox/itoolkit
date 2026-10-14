@@ -16,16 +16,14 @@
     ScriptsToProcess       = @(
         'Public/Test-InternetConnectivity.ps1',
         'Public/Invoke-BrowserDebloat.ps1',
-        'Public/Invoke-Win11Debloat.ps1',
-        'Public/Invoke-OfficeToolPlus.ps1'
+        'Public/Invoke-Win11Debloat.ps1'
     )
 
     # Explicit Whitelist of Public Functions
     FunctionsToExport      = @(
         'Test-InternetConnectivity',
         'Invoke-BrowserDebloat',
-        'Invoke-Win11Debloat',
-        'Invoke-OfficeToolPlus'
+        'Invoke-Win11Debloat'
     )
 
     CmdletsToExport        = @()
@@ -34,7 +32,7 @@
 
     PrivateData            = @{
         PSData = @{
-            Tags = @('IToolkit', 'ExternalTools', 'BrowserDebloat', 'Win11Debloat', 'OfficeToolPlus', 'Launchers')
+            Tags = @('IToolkit', 'ExternalTools', 'BrowserDebloat', 'Win11Debloat', 'Launchers')
         }
     }
 }

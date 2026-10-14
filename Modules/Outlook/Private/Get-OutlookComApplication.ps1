@@ -12,15 +12,15 @@ function Get-OutlookComApplication {
     [CmdletBinding()]
     param()
 
-    $isWindows = $false
+    $onWindows = $false
     try {
-        if ([System.OperatingSystem]::IsWindows()) { $isWindows = $true }
+        if ($IsWindows -or [System.OperatingSystem]::IsWindows()) { $onWindows = $true }
     }
     catch {
-        if ($PSVersionTable.PSEdition -eq 'Desktop' -or $env:OS -match 'Windows') { $isWindows = $true }
+        if ($PSVersionTable.PSEdition -eq 'Desktop' -or $env:OS -match 'Windows') { $onWindows = $true }
     }
 
-    if (-not $isWindows) { return $null }
+    if (-not $onWindows) { return $null }
 
     try {
         return (New-Object -ComObject 'Outlook.Application')

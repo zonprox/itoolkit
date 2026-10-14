@@ -16,6 +16,7 @@ function Find-OutlookDataFiles {
 #>
     [CmdletBinding()]
     [OutputType([PSCustomObject[]])]
+    [Alias('Get-OutlookDataFileInventory')]
     param(
         [Parameter(Mandatory = $false, Position = 0)]
         [ValidateSet('All', 'UserProfile', 'Registry', 'Drives')]
@@ -275,4 +276,8 @@ function Find-OutlookDataFiles {
 
         return @($results)
     }
+}
+
+if (-not (Get-Alias -Name 'Get-OutlookDataFileInventory' -ErrorAction SilentlyContinue)) {
+    Set-Alias -Name 'Get-OutlookDataFileInventory' -Value 'Find-OutlookDataFiles' -Scope Global -ErrorAction SilentlyContinue
 }
