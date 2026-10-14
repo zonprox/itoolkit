@@ -31,6 +31,10 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
     $waitScript = Join-Path $PSScriptRoot '../Private/Wait-UserAcknowledge.ps1'
     if (Test-Path $waitScript) { . $waitScript }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path $confirmScript) { . $confirmScript }
+}
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path $headerScript) { . $headerScript }
@@ -212,6 +216,11 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
                 Wait-UserAcknowledge
             }
             '2' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft PowerPoint font and slide master cache" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "PowerPoint cache reset cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Purging PowerPoint font and slide layout preview cache..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-PowerPointCache' -ErrorAction SilentlyContinue) {
@@ -230,6 +239,11 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
                 Wait-UserAcknowledge
             }
             '3' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft PowerPoint resiliency registry keys and disabled add-ins" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "PowerPoint resiliency reset cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Resetting PowerPoint add-in resiliency disabled items list..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-PowerPointResiliency' -ErrorAction SilentlyContinue) {
@@ -248,6 +262,11 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
                 Wait-UserAcknowledge
             }
             '4' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft PowerPoint processes" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Terminate PowerPoint processes cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Terminating active PowerPoint (POWERPNT) processes..." -Type 'INFO'
                     if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {

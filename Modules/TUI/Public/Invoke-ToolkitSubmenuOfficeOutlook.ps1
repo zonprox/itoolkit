@@ -32,6 +32,10 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
     $waitScript = Join-Path $PSScriptRoot '../Private/Wait-UserAcknowledge.ps1'
     if (Test-Path -LiteralPath $waitScript) { . $waitScript }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path -LiteralPath $confirmScript) { . $confirmScript }
+}
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path -LiteralPath $headerScript) { . $headerScript }
@@ -601,6 +605,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
 
             switch ($actionKey) {
                 '10' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "clearing stuck outbox messages in Outlook" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Clear stuck outbox cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
                     if (Get-Command -Name 'Clear-OutlookStuckOutbox' -ErrorAction SilentlyContinue) {
                         try {
                             Write-ToolkitStatus -Message "Clearing stuck Outbox messages..." -Type 'INFO'
@@ -622,6 +631,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     Wait-UserAcknowledge
                 }
                 '11' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "resetting Outlook Send/Receive settings (.SRS)" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Reset SRS settings cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
                     if (Get-Command -Name 'Reset-OutlookSendReceiveSettings' -ErrorAction SilentlyContinue) {
                         try {
                             Write-ToolkitStatus -Message "Resetting Send/Receive settings (.srs)..." -Type 'INFO'
@@ -643,6 +657,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     Wait-UserAcknowledge
                 }
                 '12' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "clearing Outlook RoamCache streams" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Clear RoamCache cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
                     if (Get-Command -Name 'Clear-OutlookRoamCache' -ErrorAction SilentlyContinue) {
                         try {
                             Write-ToolkitStatus -Message "Purging RoamCache stream cache (preserving AutoComplete)..." -Type 'INFO'
@@ -663,6 +682,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     Wait-UserAcknowledge
                 }
                 '13' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "resetting Outlook navigation pane configuration" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Reset navigation pane cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
                     if (Get-Command -Name 'Reset-OutlookNavigationPane' -ErrorAction SilentlyContinue) {
                         try {
                             Write-ToolkitStatus -Message "Resetting Outlook navigation pane configuration (/resetnavpane)..." -Type 'INFO'
@@ -735,6 +759,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     Wait-UserAcknowledge
                 }
                 '16' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Outlook processes" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Terminate Outlook processes cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
                     if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
                         try {
                             Write-ToolkitStatus -Message "Terminating Outlook processes..." -Type 'INFO'

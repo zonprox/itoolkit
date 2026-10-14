@@ -106,3 +106,13 @@ Never simplify away or cut corners on:
 - **100% English Codebase**: All source code, scripts, module functions, comments, UI text, logs, console messages, commit messages, and documentation must be written strictly in English.
 - **Zero Foreign Language Residue**: Do not introduce non-English strings into code, manifests, launchers, or output streams unless specifically required for localized test fixtures.
 
+---
+
+## 7. Application Catalog & Installer Standards (`AppInstaller`)
+
+- **Concise Naming**: Always use concise, canonical application names for both `DisplayName` and `ShortcutName` (e.g., `UniKey`, `UltraVNC`, `Google Chrome`, `Foxit PDF Reader`, `K-Lite Codec Pack`, `Visual C++ Redistributable AIO`, `Zalo`, `WinRAR`).
+- **Winget Support Verification**: Whenever adding, removing, or updating an application in the catalog (`Install-ToolkitApplication`, `Get-ToolkitInstalledApplication`, `Resolve-ToolkitApplicationDownloadUrl`), always verify whether the application has a valid, officially maintained Winget package ID before choosing its installation mode:
+  - **Winget-Supported Apps**: Configure `WingetId` as the primary installation method with direct-download URL fallback.
+  - **Non-Winget Apps (e.g., `UniKey`, `VCRedistAIO`, `Zalo`, `UltraVNC`)**: Set `WingetId = $null` to bypass Winget, download the official installer or archive directly to `$TEMP`, execute silent installation or archive extraction, and always clean up (`Remove-Item`) temporary downloaded files upon completion.
+
+

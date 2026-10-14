@@ -237,7 +237,7 @@ Describe 'Adversarial 2: Headless Submenu Execution & Closed Stdin' {
 Describe 'Adversarial 3: Winget Fallback to Direct Download Installer' {
 
     Context 'Winget Absent / Unavailable' {
-        It 'Falls back to direct download for UniKey when winget is unavailable' {
+        It 'Bypasses winget and uses direct download with cleanup for UniKey' {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-ToolkitWingetStatus {
                 return [PSCustomObject]@{ Available = $false; Healthy = $false }
@@ -245,8 +245,10 @@ Describe 'Adversarial 3: Winget Fallback to Direct Download Installer' {
             Mock Get-Command -ParameterFilter { $Name -eq 'winget' } { return $null }
 
             # Mock download of zip archive containing UniKeyNT.exe
+            $script:advUniKeyTemp = $null
             Mock Invoke-WebRequest {
                 param($Uri, $OutFile)
+                $script:advUniKeyTemp = $OutFile
                 $tempScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_AdvTest_" + [System.Guid]::NewGuid().ToString('N'))
                 New-Item -ItemType Directory -Path $tempScratch -Force | Out-Null
                 $mockExe = Join-Path $tempScratch 'UniKeyNT.exe'
@@ -280,6 +282,7 @@ Describe 'Adversarial 3: Winget Fallback to Direct Download Installer' {
             $res.AppName | Should -Be 'UniKey'
             $res.Installed | Should -BeTrue
             $res.Status | Should -Be 'OK'
+            Test-Path -LiteralPath $script:advUniKeyTemp | Should -BeFalse
         }
     }
 
@@ -370,24 +373,29 @@ Describe 'Adversarial 3: Winget Fallback to Direct Download Installer' {
             $res.Status | Should -Be 'WARN'
         }
 
-        It 'Falls back to direct download for UltraVNC when winget fails' {
+        It 'Bypasses winget and uses direct download with cleanup for UltraVNC' {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-ToolkitWingetStatus {
                 return [PSCustomObject]@{ Available = $true; Healthy = $true }
             }
             Mock Get-Command -ParameterFilter { $Name -eq 'winget' } { return [PSCustomObject]@{ Name = 'winget' } }
 
-            # Winget fails
+            $script:wingetCalled = $false
             $script:uvncInstallerRan = $false
             Mock Start-Process {
                 param($FilePath, $ArgumentList)
-                if ($FilePath -eq 'winget') { return [PSCustomObject]@{ ExitCode = 1 } }
+                if ($FilePath -eq 'winget') {
+                    $script:wingetCalled = $true
+                    return [PSCustomObject]@{ ExitCode = 1 }
+                }
                 $script:uvncInstallerRan = $true
                 return [PSCustomObject]@{ ExitCode = 0 }
             }
 
+            $script:advUvncTemp = $null
             Mock Invoke-WebRequest {
                 param($Uri, $OutFile)
+                $script:advUvncTemp = $OutFile
                 Set-Content -LiteralPath $OutFile -Value 'MOCK_UVNC_INSTALLER' -Encoding UTF8
             }
 
@@ -396,11 +404,11 @@ Describe 'Adversarial 3: Winget Fallback to Direct Download Installer' {
                 param($AppName)
                 $script:uvncState++
                 if ($script:uvncState -eq 1) {
-                    return [PSCustomObject]@{ AppName = $AppName; DisplayName = 'UltraVNC Remote Support'; Installed = $false; ExecutablePath = $null }
+                    return [PSCustomObject]@{ AppName = $AppName; DisplayName = 'UltraVNC'; Installed = $false; ExecutablePath = $null }
                 }
                 return [PSCustomObject]@{
                     AppName        = $AppName
-                    DisplayName    = 'UltraVNC Remote Support'
+                    DisplayName    = 'UltraVNC'
                     Installed      = $true
                     ExecutablePath = 'C:\Program Files\uvnc bvba\UltraVNC\vncviewer.exe'
                     Version        = '1.5.0.0'
@@ -413,7 +421,9 @@ Describe 'Adversarial 3: Winget Fallback to Direct Download Installer' {
             $res.AppName | Should -Be 'UltraVNC'
             $res.Installed | Should -BeTrue
             $res.Status | Should -Be 'OK'
+            $script:wingetCalled | Should -BeFalse
             $script:uvncInstallerRan | Should -BeTrue
+            Test-Path -LiteralPath $script:advUvncTemp | Should -BeFalse
         }
     }
 }

@@ -4,6 +4,12 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
         . $waitScript
     }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path $confirmScript) {
+        . $confirmScript
+    }
+}
 
 if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
     $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
@@ -191,6 +197,11 @@ function Invoke-ToolkitApplicationContextMenu {
                 Wait-UserAcknowledge
             }
             '2' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "force reinstallation of '$dispName'" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Force reinstallation cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 Write-ToolkitStatus -Message "Force reinstalling $dispName..." -Type 'INFO'
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
                     $res = Install-ToolkitApplication -AppName $appName -Force -CreateShortcut
@@ -371,14 +382,14 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
 
         if ($appsList.Count -eq 0) {
             $appsList = @(
-                [PSCustomObject]@{ AppName = 'Chrome';      DisplayName = 'Google Chrome Browser';          Application = 'Google Chrome Browser';          Status = '[READY]'; Executable = 'chrome.exe';        ExecutablePath = ''; Version = 'Latest 64-bit'; Installed = $false },
+                [PSCustomObject]@{ AppName = 'Chrome';      DisplayName = 'Google Chrome';                  Application = 'Google Chrome';                  Status = '[READY]'; Executable = 'chrome.exe';        ExecutablePath = ''; Version = 'Latest 64-bit'; Installed = $false },
                 [PSCustomObject]@{ AppName = 'FoxitReader';  DisplayName = 'Foxit PDF Reader';              Application = 'Foxit PDF Reader';              Status = '[READY]'; Executable = 'FoxitPDFReader.exe'; ExecutablePath = ''; Version = 'Latest 64-bit'; Installed = $false },
-                [PSCustomObject]@{ AppName = 'UniKey';       DisplayName = 'UniKey Vietnamese Input Method'; Application = 'UniKey Vietnamese Input Method'; Status = '[READY]'; Executable = 'UniKeyNT.exe';        ExecutablePath = ''; Version = '64-bit';        Installed = $false },
-                [PSCustomObject]@{ AppName = 'UltraVNC';     DisplayName = 'UltraVNC Remote Support';       Application = 'UltraVNC Remote Support';       Status = '[READY]'; Executable = 'vncviewer.exe';       ExecutablePath = ''; Version = 'x64 Setup';     Installed = $false },
+                [PSCustomObject]@{ AppName = 'UniKey';       DisplayName = 'UniKey';                        Application = 'UniKey';                        Status = '[READY]'; Executable = 'UniKeyNT.exe';        ExecutablePath = ''; Version = '64-bit';        Installed = $false },
+                [PSCustomObject]@{ AppName = 'UltraVNC';     DisplayName = 'UltraVNC';                      Application = 'UltraVNC';                      Status = '[READY]'; Executable = 'vncviewer.exe';       ExecutablePath = ''; Version = 'x64 Setup';     Installed = $false },
                 [PSCustomObject]@{ AppName = 'KLiteCodec';   DisplayName = 'K-Lite Codec Pack';             Application = 'K-Lite Codec Pack';             Status = '[READY]'; Executable = 'mpc-hc64.exe';        ExecutablePath = ''; Version = '64-bit';        Installed = $false },
                 [PSCustomObject]@{ AppName = 'VCRedistAIO';  DisplayName = 'Visual C++ Redistributable AIO'; Application = 'Visual C++ Redistributable AIO'; Status = '[READY]'; Executable = 'System Runtimes';    ExecutablePath = ''; Version = 'x64';           Installed = $false },
-                [PSCustomObject]@{ AppName = 'Zalo';         DisplayName = 'Zalo PC Messenger';             Application = 'Zalo PC Messenger';             Status = '[READY]'; Executable = 'Zalo.exe';            ExecutablePath = ''; Version = 'Latest';        Installed = $false },
-                [PSCustomObject]@{ AppName = 'WinRAR';       DisplayName = 'WinRAR Archiver';               Application = 'WinRAR Archiver';               Status = '[READY]'; Executable = 'WinRAR.exe';          ExecutablePath = ''; Version = 'x64';           Installed = $false }
+                [PSCustomObject]@{ AppName = 'Zalo';         DisplayName = 'Zalo';                          Application = 'Zalo';                          Status = '[READY]'; Executable = 'Zalo.exe';            ExecutablePath = ''; Version = 'Latest';        Installed = $false },
+                [PSCustomObject]@{ AppName = 'WinRAR';       DisplayName = 'WinRAR';                        Application = 'WinRAR';                        Status = '[READY]'; Executable = 'WinRAR.exe';          ExecutablePath = ''; Version = 'x64';           Installed = $false }
             )
         }
         Show-ToolkitItemTable -Items $appsList -Columns @('Application', 'Status', 'Executable', 'Version') -Headers @('APPLICATION', 'STATUS', 'EXECUTABLE', 'VERSION') -Title 'Managed Enterprise 64-Bit Application Catalog'
@@ -435,12 +446,22 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
                     Wait-UserAcknowledge
                 }
                 '10' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "launching Win11Debloat system modification utility" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Win11Debloat cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
                     if (Get-Command -Name 'Invoke-Win11Debloat' -ErrorAction SilentlyContinue) {
                         Invoke-Win11Debloat | Format-List
                     }
                     Wait-UserAcknowledge
                 }
                 '11' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "applying Browser Debloat policy modifications" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Browser Debloat cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
                     if (Get-Command -Name 'Invoke-BrowserDebloat' -ErrorAction SilentlyContinue) {
                         Invoke-BrowserDebloat | Format-List
                     }

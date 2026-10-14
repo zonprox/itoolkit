@@ -4,7 +4,7 @@ function Get-ToolkitInstalledApplication {
     Discovers installation status, executable path, and version for standard enterprise applications.
 .DESCRIPTION
     Checks standard 32-bit and 64-bit installation directories and registry uninstall keys
-    for UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome, Visual C++ Redistributable AIO, Foxit Reader, Zalo PC, and WinRAR.
+    for UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome, Visual C++ Redistributable AIO, Foxit PDF Reader, Zalo, and WinRAR.
 .PARAMETER AppName
     Target application name. Valid values: 'UniKey', 'UltraVNC', 'KLiteCodec', 'Chrome', 'VCRedistAIO', 'FoxitReader', 'Zalo', 'WinRAR', or 'All'. Default is 'All'.
 .OUTPUTS
@@ -53,7 +53,7 @@ function Get-ToolkitInstalledApplication {
 
         $appCatalog = @{
             'UniKey' = @{
-                DisplayName     = 'UniKey Vietnamese Input Method'
+                DisplayName     = 'UniKey'
                 ExeCandidates   = @(
                     (Join-Path $progFiles 'UniKey\UniKeyNT.exe'),
                     (Join-Path $progFilesX86 'UniKey\UniKeyNT.exe'),
@@ -63,7 +63,7 @@ function Get-ToolkitInstalledApplication {
                 RegistryPatterns = @('*UniKey*')
             }
             'UltraVNC' = @{
-                DisplayName     = 'UltraVNC Remote Support'
+                DisplayName     = 'UltraVNC'
                 ExeCandidates   = @(
                     (Join-Path $progFiles 'uvnc bvba\UltraVNC\vncviewer.exe'),
                     (Join-Path $progFilesX86 'uvnc bvba\UltraVNC\vncviewer.exe'),
@@ -73,7 +73,7 @@ function Get-ToolkitInstalledApplication {
                 RegistryPatterns = @('*UltraVNC*')
             }
             'KLiteCodec' = @{
-                DisplayName     = 'K-Lite Codec Pack & MPC-HC'
+                DisplayName     = 'K-Lite Codec Pack'
                 ExeCandidates   = @(
                     (Join-Path $progFilesX86 'K-Lite Codec Pack\MPC-HC64\mpc-hc64.exe'),
                     (Join-Path $progFiles 'K-Lite Codec Pack\MPC-HC64\mpc-hc64.exe'),
@@ -83,7 +83,7 @@ function Get-ToolkitInstalledApplication {
                 RegistryPatterns = @('*K-Lite Codec Pack*')
             }
             'Chrome' = @{
-                DisplayName     = 'Google Chrome Browser'
+                DisplayName     = 'Google Chrome'
                 ExeCandidates   = @(
                     (Join-Path $progFiles 'Google\Chrome\Application\chrome.exe'),
                     (Join-Path $progFilesX86 'Google\Chrome\Application\chrome.exe'),

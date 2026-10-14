@@ -4,6 +4,12 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
         . $waitScript
     }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path $confirmScript) {
+        . $confirmScript
+    }
+}
 
 if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
     $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
@@ -251,6 +257,11 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '4' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Windows Update services and component cache" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Reset Windows Update cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Resetting Windows Update components..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WindowsUpdateComponents' -ErrorAction SilentlyContinue) {
@@ -268,6 +279,11 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '5' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting TCP/IP stack and Winsock catalog" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Reset network stack cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Resetting network stack and DNS cache..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-NetworkStack' -ErrorAction SilentlyContinue) {
@@ -285,6 +301,11 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '6' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "verifying and salvaging WMI repository" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Repair WMI repository cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Repairing WMI repository..." -Type 'INFO'
                     if (Get-Command -Name 'Repair-WmiRepository' -ErrorAction SilentlyContinue) {
@@ -319,6 +340,11 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '8' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "initiating deep disk and component store cleanup" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Deep disk cleanup cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Executing master system disk cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
@@ -336,6 +362,11 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '9' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "clearing Windows temporary caches and system event logs" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Clear temp caches and logs cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Purging temporary files and system logs..." -Type 'INFO'
                     if (Get-Command -Name 'Clear-WindowsTempCache' -ErrorAction SilentlyContinue) {

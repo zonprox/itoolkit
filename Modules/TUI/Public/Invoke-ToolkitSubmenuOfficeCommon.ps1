@@ -35,6 +35,12 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
         . $waitScript
     }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path -LiteralPath $confirmScript) {
+        . $confirmScript
+    }
+}
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path -LiteralPath $headerScript) { . $headerScript }
@@ -72,20 +78,84 @@ function Get-OfficeCommonContextInfoLines {
     }
 
     $lines = [System.Collections.Generic.List[string]]::new()
-    $c2rVer = '16.0'
-    $c2rArch = 'x64'
-    try {
-        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration') {
-            $c2rProps = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue
-            if ($null -ne $c2rProps) {
-                if ($c2rProps.VersionToReport) { $c2rVer = [string]$c2rProps.VersionToReport }
-                if ($c2rProps.Platform) { $c2rArch = [string]$c2rProps.Platform }
+
+    # 1. Inspect Click-to-Run Configuration
+    $c2rProps = $null
+    foreach ($regPath in @('HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\ClickToRun\Configuration')) {
+        if (Test-Path -LiteralPath $regPath -ErrorAction SilentlyContinue) {
+            $props = Get-ItemProperty -LiteralPath $regPath -ErrorAction SilentlyContinue
+            if ($null -ne $props) {
+                $c2rProps = $props
+                break
             }
         }
-    } catch { $null = $_ }
+    }
 
-    $lines.Add("Office Build   : Microsoft Office $c2rVer | $c2rArch")
-    $lines.Add("Common Tools   : C2R Repair, Modern Auth WAM Reset, Process Killer, Clean Scrubber [READY]")
+    $productReleaseIds = if ($c2rProps -and $c2rProps.ProductReleaseIds) { [string]$c2rProps.ProductReleaseIds } else { '' }
+    $versionToReport   = if ($c2rProps) {
+        if ($c2rProps.VersionToReport) { [string]$c2rProps.VersionToReport }
+        elseif ($c2rProps.ClientVersionToReport) { [string]$c2rProps.ClientVersionToReport }
+        else { '' }
+    } else { '' }
+    $platform          = if ($c2rProps -and $c2rProps.Platform) { [string]$c2rProps.Platform } else { '' }
+    $updateChannel     = if ($c2rProps -and $c2rProps.UpdateChannel) { [string]$c2rProps.UpdateChannel } else { '' }
+    $cdnBaseUrl        = if ($c2rProps -and $c2rProps.CDNBaseUrl) { [string]$c2rProps.CDNBaseUrl } else { '' }
+
+    # 2. Inspect Uninstall Registry Keys
+    $uninstallSuiteName = $null
+    $uninstallVersion   = $null
+    foreach ($uPath in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
+        if (Test-Path -LiteralPath $uPath -ErrorAction SilentlyContinue) {
+            try {
+                $subKeys = Get-ChildItem -LiteralPath $uPath -ErrorAction SilentlyContinue
+                foreach ($sk in $subKeys) {
+                    $item = Get-ItemProperty -LiteralPath $sk.PSPath -ErrorAction SilentlyContinue
+                    if ($null -ne $item -and -not [string]::IsNullOrWhiteSpace($item.DisplayName)) {
+                        $dn = [string]$item.DisplayName
+                        if ($dn -match '(?i)Microsoft\s+(?:Office|365)' -and $dn -notmatch '(?i)Tools|Proofing|LanguagePack|MUI|Companion|Online') {
+                            $uninstallSuiteName = $dn
+                            if (-not [string]::IsNullOrWhiteSpace($item.DisplayVersion)) {
+                                $uninstallVersion = [string]$item.DisplayVersion
+                            }
+                            break
+                        }
+                    }
+                }
+            } catch { $null = $_ }
+        }
+        if ($uninstallSuiteName) { break }
+    }
+
+    # 3. Map Suite Title
+    $suiteTitle = $null
+    if (-not [string]::IsNullOrWhiteSpace($productReleaseIds)) {
+        if ($productReleaseIds -match '(?i)ProPlus2024Volume') { $suiteTitle = 'Microsoft Office LTSC Professional Plus 2024 [LTSC Volume]' }
+        elseif ($productReleaseIds -match '(?i)ProPlus2021Volume') { $suiteTitle = 'Microsoft Office LTSC Professional Plus 2021 [LTSC Volume]' }
+        elseif ($productReleaseIds -match '(?i)ProPlus2019Volume') { $suiteTitle = 'Microsoft Office Professional Plus 2019 [Volume]' }
+        elseif ($productReleaseIds -match '(?i)O365ProPlusRetail') { $suiteTitle = 'Microsoft 365 Apps for enterprise (ProPlus)' }
+        elseif ($productReleaseIds -match '(?i)O365BusinessRetail') { $suiteTitle = 'Microsoft 365 Apps for business' }
+        elseif ($productReleaseIds -match '(?i)Standard2021Volume') { $suiteTitle = 'Microsoft Office LTSC Standard 2021 [LTSC Volume]' }
+        else { $suiteTitle = "Microsoft Office ($productReleaseIds)" }
+    }
+    if (-not $suiteTitle -and -not [string]::IsNullOrWhiteSpace($uninstallSuiteName)) {
+        $suiteTitle = $uninstallSuiteName
+    }
+    if (-not $suiteTitle) {
+        $suiteTitle = if ($c2rProps) { 'Microsoft Office [Click-to-Run]' } else { 'Not Detected [STANDBY]' }
+    }
+    $lines.Add("Office Suite   : $suiteTitle")
+
+    # 4. Build & Channel
+    $c2rVer = if (-not [string]::IsNullOrWhiteSpace($versionToReport)) { $versionToReport } elseif (-not [string]::IsNullOrWhiteSpace($uninstallVersion)) { $uninstallVersion } else { '16.0' }
+    $c2rArch = if (-not [string]::IsNullOrWhiteSpace($platform)) { $platform.ToLowerInvariant() } else { 'x64' }
+    $deployType = if ($c2rProps) { 'Click-to-Run' } elseif ($uninstallSuiteName) { 'MSI' } else { 'Click-to-Run' }
+    $lic = if ($productReleaseIds -match '(?i)Volume') { 'Volume' } elseif ($productReleaseIds -match '(?i)Retail') { 'Retail' } else { 'Standard' }
+    $lines.Add("Build & Channel: $c2rVer | $c2rArch | $deployType | $lic")
+
+    # 5. Installed Apps fallback
+    $lines.Add("Installed Apps : Word, Excel, PowerPoint, Outlook, OneNote (5)")
+    $lines.Add("Active Suite   : None [STANDBY]")
+    $lines.Add("Mail Profile   : Default Profile: None")
     return $lines.ToArray()
 }
 
@@ -177,6 +247,11 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 Wait-UserAcknowledge
             }
             '2' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Office identity cache and purging WAM tokens" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Reset Office Identity cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Reset-OfficeIdentityCache' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Resetting Office Identity cache, OneAuth, and WAM broker plugin tokens..." -Type 'INFO'
@@ -196,6 +271,11 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 Wait-UserAcknowledge
             }
             '3' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Office processes" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Terminate Office processes cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Terminating all running Microsoft Office suite processes..." -Type 'INFO'

@@ -4,6 +4,12 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
         . $waitScript
     }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path $confirmScript) {
+        . $confirmScript
+    }
+}
 
 if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
     $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
@@ -151,6 +157,11 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
 
         switch ("$($selection.Value)") {
             '1' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "restarting network adapter '$deviceName'" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Restart network adapter cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Restart-ToolkitNetworkAdapter' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Restarting network adapter '$deviceName'..." -Type 'INFO'
@@ -212,6 +223,11 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
                 Wait-UserAcknowledge
             }
             '4' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "purging print spooler queue for '$deviceName'" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Purge print spooler queue cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Purging print spooler queue and restarting service..." -Type 'INFO'
@@ -370,6 +386,11 @@ function Invoke-ToolkitSubmenuConnectivity {
 
         switch ($actionKey) {
             { $_ -in @('10', '1') } {
+                if (-not (Confirm-ToolkitAction -ActionDescription "applying comprehensive network remediation fixes" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Network remediation cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Set-NetworkRemediation' -ErrorAction SilentlyContinue) {
                     try {
                         $res = Set-NetworkRemediation -All
@@ -381,6 +402,11 @@ function Invoke-ToolkitSubmenuConnectivity {
                 Wait-UserAcknowledge
             }
             { $_ -in @('11', '2') } {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting TCP/IP stack, Winsock catalog, and flushing DNS cache" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Reset TCP/IP stack cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Set-NetworkRemediation' -ErrorAction SilentlyContinue) {
                     try {
                         $res = Set-NetworkRemediation -Fix @('DnsResolution', 'DhcpLease', 'Winsock', 'TcpIpStack', 'DefaultGatewayArp')
@@ -392,6 +418,11 @@ function Invoke-ToolkitSubmenuConnectivity {
                 Wait-UserAcknowledge
             }
             { $_ -in @('12', '3') } {
+                if (-not (Confirm-ToolkitAction -ActionDescription "purging print spooler service and print job queues" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Purge print spooler cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
                     try {
                         Reset-PrintSpoolerQueue
@@ -447,6 +478,11 @@ function Invoke-ToolkitSubmenuConnectivity {
                 Wait-UserAcknowledge
             }
             { $_ -in @('17', '8') } {
+                if (-not (Confirm-ToolkitAction -ActionDescription "restarting all physical network adapters" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Restart all physical adapters cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 if (Get-Command -Name 'Restart-ToolkitNetworkAdapter' -ErrorAction SilentlyContinue) {
                     try {
                         Restart-ToolkitNetworkAdapter

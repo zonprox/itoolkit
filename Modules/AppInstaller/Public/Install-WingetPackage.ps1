@@ -6,7 +6,7 @@ function Install-WingetPackage {
     Invokes winget install with silent flags, source/package agreement acceptance, and exact package matching.
     Supports -WhatIf / SupportsShouldProcess.
 .PARAMETER PackageId
-    The unique identifier of the package in the winget repository (e.g. 'Google.Chrome', 'PhamKimLong.UniKey').
+    The unique identifier of the package in the winget repository (e.g. 'Google.Chrome', 'RARLab.WinRAR').
 .PARAMETER Exact
     Enforces exact package ID matching (--exact). Default is true.
 .PARAMETER Silent

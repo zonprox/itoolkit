@@ -33,6 +33,10 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
     $waitScript = Join-Path $PSScriptRoot '../Private/Wait-UserAcknowledge.ps1'
     if (Test-Path $waitScript) { . $waitScript }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path $confirmScript) { . $confirmScript }
+}
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path $headerScript) { . $headerScript }
@@ -219,6 +223,11 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '2' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "clearing Excel XLSTART startup folder and add-ins" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Excel XLSTART cleanup cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Scanning and isolating rogue XLSTART files..." -Type 'INFO'
                     if (Get-Command -Name 'Clear-ExcelStartupFolder' -ErrorAction SilentlyContinue) {
@@ -239,6 +248,11 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '3' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft Excel UI toolbar and ribbon cache" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Excel UI cache reset cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Resetting Excel UI workspace, ribbon, and QAT cache..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-ExcelUiCache' -ErrorAction SilentlyContinue) {
@@ -315,6 +329,11 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '6' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Excel processes" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Terminate Excel processes cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Terminating active Excel (EXCEL) processes..." -Type 'INFO'
                     if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {

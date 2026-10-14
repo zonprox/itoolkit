@@ -32,6 +32,10 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
     $waitScript = Join-Path $PSScriptRoot '../Private/Wait-UserAcknowledge.ps1'
     if (Test-Path -LiteralPath $waitScript) { . $waitScript }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path -LiteralPath $confirmScript) { . $confirmScript }
+}
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path -LiteralPath $headerScript) { . $headerScript }
@@ -178,6 +182,11 @@ function Invoke-ToolkitSubmenuOfficeWord {
 
         switch ($actionKey) {
             '1' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft Word default template (Normal.dotm)" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Word template reset cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Initiating Normal.dotm template recovery..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WordTemplate' -ErrorAction SilentlyContinue) {
@@ -198,6 +207,11 @@ function Invoke-ToolkitSubmenuOfficeWord {
                 Wait-UserAcknowledge
             }
             '2' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "isolating and disabling all Microsoft Word startup add-ins" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Word startup add-in reset cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Scanning and isolating rogue Word startup add-ins..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WordStartupAddin' -ErrorAction SilentlyContinue) {
@@ -216,6 +230,11 @@ function Invoke-ToolkitSubmenuOfficeWord {
                 Wait-UserAcknowledge
             }
             '3' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft Word registry settings and data keys" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Word registry reset cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Exporting backup and resetting Word Data & Options registry keys..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WordRegistryData' -ErrorAction SilentlyContinue) {
@@ -253,6 +272,11 @@ function Invoke-ToolkitSubmenuOfficeWord {
                 Wait-UserAcknowledge
             }
             '5' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Word processes" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Terminate Word processes cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
                     Write-ToolkitStatus -Message "Terminating active Word (WINWORD) processes..." -Type 'INFO'
                     if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {

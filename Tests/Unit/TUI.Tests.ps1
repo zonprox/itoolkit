@@ -130,6 +130,68 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         }
     }
 
+    Context 'Interactive Confirmation Gate: Confirm-ToolkitAction' {
+        It 'Confirm-ToolkitAction returns true immediately when -NonInteractive is specified' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { throw "Read-Host should not be called when -NonInteractive" }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action' -NonInteractive
+            $res | Should -BeTrue
+        }
+
+        It 'Confirm-ToolkitAction returns true when user enters y' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return 'y' }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeTrue
+        }
+
+        It 'Confirm-ToolkitAction returns true when user enters yes case-insensitively' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return 'YES' }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeTrue
+        }
+
+        It 'Confirm-ToolkitAction returns true when user input has surrounding whitespace' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '  y  ' }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeTrue
+        }
+
+        It 'Confirm-ToolkitAction returns false when user enters n' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return 'n' }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeFalse
+        }
+
+        It 'Confirm-ToolkitAction returns false on empty string (pressing Enter for default No)' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '' }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeFalse
+        }
+
+        It 'Confirm-ToolkitAction returns false on whitespace-only input' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return '   ' }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeFalse
+        }
+
+        It 'Confirm-ToolkitAction returns false on null input' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return $null }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeFalse
+        }
+
+        It 'Confirm-ToolkitAction returns false on arbitrary input other than y/yes' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { return 'cancel' }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeFalse
+        }
+
+        It 'Confirm-ToolkitAction safely returns false when Read-Host throws exception' -Skip:(-not $isTUIAvailable) {
+            Mock Read-Host { throw "Console error" }
+            $res = Confirm-ToolkitAction -ActionDescription 'test action'
+            $res | Should -BeFalse
+        }
+    }
+
     Context 'Start-IToolkitMenu Execution Modes & Non-Interactive Contract' {
         It 'Start-IToolkitMenu returns immediately when -ExitImmediately is specified' -Skip:(-not $isTUIAvailable) {
             { Start-IToolkitMenu -ExitImmediately } | Should -Not -Throw
@@ -605,6 +667,162 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:sfcRan | Should -BeTrue
             $script:dismRan | Should -BeTrue
         }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth executes Reset Windows Update (key 4) when confirmed' -Skip:(-not $isTUIAvailable) {
+            $script:wuCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Reset-WindowsUpdateComponents { $script:wuCalled = $true; return [PSCustomObject]@{ Success = $true } }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '4' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:wuCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth aborts Reset Windows Update (key 4) when cancelled' -Skip:(-not $isTUIAvailable) {
+            $script:wuCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-WindowsUpdateComponents { $script:wuCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '4' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:wuCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth executes Reset Network Stack (key 5) when confirmed' -Skip:(-not $isTUIAvailable) {
+            $script:netCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Reset-NetworkStack { $script:netCalled = $true; return [PSCustomObject]@{ Success = $true } }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:netCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth aborts Reset Network Stack (key 5) when cancelled' -Skip:(-not $isTUIAvailable) {
+            $script:netCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-NetworkStack { $script:netCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:netCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth executes Repair WMI Repository (key 6) when confirmed' -Skip:(-not $isTUIAvailable) {
+            $script:wmiCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Repair-WmiRepository { $script:wmiCalled = $true; return [PSCustomObject]@{ Success = $true; Status = 'Salvaged' } }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:wmiCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth aborts Repair WMI Repository (key 6) when cancelled' -Skip:(-not $isTUIAvailable) {
+            $script:wmiCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Repair-WmiRepository { $script:wmiCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:wmiCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth executes Deep Disk Cleanup (key 8) when confirmed' -Skip:(-not $isTUIAvailable) {
+            $script:cleanCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Invoke-WindowsCleanup { $script:cleanCalled = $true; return [PSCustomObject]@{ Success = $true; ReclaimedBytes = 1048576 } }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '8' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:cleanCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth aborts Deep Disk Cleanup (key 8) when cancelled' -Skip:(-not $isTUIAvailable) {
+            $script:cleanCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Invoke-WindowsCleanup { $script:cleanCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '8' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:cleanCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth executes Clear Temp & Logs (key 9) when confirmed' -Skip:(-not $isTUIAvailable) {
+            $script:tempCalled = $false
+            $script:logsCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Clear-WindowsTempCache { $script:tempCalled = $true }
+            Mock Clear-WindowsSystemLogs { $script:logsCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '9' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:tempCalled | Should -BeTrue
+            $script:logsCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth aborts Clear Temp & Logs (key 9) when cancelled' -Skip:(-not $isTUIAvailable) {
+            $script:tempCalled = $false
+            $script:logsCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Clear-WindowsTempCache { $script:tempCalled = $true }
+            Mock Clear-WindowsSystemLogs { $script:logsCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '9' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $script:tempCalled | Should -BeFalse
+            $script:logsCalled | Should -BeFalse
+        }
     }
 
     Context 'Pillar 2: Main Office Hub Dispatcher & Navigation Workflow' {
@@ -717,6 +935,130 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitSubmenuOffice -ExitImmediately } | Should -Not -Throw
             $script:suiteRan | Should -BeTrue
         }
+
+        It 'Get-OfficeSuiteContextInfoLines detects ProPlus2021Volume with LTSC Volume edition, architecture, build, and inferred installed apps excluding Access and Publisher' -Skip:(-not $isTUIAvailable) {
+            Mock Test-Path {
+                param($LiteralPath, $Path)
+                $p = if ($LiteralPath) { $LiteralPath } else { $Path }
+                if ($p -match 'ClickToRun\\Configuration') { return $true }
+                return $false
+            }
+            Mock Get-ItemProperty {
+                param($LiteralPath, $Path)
+                $p = if ($LiteralPath) { $LiteralPath } else { $Path }
+                if ($p -match 'ClickToRun\\Configuration') {
+                    return [PSCustomObject]@{
+                        ProductReleaseIds                = 'ProPlus2021Volume'
+                        VersionToReport                  = '16.0.14332.20481'
+                        Platform                         = 'x64'
+                        UpdateChannel                    = 'http://officecdn.microsoft.com/pr/f32ced47-09a4-4570-951d-b6182512f42a'
+                        'ProPlus2021Volume.ExcludedApps' = 'Access,Publisher'
+                    }
+                }
+                return $null
+            }
+
+            $lines = Get-OfficeSuiteContextInfoLines
+            $lines | Should -Not -BeNullOrEmpty
+            $lines[0] | Should -Match 'Office Suite\s*:\s*.*Professional Plus.*2021.*\[LTSC Volume\]'
+            $lines[0] | Should -Match 'LTSC'
+            $lines[1] | Should -Match 'Build & Channel\s*:\s*16\.0\.14332\.20481\s*\|\s*x64\s*\|\s*Click-to-Run'
+            $lines[2] | Should -Match 'Installed Apps\s*:\s*Word, Excel, PowerPoint, Outlook, OneNote \(5\)'
+            $lines[2] | Should -Not -Match 'Access'
+            $lines[2] | Should -Not -Match 'Publisher'
+            $lines[3] | Should -Match 'Active Suite\s*:\s*None \[STANDBY\]'
+            $lines[4] | Should -Match 'Mail Profile\s*:\s*Default Profile:'
+        }
+
+        It 'Get-OfficeSuiteContextInfoLines detects O365ProPlusRetail subscription edition and all default applications' -Skip:(-not $isTUIAvailable) {
+            Mock Test-Path {
+                param($LiteralPath, $Path)
+                $p = if ($LiteralPath) { $LiteralPath } else { $Path }
+                if ($p -match 'ClickToRun\\Configuration') { return $true }
+                return $false
+            }
+            Mock Get-ItemProperty {
+                param($LiteralPath, $Path)
+                $p = if ($LiteralPath) { $LiteralPath } else { $Path }
+                if ($p -match 'ClickToRun\\Configuration') {
+                    return [PSCustomObject]@{
+                        ProductReleaseIds = 'O365ProPlusRetail'
+                        VersionToReport   = '16.0.17830.20138'
+                        Platform          = 'x64'
+                        UpdateChannel     = 'http://officecdn.microsoft.com/pr/492350f6-3a01-4f97-b9c0-c7c6ddf67d60'
+                    }
+                }
+                return $null
+            }
+
+            $lines = Get-OfficeSuiteContextInfoLines
+            $lines | Should -Not -BeNullOrEmpty
+            $lines[0] | Should -Match 'Microsoft 365 Apps for enterprise \(ProPlus\)'
+            $lines[1] | Should -Match '16\.0\.17830\.20138\s*\|\s*x64\s*\|\s*Click-to-Run'
+            $lines[2] | Should -Match 'Word'
+            $lines[2] | Should -Match 'Excel'
+            $lines[2] | Should -Match 'PowerPoint'
+            $lines[2] | Should -Match 'Outlook'
+            $lines[2] | Should -Match 'Access'
+        }
+
+        It 'Get-OfficeSuiteContextInfoLines detects installed applications via executable file existence' -Skip:(-not $isTUIAvailable) {
+            Mock Test-Path {
+                param($LiteralPath, $Path)
+                $p = if ($LiteralPath) { $LiteralPath } else { $Path }
+                if ($p -match 'ClickToRun\\Configuration') { return $true }
+                if ($p -match 'WINWORD\.EXE|EXCEL\.EXE|POWERPNT\.EXE') { return $true }
+                return $false
+            }
+            Mock Get-ItemProperty {
+                param($LiteralPath, $Path)
+                $p = if ($LiteralPath) { $LiteralPath } else { $Path }
+                if ($p -match 'ClickToRun\\Configuration') {
+                    return [PSCustomObject]@{
+                        ProductReleaseIds = 'ProPlus2019Retail'
+                        VersionToReport   = '16.0.10399.20000'
+                        Platform          = 'x86'
+                    }
+                }
+                return $null
+            }
+
+            $lines = Get-OfficeSuiteContextInfoLines
+            $lines | Should -Not -BeNullOrEmpty
+            $lines[0] | Should -Match 'Professional Plus 2019'
+            $lines[1] | Should -Match 'x86'
+            $lines[2] | Should -Match 'Word, Excel, PowerPoint \(3\)'
+            $lines[2] | Should -Not -Match 'Outlook'
+        }
+
+        It 'Get-OfficeSuiteContextInfoLines returns graceful standby status when no Office installation is detected' -Skip:(-not $isTUIAvailable) {
+            Mock Test-Path { return $false }
+            Mock Get-ItemProperty { return $null }
+
+            $lines = Get-OfficeSuiteContextInfoLines
+            $lines | Should -Not -BeNullOrEmpty
+            $lines[0] | Should -Match 'Office Suite\s*:\s*Not Detected'
+            $lines[2] | Should -Match 'Installed Apps\s*:\s*None Detected'
+            $lines[3] | Should -Match 'Active Suite\s*:\s*None'
+        }
+
+        It 'Get-OfficeCommonContextInfoLines delegates to Get-OfficeSuiteContextInfoLines and mirrors suite context' -Skip:(-not $isTUIAvailable) {
+            Mock Get-OfficeSuiteContextInfoLines {
+                return @(
+                    'Office Suite   : Microsoft Office LTSC Professional Plus 2021 [LTSC Volume]',
+                    'Build & Channel: 16.0.14332.20481 | x64 | Click-to-Run | Perpetual 2021 (Volume)',
+                    'Installed Apps : Word, Excel, PowerPoint, Outlook, OneNote (5)',
+                    'Active Suite   : None [STANDBY]',
+                    'Mail Profile   : Default Profile: None'
+                )
+            }
+
+            $lines = Get-OfficeCommonContextInfoLines
+            $lines | Should -Not -BeNullOrEmpty
+            $lines[0] | Should -Match 'Professional Plus 2021'
+            $lines[1] | Should -Match 'Click-to-Run'
+            $lines[2] | Should -Match 'Word, Excel'
+        }
     }
 
     Context 'Pillar 2 Submenu: Office Suite Common Operations Workflow' {
@@ -760,6 +1102,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficeCommon executes Reset Identity Cache & Purge WAM Tokens (key 2)' -Skip:(-not $isTUIAvailable) {
             $script:purgeWamPassed = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-OfficeIdentityCache {
                 param([switch]$PurgeWamTokens)
                 $script:purgeWamPassed = [bool]$PurgeWamTokens
@@ -776,8 +1119,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:purgeWamPassed | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficeCommon aborts Reset Identity Cache (key 2) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:purgeWamPassed = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-OfficeIdentityCache { $script:purgeWamPassed = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeCommon } | Should -Not -Throw
+            $script:purgeWamPassed | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficeCommon executes Terminate All Office Processes (key 3)' -Skip:(-not $isTUIAvailable) {
             $script:stopAllRan = $false
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 $script:stopAllRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; Terminated = @('WINWORD', 'EXCEL', 'OUTLOOK') }
@@ -791,6 +1150,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficeCommon } | Should -Not -Throw
             $script:stopAllRan | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeCommon aborts Terminate All Office Processes (key 3) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:stopAllRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { $script:stopAllRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeCommon } | Should -Not -Throw
+            $script:stopAllRan | Should -BeFalse
         }
 
         It 'Invoke-ToolkitSubmenuOfficeCommon executes Native Clean Uninstaller (key 4) when confirmed' -Skip:(-not $isTUIAvailable) {
@@ -860,6 +1234,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficeWord executes Reset Word Template (key 1)' -Skip:(-not $isTUIAvailable) {
             $script:tmplRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-WordTemplate {
                 $script:tmplRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; Backup = 'Normal_Backup.dotm' }
@@ -875,8 +1250,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:tmplRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficeWord aborts Reset Word Template (key 1) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:tmplRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-WordTemplate { $script:tmplRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:wStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:wStep++
+                if ($script:wStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:tmplRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficeWord executes Isolate Startup Add-ins (key 2)' -Skip:(-not $isTUIAvailable) {
             $script:addinRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-WordStartupAddin {
                 $script:addinRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; AddinsIsolated = 1 }
@@ -892,8 +1283,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:addinRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficeWord aborts Isolate Startup Add-ins (key 2) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:addinRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-WordStartupAddin { $script:addinRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:wStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:wStep++
+                if ($script:wStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:addinRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficeWord executes Reset Word Registry Data (key 3)' -Skip:(-not $isTUIAvailable) {
             $script:regRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-WordRegistryData {
                 $script:regRan = $true
                 return [PSCustomObject]@{ Status = 'Success' }
@@ -907,6 +1314,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
             $script:regRan | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeWord aborts Reset Word Registry Data (key 3) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:regRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-WordRegistryData { $script:regRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:wStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:wStep++
+                if ($script:wStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:regRan | Should -BeFalse
         }
 
         It 'Invoke-ToolkitSubmenuOfficeWord executes Clear Orphaned Locks (key 4)' -Skip:(-not $isTUIAvailable) {
@@ -928,6 +1350,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficeWord executes Terminate Word Processes (key 5)' -Skip:(-not $isTUIAvailable) {
             $script:termTarget = $null
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames)
                 $script:termTarget = $ProcessNames
@@ -942,6 +1365,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
             $script:termTarget | Should -Contain 'WINWORD'
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeWord aborts Terminate Word Processes (key 5) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:termTarget = $null
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { param($ProcessNames) $script:termTarget = $ProcessNames }
+            Mock Wait-UserAcknowledge { }
+            $script:wStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:wStep++
+                if ($script:wStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:termTarget | Should -BeNullOrEmpty
         }
     }
 
@@ -986,6 +1424,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficeExcel executes Clear XLSTART Add-ins (key 2)' -Skip:(-not $isTUIAvailable) {
             $script:xlstartRan = $false
+            Mock Read-Host { return 'y' }
             Mock Clear-ExcelStartupFolder {
                 $script:xlstartRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; RemovedFiles = @('Book.xltx') }
@@ -1001,8 +1440,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:xlstartRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficeExcel aborts Clear XLSTART Add-ins (key 2) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:xlstartRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Clear-ExcelStartupFolder { $script:xlstartRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:eStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:eStep++
+                if ($script:eStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
+            $script:xlstartRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficeExcel executes Reset UI Cache (key 3)' -Skip:(-not $isTUIAvailable) {
             $script:uiRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-ExcelUiCache {
                 $script:uiRan = $true
                 return [PSCustomObject]@{ Status = 'Success' }
@@ -1016,6 +1471,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
             $script:uiRan | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeExcel aborts Reset UI Cache (key 3) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:uiRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-ExcelUiCache { $script:uiRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:eStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:eStep++
+                if ($script:eStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
+            $script:uiRan | Should -BeFalse
         }
 
         It 'Invoke-ToolkitSubmenuOfficeExcel executes Reset DDE Settings (key 4)' -Skip:(-not $isTUIAvailable) {
@@ -1054,6 +1524,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficeExcel executes Terminate Excel Processes (key 6)' -Skip:(-not $isTUIAvailable) {
             $script:termTarget = $null
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames)
                 $script:termTarget = $ProcessNames
@@ -1068,6 +1539,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
             $script:termTarget | Should -Contain 'EXCEL'
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeExcel aborts Terminate Excel Processes (key 6) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:termTarget = $null
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { param($ProcessNames) $script:termTarget = $ProcessNames }
+            Mock Wait-UserAcknowledge { }
+            $script:eStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:eStep++
+                if ($script:eStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
+            $script:termTarget | Should -BeNullOrEmpty
         }
     }
 
@@ -1112,6 +1598,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficePowerPoint executes Reset Font & Slide Cache (key 2)' -Skip:(-not $isTUIAvailable) {
             $script:pptCacheRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-PowerPointCache {
                 $script:pptCacheRan = $true
                 return [PSCustomObject]@{ Status = 'Success' }
@@ -1127,8 +1614,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:pptCacheRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficePowerPoint aborts Reset Font & Slide Cache (key 2) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:pptCacheRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-PowerPointCache { $script:pptCacheRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:pStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:pStep++
+                if ($script:pStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
+            $script:pptCacheRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficePowerPoint executes Reset Resiliency & Add-ins (key 3)' -Skip:(-not $isTUIAvailable) {
             $script:pptResilRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-PowerPointResiliency {
                 $script:pptResilRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; ClearedItems = 2 }
@@ -1144,8 +1647,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:pptResilRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficePowerPoint aborts Reset Resiliency & Add-ins (key 3) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:pptResilRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-PowerPointResiliency { $script:pptResilRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:pStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:pStep++
+                if ($script:pStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
+            $script:pptResilRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficePowerPoint executes Terminate PowerPoint Processes (key 4)' -Skip:(-not $isTUIAvailable) {
             $script:termTarget = $null
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames)
                 $script:termTarget = $ProcessNames
@@ -1160,6 +1679,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
             $script:termTarget | Should -Contain 'POWERPNT'
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficePowerPoint aborts Terminate PowerPoint Processes (key 4) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:termTarget = $null
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { param($ProcessNames) $script:termTarget = $ProcessNames }
+            Mock Wait-UserAcknowledge { }
+            $script:pStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:pStep++
+                if ($script:pStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '4' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
+            $script:termTarget | Should -BeNullOrEmpty
         }
     }
 
@@ -1207,6 +1741,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficeOutlook executes Clear Stuck Outbox (key 10)' -Skip:(-not $isTUIAvailable) {
             $script:outboxRan = $false
+            Mock Read-Host { return 'y' }
             Mock Clear-OutlookStuckOutbox {
                 $script:outboxRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; ClearedMessages = 0 }
@@ -1222,8 +1757,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:outboxRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficeOutlook aborts Clear Stuck Outbox (key 10) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:outboxRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Clear-OutlookStuckOutbox { $script:outboxRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:oStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:oStep++
+                if ($script:oStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '10' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:outboxRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficeOutlook executes Reset Send/Receive Settings SRS (key 11)' -Skip:(-not $isTUIAvailable) {
             $script:srsRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-OutlookSendReceiveSettings {
                 $script:srsRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; BackupFile = 'Outlook.srs.bak' }
@@ -1239,8 +1790,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:srsRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficeOutlook aborts Reset Send/Receive Settings SRS (key 11) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:srsRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-OutlookSendReceiveSettings { $script:srsRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:oStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:oStep++
+                if ($script:oStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '11' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:srsRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficeOutlook executes Clear RoamCache Streams (key 12)' -Skip:(-not $isTUIAvailable) {
             $script:roamRan = $false
+            Mock Read-Host { return 'y' }
             Mock Clear-OutlookRoamCache {
                 $script:roamRan = $true
                 return [PSCustomObject]@{ Status = 'Success'; PurgedCount = 12 }
@@ -1256,8 +1823,24 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:roamRan | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuOfficeOutlook aborts Clear RoamCache Streams (key 12) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:roamRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Clear-OutlookRoamCache { $script:roamRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:oStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:oStep++
+                if ($script:oStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '12' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:roamRan | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuOfficeOutlook executes Reset Navigation Pane (key 13)' -Skip:(-not $isTUIAvailable) {
             $script:navPaneRan = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-OutlookNavigationPane {
                 $script:navPaneRan = $true
                 return [PSCustomObject]@{ Status = 'Success' }
@@ -1271,6 +1854,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
             $script:navPaneRan | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeOutlook aborts Reset Navigation Pane (key 13) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:navPaneRan = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-OutlookNavigationPane { $script:navPaneRan = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:oStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:oStep++
+                if ($script:oStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '13' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:navPaneRan | Should -BeFalse
         }
 
         It 'Invoke-ToolkitSubmenuOfficeOutlook executes Compact Outlook Data Files (key 14)' -Skip:(-not $isTUIAvailable) {
@@ -1309,6 +1907,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuOfficeOutlook executes Terminate Outlook Processes (key 16)' -Skip:(-not $isTUIAvailable) {
             $script:termTarget = $null
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames)
                 $script:termTarget = $ProcessNames
@@ -1323,6 +1922,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
             $script:termTarget | Should -Contain 'OUTLOOK'
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeOutlook aborts Terminate Outlook Processes (key 16) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:termTarget = $null
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { param($ProcessNames) $script:termTarget = $ProcessNames }
+            Mock Wait-UserAcknowledge { }
+            $script:oStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:oStep++
+                if ($script:oStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '16' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:termTarget | Should -BeNullOrEmpty
         }
 
         It 'Invoke-ToolkitSubmenuOutlook compatibility alias delegates to Invoke-ToolkitSubmenuOfficeOutlook' -Skip:(-not $isTUIAvailable) {
@@ -1401,6 +2015,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuConnectivity dispatches Spooler Restart on key 12' -Skip:(-not $isTUIAvailable) {
             $script:spoolerCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-PrintSpoolerQueue { $script:spoolerCalled = $true }
             Mock Wait-UserAcknowledge { }
 
@@ -1414,8 +2029,25 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:spoolerCalled | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitSubmenuConnectivity aborts Spooler Restart on key 12 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:spoolerCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-PrintSpoolerQueue { $script:spoolerCalled = $true }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '12' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:spoolerCalled | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitSubmenuConnectivity dispatches Apply All Fixes on key 10' -Skip:(-not $isTUIAvailable) {
             $script:netRemCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Set-NetworkRemediation {
                 param([switch]$All)
                 $script:netRemCalled = [bool]$All
@@ -1431,6 +2063,93 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
             $script:netRemCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuConnectivity aborts Apply All Fixes on key 10 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:netRemCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Set-NetworkRemediation { param([switch]$All) $script:netRemCalled = [bool]$All }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '10' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:netRemCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitSubmenuConnectivity dispatches Reset TCP/IP, Winsock & DNS on key 11' -Skip:(-not $isTUIAvailable) {
+            $script:netFixCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Set-NetworkRemediation {
+                param($Fix)
+                $script:netFixCalled = $true
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '11' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:netFixCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuConnectivity aborts Reset TCP/IP, Winsock & DNS on key 11 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:netFixCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Set-NetworkRemediation { param($Fix) $script:netFixCalled = $true }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '11' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:netFixCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitSubmenuConnectivity dispatches Restart All Adapters on key 17' -Skip:(-not $isTUIAvailable) {
+            $script:adpRestartCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Restart-ToolkitNetworkAdapter {
+                $script:adpRestartCalled = $true
+                return @{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '17' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:adpRestartCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuConnectivity aborts Restart All Adapters on key 17 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:adpRestartCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Restart-ToolkitNetworkAdapter { $script:adpRestartCalled = $true }
+            Mock Wait-UserAcknowledge { }
+
+            Mock Read-ToolkitItemSelection {
+                return [PSCustomObject]@{ Type = 'Hotkey'; Value = '17' }
+            }
+            Mock Wait-UserAcknowledge {
+                Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
+            }
+            { Invoke-ToolkitSubmenuConnectivity } | Should -Not -Throw
+            $script:adpRestartCalled | Should -BeFalse
         }
     }
 
@@ -1570,6 +2289,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Win11Debloat on key 10' -Skip:(-not $isTUIAvailable) {
             $script:debloatCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Invoke-Win11Debloat {
                 $script:debloatCalled = $true
                 return [PSCustomObject]@{ Success = $true }
@@ -1583,6 +2303,54 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
             $script:debloatCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization aborts Win11Debloat on key 10 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:debloatCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Invoke-Win11Debloat { $script:debloatCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:sCount = 0
+            Mock Read-ToolkitItemSelection {
+                $script:sCount++
+                if ($script:sCount -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '10' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
+            $script:debloatCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Browser Debloat on key 11' -Skip:(-not $isTUIAvailable) {
+            $script:browserDebloatCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Invoke-BrowserDebloat {
+                $script:browserDebloatCalled = $true
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:sCount = 0
+            Mock Read-ToolkitItemSelection {
+                $script:sCount++
+                if ($script:sCount -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '11' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
+            $script:browserDebloatCalled | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization aborts Browser Debloat on key 11 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:browserDebloatCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Invoke-BrowserDebloat { $script:browserDebloatCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:sCount = 0
+            Mock Read-ToolkitItemSelection {
+                $script:sCount++
+                if ($script:sCount -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '11' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
+            $script:browserDebloatCalled | Should -BeFalse
         }
     }
 
@@ -1633,6 +2401,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         It 'Invoke-ToolkitAccountContextMenu executes Toggle State (key 1) with targeted username' -Skip:(-not $isTUIAvailable) {
             $script:toggledUser = $null
             $script:toggledState = $null
+            Mock Read-Host { return 'y' }
             Mock Set-LocalAccountState {
                 param($Username, $Enabled)
                 $script:toggledUser = $Username
@@ -1648,6 +2417,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitAccountContextMenu -Account $script:testAccount } | Should -Not -Throw
             $script:toggledUser | Should -Be 'TestAdmin'
             $script:toggledState | Should -Be $false
+        }
+
+        It 'Invoke-ToolkitAccountContextMenu aborts Toggle State (key 1) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:toggledUser = $null
+            Mock Read-Host { return 'n' }
+            Mock Set-LocalAccountState { param($Username, $Enabled) $script:toggledUser = $Username }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $script:testAccount } | Should -Not -Throw
+            $script:toggledUser | Should -BeNullOrEmpty
         }
 
         It 'Invoke-ToolkitAccountContextMenu executes Unlock Account (key 2) with targeted username' -Skip:(-not $isTUIAvailable) {
@@ -1794,6 +2578,29 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitAccountContextMenu -Account $standardAccount } | Should -Not -Throw
             $script:delUser | Should -Be 'StandardUser'
             $script:delSid | Should -Be 'S-1-5-21-1234567890-1008'
+        }
+
+        It 'Invoke-ToolkitAccountContextMenu aborts Delete Account (key 5) when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $standardAccount = [PSCustomObject]@{
+                Name    = 'StandardUser'
+                Status  = '[ENABLED]'
+                Enabled = $true
+                Locked  = $false
+                SID     = 'S-1-5-21-1234567890-1008'
+                Details = 'Standard User'
+            }
+            $script:delUser = $null
+            Mock Remove-LocalAccountItem { param($Username, $SID) $script:delUser = $Username }
+            Mock Read-Host { return 'n' }
+            Mock Wait-UserAcknowledge { }
+            $script:cStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:cStep++
+                if ($script:cStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitAccountContextMenu -Account $standardAccount } | Should -Not -Throw
+            $script:delUser | Should -BeNullOrEmpty
         }
 
         It 'Invoke-ToolkitAccountContextMenu binds Username property and blocks SID-500' -Skip:(-not $isTUIAvailable) {
@@ -2130,6 +2937,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitNetworkDeviceContextMenu executes Restart Adapter (key 1) with targeted device' -Skip:(-not $isTUIAvailable) {
             $script:restartedDev = $null
+            Mock Read-Host { return 'y' }
             Mock Restart-ToolkitNetworkAdapter {
                 param($Name)
                 $script:restartedDev = $Name
@@ -2144,6 +2952,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitNetworkDeviceContextMenu -Device $script:testDevice } | Should -Not -Throw
             $script:restartedDev | Should -Be 'Ethernet0'
+        }
+
+        It 'Invoke-ToolkitNetworkDeviceContextMenu aborts Restart Adapter (key 1) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:restartedDev = $null
+            Mock Read-Host { return 'n' }
+            Mock Restart-ToolkitNetworkAdapter { param($Name) $script:restartedDev = $Name }
+            Mock Wait-UserAcknowledge { }
+            $script:dStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:dStep++
+                if ($script:dStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitNetworkDeviceContextMenu -Device $script:testDevice } | Should -Not -Throw
+            $script:restartedDev | Should -BeNullOrEmpty
         }
 
         It 'Invoke-ToolkitNetworkDeviceContextMenu executes Flush DNS & Renew DHCP (key 2)' -Skip:(-not $isTUIAvailable) {
@@ -2165,6 +2988,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
 
         It 'Invoke-ToolkitNetworkDeviceContextMenu executes Purge Spooler Queue (key 4)' -Skip:(-not $isTUIAvailable) {
             $script:spoolerReset = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-PrintSpoolerQueue {
                 param([switch]$Force)
                 $script:spoolerReset = [bool]$Force
@@ -2180,6 +3004,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:spoolerReset | Should -BeTrue
         }
 
+        It 'Invoke-ToolkitNetworkDeviceContextMenu aborts Purge Spooler Queue (key 4) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:spoolerReset = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-PrintSpoolerQueue { param([switch]$Force) $script:spoolerReset = [bool]$Force }
+            Mock Wait-UserAcknowledge { }
+            $script:dStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:dStep++
+                if ($script:dStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '4' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitNetworkDeviceContextMenu -Device $script:testDevice } | Should -Not -Throw
+            $script:spoolerReset | Should -BeFalse
+        }
+
         It 'Invoke-ToolkitNetworkDeviceContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {
             Mock Read-ToolkitItemSelection { return [PSCustomObject]@{ Type = 'Exit'; Value = '0' } }
             { Invoke-ToolkitNetworkDeviceContextMenu -Device $script:testDevice } | Should -Not -Throw
@@ -2190,8 +3029,8 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         BeforeAll {
             $script:testApplication = [PSCustomObject]@{
                 AppName        = 'WinRAR'
-                DisplayName    = 'WinRAR Archiver'
-                Application    = 'WinRAR Archiver'
+                DisplayName    = 'WinRAR'
+                Application    = 'WinRAR'
                 Status         = '[MISSING]'
                 Executable     = 'WinRAR.exe'
                 ExecutablePath = ''
@@ -2257,6 +3096,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
         It 'Invoke-ToolkitApplicationContextMenu executes Force Reinstall (key 2) with Force flag' -Skip:(-not $isTUIAvailable) {
             $script:forceTarget = $null
             $script:forceFlag = $false
+            Mock Read-Host { return 'y' }
             Mock Install-ToolkitApplication {
                 param($AppName, [switch]$Force, $CreateShortcut)
                 $script:forceTarget = $AppName
@@ -2273,6 +3113,21 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitApplicationContextMenu -SelectedApp $script:testApplication } | Should -Not -Throw
             $script:forceTarget | Should -Be 'WinRAR'
             $script:forceFlag | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitApplicationContextMenu aborts Force Reinstall (key 2) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:forceTarget = $null
+            Mock Read-Host { return 'n' }
+            Mock Install-ToolkitApplication { param($AppName, [switch]$Force, $CreateShortcut) $script:forceTarget = $AppName }
+            Mock Wait-UserAcknowledge { }
+            $script:aStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:aStep++
+                if ($script:aStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitApplicationContextMenu -SelectedApp $script:testApplication } | Should -Not -Throw
+            $script:forceTarget | Should -BeNullOrEmpty
         }
 
         It 'Invoke-ToolkitApplicationContextMenu executes Verify Status (key 3)' -Skip:(-not $isTUIAvailable) {
@@ -2315,7 +3170,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitApplicationContextMenu -SelectedApp $script:testApplication } | Should -Not -Throw
             $script:shortcutTarget | Should -Be 'C:\Program Files\WinRAR\WinRAR.exe'
-            $script:shortcutName | Should -Be 'WinRAR Archiver'
+            $script:shortcutName | Should -Be 'WinRAR'
         }
 
         It 'Invoke-ToolkitApplicationContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {
@@ -2420,7 +3275,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 Command = 'Invoke-ToolkitApplicationContextMenu'
                 Target = 'Application: WinRAR'
                 ArgBuilder = {
-                    @{ SelectedApp = [PSCustomObject]@{ AppName = 'WinRAR'; DisplayName = 'WinRAR Archiver'; Installed = $true; ExecutablePath = 'C:\Program Files\WinRAR\WinRAR.exe'; Version = '7.01' } }
+                    @{ SelectedApp = [PSCustomObject]@{ AppName = 'WinRAR'; DisplayName = 'WinRAR'; Installed = $true; ExecutablePath = 'C:\Program Files\WinRAR\WinRAR.exe'; Version = '7.01' } }
                 }
             }
         )

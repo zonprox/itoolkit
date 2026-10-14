@@ -175,6 +175,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
         It 'Option 1 dispatches Reset-WordTemplate with -Force' -Skip:(-not $isTUIAvailable) {
             $script:templateCalled = $false
             $script:forcePassed = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-WordTemplate {
                 param([switch]$Force)
                 $script:templateCalled = $true
@@ -193,10 +194,26 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:forcePassed | Should -BeTrue
         }
 
+        It 'Option 1 aborts Reset-WordTemplate when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:templateCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-WordTemplate { $script:templateCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:templateCalled | Should -BeFalse
+        }
+
         It 'Option 2 dispatches Reset-WordStartupAddin with -DisableAll and -Force' -Skip:(-not $isTUIAvailable) {
             $script:addinCalled = $false
             $script:disableAllPassed = $false
             $script:forcePassed = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-WordStartupAddin {
                 param([switch]$DisableAll, [switch]$Force)
                 $script:addinCalled = $true
@@ -217,10 +234,26 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:forcePassed | Should -BeTrue
         }
 
+        It 'Option 2 aborts Reset-WordStartupAddin when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:addinCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-WordStartupAddin { $script:addinCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:addinCalled | Should -BeFalse
+        }
+
         It 'Option 3 dispatches Reset-WordRegistryData with -ResetData and -ResetOptions' -Skip:(-not $isTUIAvailable) {
             $script:regCalled = $false
             $script:dataPassed = $false
             $script:optionsPassed = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-WordRegistryData {
                 param([switch]$ResetData, [switch]$ResetOptions)
                 $script:regCalled = $true
@@ -239,6 +272,21 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:regCalled | Should -BeTrue
             $script:dataPassed | Should -BeTrue
             $script:optionsPassed | Should -BeTrue
+        }
+
+        It 'Option 3 aborts Reset-WordRegistryData when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:regCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-WordRegistryData { $script:regCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:regCalled | Should -BeFalse
         }
 
         It 'Option 4 dispatches Clear-WordOrphanedLocks with -Force' -Skip:(-not $isTUIAvailable) {
@@ -266,6 +314,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:stopCalled = $false
             $script:targetList = $null
             $script:forcePassed = $false
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames, [switch]$Force)
                 $script:stopCalled = $true
@@ -286,8 +335,24 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:forcePassed | Should -BeTrue
         }
 
+        It 'Option 5 aborts Stop-OfficeProcess when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:stopCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { $script:stopCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '5' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
+            $script:stopCalled | Should -BeFalse
+        }
+
         It 'Catches exceptions thrown during Word repair execution and avoids console crash' -Skip:(-not $isTUIAvailable) {
             $script:failedLogged = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-WordTemplate { throw "Simulated template filesystem lock failure" }
             Mock Write-ToolkitStatus {
                 param($Message, $Type)
@@ -329,6 +394,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
         It 'Option 2 dispatches Clear-ExcelStartupFolder with -Force' -Skip:(-not $isTUIAvailable) {
             $script:xlstartCalled = $false
             $script:forcePassed = $false
+            Mock Read-Host { return 'y' }
             Mock Clear-ExcelStartupFolder {
                 param([switch]$Force)
                 $script:xlstartCalled = $true
@@ -347,8 +413,24 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:forcePassed | Should -BeTrue
         }
 
+        It 'Option 2 aborts Clear-ExcelStartupFolder when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:xlstartCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Clear-ExcelStartupFolder { $script:xlstartCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
+            $script:xlstartCalled | Should -BeFalse
+        }
+
         It 'Option 3 dispatches Reset-ExcelUiCache' -Skip:(-not $isTUIAvailable) {
             $script:uiCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-ExcelUiCache {
                 $script:uiCalled = $true
                 return [PSCustomObject]@{ Status = 'Success'; QuarantinedFiles = @('Excel16.xlb'); WebServiceCachePurged = $true }
@@ -362,6 +444,21 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             }
             { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
             $script:uiCalled | Should -BeTrue
+        }
+
+        It 'Option 3 aborts Reset-ExcelUiCache when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:uiCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-ExcelUiCache { $script:uiCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
+            $script:uiCalled | Should -BeFalse
         }
 
         It 'Option 4 dispatches Reset-ExcelDdeSettings' -Skip:(-not $isTUIAvailable) {
@@ -431,6 +528,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
         It 'Option 6 dispatches Stop-OfficeProcess targeting EXCEL with -Force' -Skip:(-not $isTUIAvailable) {
             $script:stopCalled = $false
             $script:targetList = $null
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames, [switch]$Force)
                 $script:stopCalled = $true
@@ -447,6 +545,21 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
             $script:stopCalled | Should -BeTrue
             $script:targetList | Should -Contain 'EXCEL'
+        }
+
+        It 'Option 6 aborts Stop-OfficeProcess when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:stopCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { $script:stopCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeExcel } | Should -Not -Throw
+            $script:stopCalled | Should -BeFalse
         }
     }
 
@@ -472,6 +585,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
         It 'Option 2 dispatches Reset-PowerPointCache with -Force' -Skip:(-not $isTUIAvailable) {
             $script:cacheCalled = $false
             $script:forcePassed = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-PowerPointCache {
                 param([switch]$Force)
                 $script:cacheCalled = $true
@@ -490,8 +604,24 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:forcePassed | Should -BeTrue
         }
 
+        It 'Option 2 aborts Reset-PowerPointCache when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:cacheCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-PowerPointCache { $script:cacheCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
+            $script:cacheCalled | Should -BeFalse
+        }
+
         It 'Option 3 dispatches Reset-PowerPointResiliency' -Skip:(-not $isTUIAvailable) {
             $script:resilCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-PowerPointResiliency {
                 $script:resilCalled = $true
                 return [PSCustomObject]@{ Status = 'Success'; ClearedItems = 3 }
@@ -507,9 +637,25 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:resilCalled | Should -BeTrue
         }
 
+        It 'Option 3 aborts Reset-PowerPointResiliency when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:resilCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-PowerPointResiliency { $script:resilCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
+            $script:resilCalled | Should -BeFalse
+        }
+
         It 'Option 4 dispatches Stop-OfficeProcess targeting POWERPNT with -Force' -Skip:(-not $isTUIAvailable) {
             $script:stopCalled = $false
             $script:targetList = $null
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames, [switch]$Force)
                 $script:stopCalled = $true
@@ -526,6 +672,21 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
             $script:stopCalled | Should -BeTrue
             $script:targetList | Should -Contain 'POWERPNT'
+        }
+
+        It 'Option 4 aborts Stop-OfficeProcess when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:stopCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { $script:stopCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '4' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficePowerPoint } | Should -Not -Throw
+            $script:stopCalled | Should -BeFalse
         }
     }
 
@@ -550,6 +711,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
         It 'Option 2 dispatches Reset-OfficeIdentityCache with -PurgeWamTokens' -Skip:(-not $isTUIAvailable) {
             $script:idCalled = $false
             $script:wamPassed = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-OfficeIdentityCache {
                 param([switch]$PurgeWamTokens)
                 $script:idCalled = $true
@@ -568,8 +730,24 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:wamPassed | Should -BeTrue
         }
 
+        It 'Option 2 aborts Reset-OfficeIdentityCache when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:idCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-OfficeIdentityCache { $script:idCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '2' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeCommon } | Should -Not -Throw
+            $script:idCalled | Should -BeFalse
+        }
+
         It 'Option 3 dispatches Stop-OfficeProcess for all Office suite apps' -Skip:(-not $isTUIAvailable) {
             $script:stopAllCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 $script:stopAllCalled = $true
                 return [PSCustomObject]@{ Status = 'Success'; Terminated = @('WINWORD', 'EXCEL', 'OUTLOOK') }
@@ -583,6 +761,21 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             }
             { Invoke-ToolkitSubmenuOfficeCommon } | Should -Not -Throw
             $script:stopAllCalled | Should -BeTrue
+        }
+
+        It 'Option 3 aborts Stop-OfficeProcess when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:stopAllCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { $script:stopAllCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '3' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeCommon } | Should -Not -Throw
+            $script:stopAllCalled | Should -BeFalse
         }
 
         It 'Option 4 executes Uninstall-OfficeSuiteCleanly -Force when confirmed with y' -Skip:(-not $isTUIAvailable) {
@@ -687,6 +880,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
 
         It 'Option 10 dispatches Clear-OutlookStuckOutbox' -Skip:(-not $isTUIAvailable) {
             $script:outboxCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Clear-OutlookStuckOutbox {
                 $script:outboxCalled = $true
                 return [PSCustomObject]@{ Status = 'Success'; ClearedMessages = 2 }
@@ -702,9 +896,25 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:outboxCalled | Should -BeTrue
         }
 
+        It 'Option 10 aborts Clear-OutlookStuckOutbox when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:outboxCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Clear-OutlookStuckOutbox { $script:outboxCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '10' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:outboxCalled | Should -BeFalse
+        }
+
         It 'Option 11 dispatches Reset-OutlookSendReceiveSettings with -Backup' -Skip:(-not $isTUIAvailable) {
             $script:srsCalled = $false
             $script:backupPassed = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-OutlookSendReceiveSettings {
                 param([switch]$Backup)
                 $script:srsCalled = $true
@@ -723,9 +933,25 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:backupPassed | Should -BeTrue
         }
 
+        It 'Option 11 aborts Reset-OutlookSendReceiveSettings when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:srsCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-OutlookSendReceiveSettings { $script:srsCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '11' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:srsCalled | Should -BeFalse
+        }
+
         It 'Option 12 dispatches Clear-OutlookRoamCache with -PreserveAutocomplete' -Skip:(-not $isTUIAvailable) {
             $script:roamCalled = $false
             $script:preservePassed = $false
+            Mock Read-Host { return 'y' }
             Mock Clear-OutlookRoamCache {
                 param([switch]$PreserveAutocomplete)
                 $script:roamCalled = $true
@@ -744,8 +970,24 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:preservePassed | Should -BeTrue
         }
 
+        It 'Option 12 aborts Clear-OutlookRoamCache when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:roamCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Clear-OutlookRoamCache { $script:roamCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '12' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:roamCalled | Should -BeFalse
+        }
+
         It 'Option 13 dispatches Reset-OutlookNavigationPane' -Skip:(-not $isTUIAvailable) {
             $script:navPaneCalled = $false
+            Mock Read-Host { return 'y' }
             Mock Reset-OutlookNavigationPane {
                 $script:navPaneCalled = $true
                 return [PSCustomObject]@{ Status = 'Success' }
@@ -759,6 +1001,21 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             }
             { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
             $script:navPaneCalled | Should -BeTrue
+        }
+
+        It 'Option 13 aborts Reset-OutlookNavigationPane when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:navPaneCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Reset-OutlookNavigationPane { $script:navPaneCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '13' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:navPaneCalled | Should -BeFalse
         }
 
         It 'Option 14 dispatches Invoke-OutlookPstCompaction' -Skip:(-not $isTUIAvailable) {
@@ -806,6 +1063,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
         It 'Option 16 dispatches Stop-OfficeProcess targeting OUTLOOK with -Force' -Skip:(-not $isTUIAvailable) {
             $script:stopCalled = $false
             $script:targetList = $null
+            Mock Read-Host { return 'y' }
             Mock Stop-OfficeProcess {
                 param($ProcessNames, [switch]$Force)
                 $script:stopCalled = $true
@@ -822,6 +1080,21 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
             $script:stopCalled | Should -BeTrue
             $script:targetList | Should -Contain 'OUTLOOK'
+        }
+
+        It 'Option 16 aborts Stop-OfficeProcess when user rejects confirmation with n' -Skip:(-not $isTUIAvailable) {
+            $script:stopCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock Stop-OfficeProcess { $script:stopCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '16' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:stopCalled | Should -BeFalse
         }
 
         It 'Compatibility alias Invoke-ToolkitSubmenuOutlook forwards to Invoke-ToolkitSubmenuOfficeOutlook' -Skip:(-not $isTUIAvailable) {

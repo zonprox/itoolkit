@@ -55,7 +55,7 @@ Describe 'Unit: AppInstaller Module' {
             $chrome = Get-ToolkitInstalledApplication -AppName 'Chrome'
             $chrome | Should -Not -BeNullOrEmpty
             $chrome.AppName | Should -Be 'Chrome'
-            $chrome.DisplayName | Should -Be 'Google Chrome Browser'
+            $chrome.DisplayName | Should -Be 'Google Chrome'
         }
 
         It 'Filters specifically by AppName for Zalo' -Skip:(-not $isAppInstallerAvailable) {
@@ -93,7 +93,7 @@ Describe 'Unit: AppInstaller Module' {
                     DisplayName     = 'WinRAR 7.01 (64-bit)'
                     DisplayVersion  = '7.01.0'
                     InstallLocation = 'C:\Program Files\WinRAR'
-                    PSChildName     = 'WinRAR archiver'
+                    PSChildName     = 'WinRAR'
                 }
             } -ParameterFilter { $Path -like 'HKLM:\*' }
 
@@ -798,14 +798,25 @@ Describe 'Unit: AppInstaller Module' {
             $res.Status | Should -Be 'OK'
         }
 
-        It 'Installs Zalo PC with desktop shortcut and returns structured result' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Installs Zalo with desktop shortcut and returns structured result' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command {
                 param($Name)
                 if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
                 return $null
             }
-            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+            $script:zaloTempFile = $null
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $script:zaloTempFile = $OutFile
+                Set-Content -LiteralPath $OutFile -Value 'MOCK_ZALO_EXE'
+            }
+            $script:wingetCalled = $false
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget') { $script:wingetCalled = $true }
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
             $script:zaloCheckCount = 0
             Mock Get-ToolkitInstalledApplication {
                 $script:zaloCheckCount++
@@ -825,6 +836,8 @@ Describe 'Unit: AppInstaller Module' {
             $res.Installed | Should -BeTrue
             $res.ShortcutCreated | Should -BeTrue
             $res.Status | Should -Be 'OK'
+            $script:wingetCalled | Should -BeFalse
+            Test-Path -LiteralPath $script:zaloTempFile | Should -BeFalse
         }
 
         It 'Skips already-installed application when -Force is omitted without running installer or re-downloading' -Skip:(-not $isAppInstallerAvailable) {
@@ -862,7 +875,7 @@ Describe 'Unit: AppInstaller Module' {
             Mock Get-ToolkitInstalledApplication {
                 return [PSCustomObject]@{
                     AppName        = 'UniKey'
-                    DisplayName    = 'UniKey Vietnamese Input Method'
+                    DisplayName    = 'UniKey'
                     Installed      = $true
                     ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
                     Version        = '4.6'
@@ -957,6 +970,10 @@ Describe 'Unit: AppInstaller Module' {
                 if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
                 return $null
             }
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                Set-Content -LiteralPath $OutFile -Value 'MOCK_ZALO_EXE'
+            }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
             Mock Get-ToolkitInstalledApplication {
                 return [PSCustomObject]@{
@@ -1017,26 +1034,29 @@ Describe 'Unit: AppInstaller Module' {
             $script:customOrder[1] | Should -Be 'Chrome'
         }
 
-        It 'Falls back to alternate Winget ID when primary ID returns non-zero exit code' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Bypasses winget and executes direct download and cleanup for non-winget app Zalo' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command {
                 param($Name)
                 if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
                 return $null
             }
-            $script:attemptedWingetArgs = [System.Collections.Generic.List[string]]::new()
+            $script:wingetCalled = $false
+            $script:downloadedFileExists = $false
+            $script:downloadTempPath = $null
             Mock Start-Process {
                 param($FilePath, $ArgumentList)
                 if ($FilePath -eq 'winget') {
-                    $script:attemptedWingetArgs.Add($ArgumentList)
-                    if ($ArgumentList -like '*--id VNG.Zalo*') {
-                        return [PSCustomObject]@{ ExitCode = 1 } # Primary ID fails
-                    }
-                    if ($ArgumentList -like '*--id VNGCorp.Zalo*') {
-                        return [PSCustomObject]@{ ExitCode = 0 } # Alternate ID succeeds
-                    }
+                    $script:wingetCalled = $true
+                    return [PSCustomObject]@{ ExitCode = 0 }
                 }
+                $script:downloadedFileExists = Test-Path -LiteralPath $FilePath
                 return [PSCustomObject]@{ ExitCode = 0 }
+            }
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $script:downloadTempPath = $OutFile
+                Set-Content -LiteralPath $OutFile -Value 'MOCK_ZALO_INSTALLER'
             }
             $script:zaloCheck = 0
             Mock Get-ToolkitInstalledApplication {
@@ -1050,9 +1070,50 @@ Describe 'Unit: AppInstaller Module' {
 
             $res = Install-ToolkitApplication -AppName 'Zalo' -Force
             $res.Installed | Should -BeTrue
-            $script:attemptedWingetArgs.Count | Should -BeGreaterThan 1
-            ($script:attemptedWingetArgs | Where-Object { $_ -like '*VNG.Zalo*' }) | Should -Not -BeNullOrEmpty
-            ($script:attemptedWingetArgs | Where-Object { $_ -like '*VNGCorp.Zalo*' }) | Should -Not -BeNullOrEmpty
+            $script:wingetCalled | Should -BeFalse
+            $script:downloadedFileExists | Should -BeTrue
+            Test-Path -LiteralPath $script:downloadTempPath | Should -BeFalse
+        }
+
+        It 'Bypasses winget and executes direct download and cleanup for non-winget app VCRedistAIO' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command {
+                param($Name)
+                if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
+                return $null
+            }
+            $script:wingetCalled = $false
+            $script:vcTempPath = $null
+            $script:vcInstallerRan = $false
+            Mock Start-Process {
+                param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget') {
+                    $script:wingetCalled = $true
+                    return [PSCustomObject]@{ ExitCode = 0 }
+                }
+                $script:vcInstallerRan = $true
+                return [PSCustomObject]@{ ExitCode = 0 }
+            }
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $script:vcTempPath = $OutFile
+                Set-Content -LiteralPath $OutFile -Value 'MOCK_VCREDIST'
+            }
+            $script:vcCheck = 0
+            Mock Get-ToolkitInstalledApplication {
+                param($AppName)
+                $script:vcCheck++
+                if ($script:vcCheck -eq 1) {
+                    return [PSCustomObject]@{ AppName = 'VCRedistAIO'; DisplayName = 'Visual C++ Redistributable AIO'; Installed = $false; ExecutablePath = $null }
+                }
+                return [PSCustomObject]@{ AppName = 'VCRedistAIO'; DisplayName = 'Visual C++ Redistributable AIO'; Installed = $true; ExecutablePath = 'C:\Windows\System32\vcruntime140.dll' }
+            }
+
+            $res = Install-ToolkitApplication -AppName 'VCRedistAIO' -Force
+            $res.Installed | Should -BeTrue
+            $script:wingetCalled | Should -BeFalse
+            $script:vcInstallerRan | Should -BeTrue
+            Test-Path -LiteralPath $script:vcTempPath | Should -BeFalse
         }
 
         It 'Falls back to direct URL download installer when winget returns non-zero exit code' -Skip:(-not $isAppInstallerAvailable) {
@@ -1097,12 +1158,21 @@ Describe 'Unit: AppInstaller Module' {
                 if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
                 return $null
             }
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $tempScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_UniKeyTest_" + [System.Guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Path $tempScratch -Force | Out-Null
+                $mockExe = Join-Path $tempScratch 'UniKeyNT.exe'
+                Set-Content -LiteralPath $mockExe -Value 'MOCK_UNIKEY_BINARY' -Encoding UTF8
+                Compress-Archive -Path $mockExe -DestinationPath $OutFile -Force
+                Remove-Item -LiteralPath $tempScratch -Recurse -Force -ErrorAction SilentlyContinue
+            }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
             Mock Get-ToolkitInstalledApplication {
                 param($AppName)
                 return [PSCustomObject]@{
                     AppName        = $AppName
-                    DisplayName    = 'UniKey Vietnamese Input Method'
+                    DisplayName    = 'UniKey'
                     Installed      = $true
                     ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
                     Version        = '4.6.0.0'
@@ -1196,7 +1266,7 @@ Describe 'Unit: AppInstaller Module' {
             $appNames | Should -Contain 'WinRAR'
         }
 
-        It 'Falls back to official zip archive download and extraction for UniKey when winget fails' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Bypasses winget and directly downloads, extracts archive, and cleans up temporary file for UniKey' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command -ParameterFilter { $Name -eq 'winget' } { return [PSCustomObject]@{ Name = 'winget' } }
             Mock Resolve-ToolkitApplicationDownloadUrl {
@@ -1208,15 +1278,17 @@ Describe 'Unit: AppInstaller Module' {
                     DetectedArchitecture = 'win64'
                 }
             }
-            # Winget fails
+            $script:wingetCalled = $false
             Mock Start-Process {
                 param($FilePath)
-                if ($FilePath -eq 'winget') { return [PSCustomObject]@{ ExitCode = 1 } }
+                if ($FilePath -eq 'winget') { $script:wingetCalled = $true }
                 return [PSCustomObject]@{ ExitCode = 0 }
             }
             # Web request writes a valid temporary test zip containing UniKeyNT.exe
+            $script:unikeyTempFile = $null
             Mock Invoke-WebRequest {
                 param($Uri, $OutFile)
+                $script:unikeyTempFile = $OutFile
                 $tempScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_UniKeyTest_" + [System.Guid]::NewGuid().ToString('N'))
                 New-Item -ItemType Directory -Path $tempScratch -Force | Out-Null
                 $mockExe = Join-Path $tempScratch 'UniKeyNT.exe'
@@ -1229,11 +1301,11 @@ Describe 'Unit: AppInstaller Module' {
                 param($AppName)
                 $script:installedCounter++
                 if ($script:installedCounter -eq 1) {
-                    return [PSCustomObject]@{ AppName = $AppName; DisplayName = 'UniKey Vietnamese Input Method'; Installed = $false; ExecutablePath = $null }
+                    return [PSCustomObject]@{ AppName = $AppName; DisplayName = 'UniKey'; Installed = $false; ExecutablePath = $null }
                 }
                 return [PSCustomObject]@{
                     AppName        = $AppName
-                    DisplayName    = 'UniKey Vietnamese Input Method'
+                    DisplayName    = 'UniKey'
                     Installed      = $true
                     ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
                     Version        = '4.6.0.0'
@@ -1251,16 +1323,27 @@ Describe 'Unit: AppInstaller Module' {
             $res.ShortcutCreated | Should -BeTrue
             $res.DefaultConfigured | Should -BeFalse
             $res.Status | Should -Be 'OK'
+            $script:wingetCalled | Should -BeFalse
+            Test-Path -LiteralPath $script:unikeyTempFile | Should -BeFalse
         }
 
         It 'Never configures default applications or Chrome policies when installing UniKey' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command -ParameterFilter { $Name -eq 'winget' } { return [PSCustomObject]@{ Name = 'winget' } }
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $tempScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("IToolkit_UniKeyTest_" + [System.Guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Path $tempScratch -Force | Out-Null
+                $mockExe = Join-Path $tempScratch 'UniKeyNT.exe'
+                Set-Content -LiteralPath $mockExe -Value 'MOCK_UNIKEY_BINARY' -Encoding UTF8
+                Compress-Archive -Path $mockExe -DestinationPath $OutFile -Force
+                Remove-Item -LiteralPath $tempScratch -Recurse -Force -ErrorAction SilentlyContinue
+            }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
             Mock Get-ToolkitInstalledApplication {
                 return [PSCustomObject]@{
                     AppName        = 'UniKey'
-                    DisplayName    = 'UniKey Vietnamese Input Method'
+                    DisplayName    = 'UniKey'
                     Installed      = $true
                     ExecutablePath = 'C:\Program Files\UniKey\UniKeyNT.exe'
                     Version        = '4.6.0.0'
@@ -1350,21 +1433,27 @@ Describe 'Unit: AppInstaller Module' {
             }
         }
 
-        It 'Falls back to direct URL download installer for UltraVNC when winget is unavailable' -Skip:(-not $isAppInstallerAvailable) {
+        It 'Bypasses winget and uses direct download installer with cleanup for UltraVNC' -Skip:(-not $isAppInstallerAvailable) {
             Mock Test-InternetConnectivity { return $true }
             Mock Get-Command {
                 param($Name)
-                if ($Name -eq 'winget') { return $null }
+                if ($Name -eq 'winget') { return [PSCustomObject]@{ Name = 'winget' } }
                 return $null
             }
             $script:webRequestUri = $null
+            $script:uvncTempFile = $null
             Mock Invoke-WebRequest {
                 param($Uri, $OutFile)
                 $script:webRequestUri = $Uri
+                $script:uvncTempFile = $OutFile
                 Set-Content -LiteralPath $OutFile -Value 'MOCK_EXE'
             }
+            $script:wingetCalled = $false
+            $script:uvncInstallerRan = $false
             Mock Start-Process {
                 param($FilePath, $ArgumentList)
+                if ($FilePath -eq 'winget') { $script:wingetCalled = $true }
+                else { $script:uvncInstallerRan = $true }
                 return [PSCustomObject]@{ ExitCode = 0 }
             }
             $script:checkNum = 0
@@ -1381,6 +1470,9 @@ Describe 'Unit: AppInstaller Module' {
             $res.Installed | Should -BeTrue
             $res.Status | Should -Be 'OK'
             $script:webRequestUri | Should -Match 'UltraVNC.*\.exe$'
+            $script:wingetCalled | Should -BeFalse
+            $script:uvncInstallerRan | Should -BeTrue
+            Test-Path -LiteralPath $script:uvncTempFile | Should -BeFalse
         }
 
         It 'Install-ToolkitApplication handles direct download failure gracefully when winget is unavailable' -Skip:(-not $isAppInstallerAvailable) {
@@ -1397,7 +1489,7 @@ Describe 'Unit: AppInstaller Module' {
                 param($AppName)
                 return [PSCustomObject]@{
                     AppName        = $AppName
-                    DisplayName    = 'UltraVNC Remote Support'
+                    DisplayName    = 'UltraVNC'
                     Installed      = $false
                     ExecutablePath = $null
                 }
@@ -1407,6 +1499,66 @@ Describe 'Unit: AppInstaller Module' {
             $res.AppName | Should -Be 'UltraVNC'
             $res.Installed | Should -BeFalse
             $res.Status | Should -Be 'WARN'
+        }
+
+        It 'Cleans up partial installer file when direct download fails mid-download' -Skip:(-not $isAppInstallerAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            Mock Get-Command { return $null }
+            $script:partialCreated = $false
+            $script:partialPath = $null
+            Mock Invoke-WebRequest {
+                param($Uri, $OutFile)
+                $script:partialPath = $OutFile
+                Set-Content -LiteralPath $OutFile -Value 'CORRUPT_PARTIAL_BYTES'
+                $script:partialCreated = Test-Path -LiteralPath $OutFile
+                throw "Simulated network failure mid-transfer"
+            }
+            Mock Get-ToolkitInstalledApplication {
+                param($AppName)
+                return [PSCustomObject]@{
+                    AppName        = $AppName
+                    DisplayName    = 'UltraVNC'
+                    Installed      = $false
+                    ExecutablePath = $null
+                }
+            }
+            $res = Install-ToolkitApplication -AppName 'UltraVNC' -Force
+            $res.Installed | Should -BeFalse
+            $script:partialCreated | Should -BeTrue
+            Test-Path -LiteralPath $script:partialPath | Should -BeFalse
+        }
+
+        It 'Cleans up legacy UltraVNC Viewer.lnk desktop shortcut when installing UltraVNC' -Skip:(-not $isAppInstallerAvailable) {
+            $desktopPath = [Environment]::GetFolderPath('Desktop')
+            if ([string]::IsNullOrWhiteSpace($desktopPath)) { $desktopPath = "$env:USERPROFILE\Desktop" }
+            if (-not (Test-Path -LiteralPath $desktopPath)) {
+                $null = New-Item -ItemType Directory -Path $desktopPath -Force
+            }
+            $legacyDesktopFile = Join-Path $desktopPath 'UltraVNC Viewer.lnk'
+            Set-Content -LiteralPath $legacyDesktopFile -Value 'LEGACY_LNK'
+
+            try {
+                Mock Get-ToolkitInstalledApplication {
+                    param($AppName)
+                    return [PSCustomObject]@{
+                        AppName        = 'UltraVNC'
+                        DisplayName    = 'UltraVNC'
+                        Installed      = $true
+                        ExecutablePath = 'C:\Tools\UltraVNC\winvnc.exe'
+                        Version        = '1.5.0.0'
+                    }
+                }
+                Mock New-ToolkitDesktopShortcut {
+                    param($TargetExecutable, $ShortcutName)
+                    return [PSCustomObject]@{ Created = $true; AlreadyExists = $false; ShortcutPath = (Join-Path $desktopPath $ShortcutName) }
+                }
+
+                $res = Install-ToolkitApplication -AppName 'UltraVNC' -CreateShortcut
+                $res.Installed | Should -BeTrue
+                Test-Path -LiteralPath $legacyDesktopFile | Should -BeFalse
+            } finally {
+                Remove-Item -LiteralPath $legacyDesktopFile -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
@@ -1606,8 +1758,8 @@ Describe 'Unit: AppInstaller Module' {
                 return [PSCustomObject]@{ ExitCode = 1603 }
             }
 
-            $res = Install-WingetPackage -PackageId 'PhamKimLong.UniKey'
-            $res.PackageId | Should -Be 'PhamKimLong.UniKey'
+            $res = Install-WingetPackage -PackageId 'RARLab.WinRAR'
+            $res.PackageId | Should -Be 'RARLab.WinRAR'
             $res.Installed | Should -BeFalse
             $res.Success | Should -BeFalse
             $res.ErrorMessage | Should -Match '1603'

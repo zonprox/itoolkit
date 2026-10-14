@@ -4,6 +4,12 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
         . $waitScript
     }
 }
+if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
+    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
+    if (Test-Path $confirmScript) {
+        . $confirmScript
+    }
+}
 
 if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
     $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
@@ -176,6 +182,11 @@ function Invoke-ToolkitAccountContextMenu {
 
         switch ("$($choice.Value)") {
             '1' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "changing account state for '$userName'" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Account state change cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 $targetState = -not $isEnabled
                 if (Get-Command -Name 'Set-LocalAccountState' -ErrorAction SilentlyContinue) {
                     try {
@@ -290,7 +301,7 @@ function Invoke-ToolkitAccountContextMenu {
                     continue
                 }
 
-                $confirm = Read-Host "  Confirm permanent deletion of account '$userName' and user profile? [y/N]"
+                $confirm = if ($NonInteractive) { 'y' } else { Read-Host "  Confirm permanent deletion of account '$userName' and user profile? [y/N]" }
                 if ($confirm -match '^(?i)y(es)?$') {
                     if (Get-Command -Name 'Remove-LocalAccountItem' -ErrorAction SilentlyContinue) {
                         try {

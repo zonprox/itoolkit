@@ -14,7 +14,7 @@ function Install-ToolkitApplication {
     Installs standard enterprise applications with automated desktop shortcut and default association configuration.
 .DESCRIPTION
     Automates silent installation of UniKey, UltraVNC, K-Lite Codec Pack, Google Chrome,
-    Visual C++ Redistributables All-In-One (vcredist AIO), Foxit PDF Reader, Zalo PC, and WinRAR.
+    Visual C++ Redistributable AIO, Foxit PDF Reader, Zalo, and WinRAR.
     Enforces 64-bit Windows operating system requirements, sequences runtime dependencies (VCRedistAIO) first,
     guards against conflicting active processes, utilizes Windows Package Manager (winget) with transparent
     diagnostics and auto-repair, resilient direct URL fallback, automatically creates desktop shortcuts,
@@ -117,8 +117,7 @@ function Install-ToolkitApplication {
         $catalog = @{
             'VCRedistAIO' = @{
                 DisplayName          = 'Visual C++ Redistributable AIO'
-                WingetId             = 'Microsoft.VCRedist.2015+.x64'
-                AlternateWingetId    = 'abbodi1406.vcredist'
+                WingetId             = $null
                 FallbackUrl          = 'https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe'
                 SilentArgs           = '/ai /y'
                 ShortcutName         = $null # Runtime libraries, no desktop shortcut needed
@@ -126,8 +125,8 @@ function Install-ToolkitApplication {
                 ProcessNames         = @()
             }
             'UniKey' = @{
-                DisplayName          = 'UniKey Vietnamese Input Method'
-                WingetId             = 'PhamKimLong.UniKey'
+                DisplayName          = 'UniKey'
+                WingetId             = $null
                 FallbackUrl          = 'https://www.unikey.org/assets/release/unikey46RC2-230919-win64.zip'
                 Arm64FallbackUrl     = 'https://www.unikey.org/assets/release/unikey46RC2-250531-arm64.zip'
                 InstallType          = 'Archive'
@@ -139,12 +138,11 @@ function Install-ToolkitApplication {
                 ProcessNames         = @('UniKeyNT', 'UniKey')
             }
             'UltraVNC' = @{
-                DisplayName          = 'UltraVNC Remote Support'
-                WingetId             = 'UltraVNC.UltraVNC'
-                AlternateWingetId    = 'uvnc.UltraVNC'
+                DisplayName          = 'UltraVNC'
+                WingetId             = $null
                 FallbackUrl          = 'https://downloads.sourceforge.net/project/ultravnc/UltraVNC/UltraVNC%201.5.0.0/UltraVNC_1_5_0_0_X64_Setup.exe'
                 SilentArgs           = '/VERYSILENT /NORESTART'
-                ShortcutName         = 'UltraVNC Viewer.lnk'
+                ShortcutName         = 'UltraVNC.lnk'
                 CanSetDefault        = $false
                 ProcessNames         = @('vncviewer', 'winvnc')
             }
@@ -178,8 +176,7 @@ function Install-ToolkitApplication {
             }
             'Zalo' = @{
                 DisplayName          = 'Zalo'
-                WingetId             = 'VNG.Zalo'
-                AlternateWingetId    = 'VNGCorp.Zalo'
+                WingetId             = $null
                 FallbackUrl          = 'https://res-download-pc.zadn.vn/win/ZaloSetup-26.10.10.exe'
                 AlternateFallbackUrl = 'https://res-zaloapp-aka-jpt.zdn.vn/win/ZaloSetup-26.10.10.exe'
                 GenericFallbackUrl   = 'https://zalo.me/download/zalo-pc'
@@ -265,6 +262,14 @@ function Install-ToolkitApplication {
                 $shortcutCreated = $false
                 if ($CreateShortcut -and -not [string]::IsNullOrWhiteSpace($meta.ShortcutName) -and -not [string]::IsNullOrWhiteSpace($exePath)) {
                     try {
+                        $desktopPath = [Environment]::GetFolderPath('Desktop')
+                        if ([string]::IsNullOrWhiteSpace($desktopPath)) { $desktopPath = "$env:USERPROFILE\Desktop" }
+                        if ($target -eq 'UltraVNC') {
+                            $oldUvnc = Join-Path $desktopPath 'UltraVNC Viewer.lnk'
+                            if (Test-Path -LiteralPath $oldUvnc -ErrorAction SilentlyContinue) {
+                                Remove-Item -LiteralPath $oldUvnc -Force -ErrorAction SilentlyContinue
+                            }
+                        }
                         Write-AppInstallerLog -Message "Ensuring desktop shortcut '$($meta.ShortcutName)' for already installed $($meta.DisplayName)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
                         $shortcutResult = New-ToolkitDesktopShortcut -TargetExecutable $exePath -ShortcutName $meta.ShortcutName -Force
                         $shortcutCreated = [bool]($shortcutResult.Created -or $shortcutResult.AlreadyExists)
@@ -462,6 +467,7 @@ function Install-ToolkitApplication {
                                 break
                             }
                         } catch {
+                            Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
                             Write-AppInstallerLog -Message "Download attempt $attempt failed for $($meta.DisplayName): $($_.Exception.Message)" -Level 'WARN' -Component 'Install-ToolkitApplication'
                             if ($attempt -lt $maxRetries) {
                                 Start-Sleep -Milliseconds 500
@@ -469,7 +475,11 @@ function Install-ToolkitApplication {
                         }
                     }
 
-                    if ($downloadSuccess) { break }
+                    if ($downloadSuccess) {
+                        break
+                    } else {
+                        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
+                    }
                 }
 
                 if ($downloadSuccess -and $downloadedFile) {
@@ -565,6 +575,14 @@ function Install-ToolkitApplication {
             $shortcutCreated = $false
             if ($CreateShortcut -and -not [string]::IsNullOrWhiteSpace($meta.ShortcutName) -and -not [string]::IsNullOrWhiteSpace($exePath)) {
                 try {
+                    $desktopPath = [Environment]::GetFolderPath('Desktop')
+                    if ([string]::IsNullOrWhiteSpace($desktopPath)) { $desktopPath = "$env:USERPROFILE\Desktop" }
+                    if ($target -eq 'UltraVNC') {
+                        $oldUvnc = Join-Path $desktopPath 'UltraVNC Viewer.lnk'
+                        if (Test-Path -LiteralPath $oldUvnc -ErrorAction SilentlyContinue) {
+                            Remove-Item -LiteralPath $oldUvnc -Force -ErrorAction SilentlyContinue
+                        }
+                    }
                     Write-AppInstallerLog -Message "Creating desktop shortcut '$($meta.ShortcutName)' for $($meta.DisplayName)..." -Level 'DEBUG' -Component 'Install-ToolkitApplication'
                     $shortcutResult = New-ToolkitDesktopShortcut -TargetExecutable $exePath -ShortcutName $meta.ShortcutName -Force
                     $shortcutCreated = [bool]($shortcutResult.Created -or $shortcutResult.AlreadyExists)
