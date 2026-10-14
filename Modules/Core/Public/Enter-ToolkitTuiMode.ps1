@@ -35,6 +35,7 @@ function Enter-ToolkitTuiMode {
         $global:ToolkitTuiDepth = $currentDepth
         $global:ToolkitTuiActive = $true
         $global:ToolkitTUIMode = $true
+        $global:ToolkitSuppressConsoleLog = $true
         $env:ITOOLKIT_TUI_MODE = '1'
 
         if ($PassThru) {

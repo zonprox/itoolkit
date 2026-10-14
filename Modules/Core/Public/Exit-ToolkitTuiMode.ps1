@@ -4,7 +4,8 @@ function Exit-ToolkitTuiMode {
     Decrements the re-entrant TUI session depth counter and restores CLI logging upon exit.
 .DESCRIPTION
     Decrements $global:ToolkitTuiDepth. When the depth reaches 0 (or when -Force is
-    specified), sets $global:ToolkitTuiActive and $global:ToolkitTUIMode to $false,
+    specified), sets $global:ToolkitTuiActive, $global:ToolkitTUIMode, and
+    $global:ToolkitSuppressConsoleLog to $false,
     restoring normal console log emission. Guarantees safe cleanup in try/finally blocks.
 .PARAMETER Force
     Immediately resets TUI depth to 0 and clears all TUI active flags regardless of depth.
@@ -37,6 +38,7 @@ function Exit-ToolkitTuiMode {
             $global:ToolkitTuiDepth = 0
             $global:ToolkitTuiActive = $false
             $global:ToolkitTUIMode = $false
+            $global:ToolkitSuppressConsoleLog = $false
             $env:ITOOLKIT_TUI_MODE = $null
             Remove-Item -Path 'env:ITOOLKIT_TUI_MODE' -ErrorAction SilentlyContinue
         }
@@ -44,6 +46,7 @@ function Exit-ToolkitTuiMode {
             $global:ToolkitTuiDepth = $newDepth
             $global:ToolkitTuiActive = $true
             $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
             $env:ITOOLKIT_TUI_MODE = '1'
         }
 

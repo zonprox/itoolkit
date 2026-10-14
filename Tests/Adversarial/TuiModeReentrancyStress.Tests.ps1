@@ -52,6 +52,7 @@ Describe 'Milestone 1 Empirical Stress Tests: Re-entrancy & Suppression' {
                 $d | Should -Be $i
                 $global:ToolkitTuiDepth | Should -Be $i
                 $global:ToolkitTuiActive | Should -BeTrue
+                $global:ToolkitSuppressConsoleLog | Should -BeTrue
                 $env:ITOOLKIT_TUI_MODE | Should -Be '1'
             }
 
@@ -60,6 +61,7 @@ Describe 'Milestone 1 Empirical Stress Tests: Re-entrancy & Suppression' {
                 $d | Should -Be $i
                 $global:ToolkitTuiDepth | Should -Be $i
                 $global:ToolkitTuiActive | Should -BeTrue
+                $global:ToolkitSuppressConsoleLog | Should -BeTrue
                 $env:ITOOLKIT_TUI_MODE | Should -Be '1'
             }
 
@@ -67,6 +69,7 @@ Describe 'Milestone 1 Empirical Stress Tests: Re-entrancy & Suppression' {
             $finalDepth | Should -Be 0
             $global:ToolkitTuiDepth | Should -Be 0
             $global:ToolkitTuiActive | Should -BeFalse
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
             $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
         }
 

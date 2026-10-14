@@ -368,6 +368,7 @@ Describe 'Unit: Core Module Services' {
         It 'Enter-ToolkitTuiMode increments depth, sets active flag, and sets environment variable' -Skip:(-not $isCoreAvailable) {
             $global:ToolkitTuiDepth | Should -Be 0
             $global:ToolkitTuiActive | Should -BeFalse
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
             $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
 
             $depth = Enter-ToolkitTuiMode -PassThru
@@ -375,6 +376,7 @@ Describe 'Unit: Core Module Services' {
             $global:ToolkitTuiDepth | Should -Be 1
             $global:ToolkitTuiActive | Should -BeTrue
             $global:ToolkitTUIMode | Should -BeTrue
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
             $env:ITOOLKIT_TUI_MODE | Should -Be '1'
         }
 
@@ -382,6 +384,7 @@ Describe 'Unit: Core Module Services' {
             Enter-ToolkitTuiMode
             $global:ToolkitTuiDepth | Should -Be 1
             $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
             $env:ITOOLKIT_TUI_MODE | Should -Be '1'
 
             $remaining = Exit-ToolkitTuiMode -PassThru
@@ -389,6 +392,7 @@ Describe 'Unit: Core Module Services' {
             $global:ToolkitTuiDepth | Should -Be 0
             $global:ToolkitTuiActive | Should -BeFalse
             $global:ToolkitTUIMode | Should -BeFalse
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
             $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
         }
 
@@ -398,6 +402,7 @@ Describe 'Unit: Core Module Services' {
             $d1 | Should -Be 1
             $global:ToolkitTuiDepth | Should -Be 1
             $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
             $env:ITOOLKIT_TUI_MODE | Should -Be '1'
 
             # Step 2: Nested entry (depth 1 -> 2)
@@ -405,6 +410,7 @@ Describe 'Unit: Core Module Services' {
             $d2 | Should -Be 2
             $global:ToolkitTuiDepth | Should -Be 2
             $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
             $env:ITOOLKIT_TUI_MODE | Should -Be '1'
 
             # Step 3: Nested exit (depth 2 -> 1)
@@ -412,6 +418,7 @@ Describe 'Unit: Core Module Services' {
             $d3 | Should -Be 1
             $global:ToolkitTuiDepth | Should -Be 1
             $global:ToolkitTuiActive | Should -BeTrue  # Still active in parent menu
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
             $env:ITOOLKIT_TUI_MODE | Should -Be '1'
 
             # Step 4: Root exit (depth 1 -> 0)
@@ -419,6 +426,7 @@ Describe 'Unit: Core Module Services' {
             $d4 | Should -Be 0
             $global:ToolkitTuiDepth | Should -Be 0
             $global:ToolkitTuiActive | Should -BeFalse # Inactive when returning to CLI
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
             $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
         }
 
@@ -493,22 +501,32 @@ Describe 'Unit: Core Module Services' {
             Enter-ToolkitTuiMode
             Enter-ToolkitTuiMode
             $global:ToolkitTuiDepth | Should -Be 3
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
 
             Exit-ToolkitTuiMode -Force
             $global:ToolkitTuiDepth | Should -Be 0
             $global:ToolkitTuiActive | Should -BeFalse
             $global:ToolkitTUIMode | Should -BeFalse
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
             $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+        }
+
+        It 'Exit-ToolkitTuiMode -Force clears $global:ToolkitSuppressConsoleLog even when pre-set to true' -Skip:(-not $isCoreAvailable) {
+            $global:ToolkitSuppressConsoleLog = $true
+            Exit-ToolkitTuiMode -Force
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
         }
 
         It 'Exit-ToolkitTuiMode protects against negative depth and handles extraneous exits safely' -Skip:(-not $isCoreAvailable) {
             Exit-ToolkitTuiMode -Force
             $global:ToolkitTuiDepth | Should -Be 0
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
 
             # Calling exit when already at 0 should stay at 0 and not throw
             { Exit-ToolkitTuiMode } | Should -Not -Throw
             $global:ToolkitTuiDepth | Should -Be 0
             $global:ToolkitTuiActive | Should -BeFalse
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
             $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
         }
 
