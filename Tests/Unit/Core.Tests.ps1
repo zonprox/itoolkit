@@ -537,6 +537,12 @@ Describe 'Unit: Core Module Services' {
             $pipeOut = & { Exit-ToolkitTuiMode }
             $pipeOut | Should -BeNullOrEmpty
         }
+
+        It 'Write-ToolkitLog executes safely without throwing when ToolkitTuiDepth is malformed or non-integer' -Skip:(-not $isCoreAvailable) {
+            $global:ToolkitTuiDepth = 'invalid_depth_string'
+            { Write-ToolkitLog -Message 'Testing malformed depth resilience' -NoConsole } | Should -Not -Throw
+            $global:ToolkitTuiDepth = $null
+        }
     }
 
     Context 'Deterministic COM Object Cleanup' {

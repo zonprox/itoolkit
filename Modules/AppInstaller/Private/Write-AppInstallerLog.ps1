@@ -68,8 +68,11 @@ function Write-AppInstallerLog {
             }
 
             # Console output (DEBUG and active TUI sessions are suppressed from console/UI output)
+            [int]$depthVal = 0
+            $hasTuiDepth = ($null -ne $global:ToolkitTuiDepth) -and [int]::TryParse([string]$global:ToolkitTuiDepth, [ref]$depthVal) -and ($depthVal -gt 0)
+
             $isTuiActive = ($null -ne $global:ToolkitTuiActive -and $global:ToolkitTuiActive) -or
-                           ($null -ne $global:ToolkitTuiDepth -and [int]$global:ToolkitTuiDepth -gt 0) -or
+                           $hasTuiDepth -or
                            ($null -ne $global:ToolkitTUIMode -and $global:ToolkitTUIMode) -or
                            ($null -ne $global:ToolkitSuppressConsoleLog -and $global:ToolkitSuppressConsoleLog) -or
                            ($env:ITOOLKIT_TUI_MODE -eq '1')

@@ -177,12 +177,14 @@ Describe 'Milestone 1 Empirical Stress Tests: Re-entrancy & Suppression' {
 
         It 'Recovers gracefully when global:ToolkitTuiDepth is non-integer string' {
             $global:ToolkitTuiDepth = 'corrupted_state_string'
+            { Write-ToolkitLog -Message 'Corrupted depth logging check' -NoConsole } | Should -Not -Throw
             $res = Enter-ToolkitTuiMode -PassThru
             $res | Should -Be 1
             $global:ToolkitTuiDepth | Should -Be 1
             $global:ToolkitTuiActive | Should -BeTrue
 
             $global:ToolkitTuiDepth = 'malformed_depth'
+            { Write-ToolkitLog -Message 'Malformed depth logging check' -NoConsole } | Should -Not -Throw
             $resExit = Exit-ToolkitTuiMode -PassThru
             $resExit | Should -Be 0
             $global:ToolkitTuiDepth | Should -Be 0
