@@ -52,6 +52,8 @@
         'Format-ToolkitSummary',
         'Show-ToolkitConfirmation',
         'Remove-ToolkitComObject',
+        'Enter-ToolkitTuiMode',
+        'Exit-ToolkitTuiMode',
 
         # Outlook & PST/OST Management Services
         'Find-OutlookDataFiles',

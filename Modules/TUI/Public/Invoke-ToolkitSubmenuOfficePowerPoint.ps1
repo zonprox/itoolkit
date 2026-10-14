@@ -52,6 +52,17 @@ if (-not (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue)
     if (Test-Path $statusScript) { . $statusScript }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 function Get-OfficePowerPointContextInfoLines {
     <#
     .SYNOPSIS
@@ -115,10 +126,16 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
         [int]$MenuDepth = 2
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "PowerPoint Repairs submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "PowerPoint Repairs submenu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $inSubmenu = $true
     while ($inSubmenu) {
@@ -150,7 +167,10 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'POWERPOINT REPAIR ACTIONS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Microsoft PowerPoint Repairs'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive category listing complete for 'Microsoft PowerPoint Repairs'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive category listing complete for 'Microsoft PowerPoint Repairs'." -ForegroundColor Cyan
             return
         }
 
@@ -252,6 +272,13 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 if (Get-Command -Name 'Get-OfficePowerPointContextInfoLines' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Get-OfficePowerPointContextInfoLines' -Value (Get-Command -Name 'Get-OfficePowerPointContextInfoLines').ScriptBlock

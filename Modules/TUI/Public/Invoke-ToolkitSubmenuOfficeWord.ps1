@@ -53,6 +53,17 @@ if (-not (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue)
     if (Test-Path -LiteralPath $statusScript) { . $statusScript }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 function Get-OfficeWordContextInfoLines {
     <#
     .SYNOPSIS
@@ -105,10 +116,16 @@ function Invoke-ToolkitSubmenuOfficeWord {
         [int]$MenuDepth = 2
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Word Repairs submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Word Repairs submenu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $inSubmenu = $true
     while ($inSubmenu) {
@@ -142,7 +159,10 @@ function Invoke-ToolkitSubmenuOfficeWord {
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'WORD REPAIR ACTIONS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Microsoft Word Repairs'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive category listing complete for 'Microsoft Word Repairs'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive category listing complete for 'Microsoft Word Repairs'." -ForegroundColor Cyan
             return
         }
 
@@ -257,6 +277,13 @@ function Invoke-ToolkitSubmenuOfficeWord {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 if (Get-Command -Name 'Get-OfficeWordContextInfoLines' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Get-OfficeWordContextInfoLines' -Value (Get-Command -Name 'Get-OfficeWordContextInfoLines').ScriptBlock

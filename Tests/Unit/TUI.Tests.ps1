@@ -2341,4 +2341,154 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:navStep | Should -Be 3
         }
     }
+
+    Context 'Milestone 3: Automated Host Buffer Capture & Zero Console Log Pollution Audit' {
+        BeforeEach {
+            $global:ToolkitTuiDepth = 0
+            $global:ToolkitTuiActive = $false
+            $global:ToolkitTUIMode = $false
+            $global:ToolkitSuppressConsoleLog = $false
+            Remove-Item -Path 'env:ITOOLKIT_TUI_MODE' -ErrorAction SilentlyContinue
+
+            Mock Read-Host { throw 'CRITICAL: Read-Host should never be invoked in non-interactive buffer capture' }
+            Mock Read-ToolkitMenuChoice { throw 'CRITICAL: Read-ToolkitMenuChoice should never be invoked in non-interactive buffer capture' }
+            Mock Read-ToolkitItemSelection { throw 'CRITICAL: Read-ToolkitItemSelection should never be invoked in non-interactive buffer capture' }
+        }
+
+        AfterEach {
+            if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+                Exit-ToolkitTuiMode -Force
+            }
+            $global:ToolkitTuiDepth = 0
+            $global:ToolkitTuiActive = $false
+            $global:ToolkitTUIMode = $false
+            $global:ToolkitSuppressConsoleLog = $false
+            Remove-Item -Path 'env:ITOOLKIT_TUI_MODE' -ErrorAction SilentlyContinue
+        }
+
+        $allSubmenus = @(
+            @{ Name = 'Start-IToolkitMenu';                    Command = 'Start-IToolkitMenu';                    Category = 'Main Console Router' },
+            @{ Name = 'Invoke-ToolkitSubmenuSystemHealth';     Command = 'Invoke-ToolkitSubmenuSystemHealth';     Category = 'Pillar 1 System Health' },
+            @{ Name = 'Invoke-ToolkitSubmenuOfficeSuite';      Command = 'Invoke-ToolkitSubmenuOfficeSuite';      Category = 'Pillar 2 Office Suite Hub' },
+            @{ Name = 'Invoke-ToolkitSubmenuOfficeCommon';     Command = 'Invoke-ToolkitSubmenuOfficeCommon';     Category = 'Pillar 2 Common Operations' },
+            @{ Name = 'Invoke-ToolkitSubmenuOfficeWord';       Command = 'Invoke-ToolkitSubmenuOfficeWord';       Category = 'Pillar 2 Word Repairs' },
+            @{ Name = 'Invoke-ToolkitSubmenuOfficeExcel';      Command = 'Invoke-ToolkitSubmenuOfficeExcel';      Category = 'Pillar 2 Excel Repairs' },
+            @{ Name = 'Invoke-ToolkitSubmenuOfficePowerPoint'; Command = 'Invoke-ToolkitSubmenuOfficePowerPoint'; Category = 'Pillar 2 PowerPoint Repairs' },
+            @{ Name = 'Invoke-ToolkitSubmenuOfficeOutlook';    Command = 'Invoke-ToolkitSubmenuOfficeOutlook';    Category = 'Pillar 2 Outlook & Data Files' },
+            @{ Name = 'Invoke-ToolkitSubmenuConnectivity';     Command = 'Invoke-ToolkitSubmenuConnectivity';     Category = 'Pillar 3 Connectivity' },
+            @{ Name = 'Invoke-ToolkitSubmenuIdentityBackup';   Command = 'Invoke-ToolkitSubmenuIdentityBackup';   Category = 'Pillar 4 Identity & Backup' },
+            @{ Name = 'Invoke-ToolkitSubmenuSoftwareOptimization'; Command = 'Invoke-ToolkitSubmenuSoftwareOptimization'; Category = 'Pillar 5 Software Optimization' },
+            @{ Name = 'Invoke-ToolkitSubmenuWindowsRepair';    Command = 'Invoke-ToolkitSubmenuWindowsRepair';    Category = 'Alias Windows Repair' },
+            @{ Name = 'Invoke-ToolkitSubmenuWindowsCleanup';   Command = 'Invoke-ToolkitSubmenuWindowsCleanup';   Category = 'Alias Windows Cleanup' },
+            @{ Name = 'Invoke-ToolkitSubmenuOffice';           Command = 'Invoke-ToolkitSubmenuOffice';           Category = 'Alias Office' },
+            @{ Name = 'Invoke-ToolkitSubmenuOutlook';          Command = 'Invoke-ToolkitSubmenuOutlook';          Category = 'Alias Outlook' },
+            @{ Name = 'Invoke-ToolkitSubmenuNetwork';          Command = 'Invoke-ToolkitSubmenuNetwork';          Category = 'Alias Network' },
+            @{ Name = 'Invoke-ToolkitSubmenuPrinters';         Command = 'Invoke-ToolkitSubmenuPrinters';         Category = 'Alias Printers' },
+            @{ Name = 'Invoke-ToolkitSubmenuAccounts';         Command = 'Invoke-ToolkitSubmenuAccounts';         Category = 'Alias Accounts' },
+            @{ Name = 'Invoke-ToolkitSubmenuBackup';           Command = 'Invoke-ToolkitSubmenuBackup';           Category = 'Alias Backup' },
+            @{ Name = 'Invoke-ToolkitSubmenuAppInstaller';     Command = 'Invoke-ToolkitSubmenuAppInstaller';     Category = 'Alias App Installer' },
+            @{ Name = 'Invoke-ToolkitSubmenuExternalTools';    Command = 'Invoke-ToolkitSubmenuExternalTools';    Category = 'Alias External Tools' }
+        )
+
+        $contextMenus = @(
+            @{
+                Name = 'Invoke-ToolkitAccountContextMenu'
+                Command = 'Invoke-ToolkitAccountContextMenu'
+                Target = 'Account: TestAdmin'
+                ArgBuilder = {
+                    @{ Account = [PSCustomObject]@{ Name = 'TestAdmin'; Enabled = $true; SID = 'S-1-5-21-9999-501' } }
+                }
+            },
+            @{
+                Name = 'Invoke-ToolkitDataFileContextMenu'
+                Command = 'Invoke-ToolkitDataFileContextMenu'
+                Target = 'DataFile: archive.pst'
+                ArgBuilder = {
+                    @{ DataFile = [PSCustomObject]@{ Path = 'C:\Users\Test\archive.pst'; FilePath = 'C:\Users\Test\archive.pst'; Name = 'archive.pst'; Exists = $true; Size = '10 MB'; Profile = 'Default' } }
+                }
+            },
+            @{
+                Name = 'Invoke-ToolkitNetworkDeviceContextMenu'
+                Command = 'Invoke-ToolkitNetworkDeviceContextMenu'
+                Target = 'Device: Ethernet0'
+                ArgBuilder = {
+                    @{ Device = [PSCustomObject]@{ Device = 'Ethernet0'; Status = '[UP]'; Type = 'Adapter'; Details = '1000 Mbps' } }
+                }
+            },
+            @{
+                Name = 'Invoke-ToolkitApplicationContextMenu'
+                Command = 'Invoke-ToolkitApplicationContextMenu'
+                Target = 'Application: WinRAR'
+                ArgBuilder = {
+                    @{ SelectedApp = [PSCustomObject]@{ AppName = 'WinRAR'; DisplayName = 'WinRAR Archiver'; Installed = $true; ExecutablePath = 'C:\Program Files\WinRAR\WinRAR.exe'; Version = '7.01' } }
+                }
+            }
+        )
+
+        It '<Name>: Renders non-interactively without log leaks in captured host buffer' -TestCases $allSubmenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command)
+            $captured = & { & $Command -NonInteractive } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+            $lines.Count | Should -BeGreaterThan 0
+            $leaks = @($lines | Where-Object { $_ -match '^\s*\[(INFO|OK|WARN|FAIL|ERROR|DEBUG)\]\s+' })
+            $leaks | Should -BeNullOrEmpty
+        }
+
+        It '<Name>: Exits immediately with zero log leaks and empty console output buffer' -TestCases $allSubmenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command)
+            $captured = & { & $Command -ExitImmediately } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+            $leaks = @($lines | Where-Object { $_ -match '^\s*\[(INFO|OK|WARN|FAIL|ERROR|DEBUG)\]\s+' })
+            $leaks | Should -BeNullOrEmpty
+            $lines.Count | Should -Be 0
+        }
+
+        It '<Name>: Renders contextual view non-interactively without log leaks (<Target>)' -TestCases $contextMenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command, $Target, $ArgBuilder)
+            $boundArgs = & $ArgBuilder
+            $boundArgs['NonInteractive'] = $true
+            $captured = & { & $Command @boundArgs } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+            $lines.Count | Should -BeGreaterThan 0
+            $leaks = @($lines | Where-Object { $_ -match '^\s*\[(INFO|OK|WARN|FAIL|ERROR|DEBUG)\]\s+' })
+            $leaks | Should -BeNullOrEmpty
+        }
+
+        It '<Name>: Exits immediately with zero log leaks and empty console output buffer (<Target>)' -TestCases $contextMenus -Skip:(-not $isTUIAvailable) {
+            param($Name, $Command, $Target, $ArgBuilder)
+            $boundArgs = & $ArgBuilder
+            $boundArgs['ExitImmediately'] = $true
+            $captured = & { & $Command @boundArgs } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+            $leaks = @($lines | Where-Object { $_ -match '^\s*\[(INFO|OK|WARN|FAIL|ERROR|DEBUG)\]\s+' })
+            $leaks | Should -BeNullOrEmpty
+            $lines.Count | Should -Be 0
+        }
+
+        It 'Data Enumeration Flow: Silences console logs while preserving diagnostic records in file log' -Skip:(-not $isTUIAvailable) {
+            $tempLogDir = Join-Path ([System.IO.Path]::GetTempPath()) ('itoolkit_test_' + [System.Guid]::NewGuid().ToString('N'))
+            $null = New-Item -Path $tempLogDir -ItemType Directory -Force
+            try {
+                $origLogDir = $global:ToolkitLogDirectory
+                $global:ToolkitLogDirectory = $tempLogDir
+
+                $captured = & { Invoke-ToolkitSubmenuIdentityBackup -NonInteractive } 6>&1
+
+                $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+                $lines.Count | Should -BeGreaterThan 0
+                $leaks = @($lines | Where-Object { $_ -match '^\s*\[(INFO|OK|WARN|FAIL|ERROR|DEBUG)\]\s+' })
+                $leaks | Should -BeNullOrEmpty
+
+                $logFiles = @(Get-ChildItem -Path $tempLogDir -Filter 'IToolkit_*.log' -File)
+                $logFiles.Count | Should -BeGreaterThan 0
+                $logContent = Get-Content -Path $logFiles[0].FullName -Raw
+                $logContent | Should -Match 'Querying local user account list'
+                $logContent | Should -Match 'Successfully enumerated'
+            }
+            finally {
+                $global:ToolkitLogDirectory = $origLogDir
+                Remove-Item -Path $tempLogDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }

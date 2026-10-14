@@ -53,6 +53,17 @@ if (-not (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue)
     if (Test-Path -LiteralPath $statusScript) { . $statusScript }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 # 2. Context Information Helper: Get-OutlookContextInfoLines
 function Get-OutlookContextInfoLines {
     [CmdletBinding()]
@@ -195,10 +206,16 @@ function Invoke-ToolkitDataFileContextMenu {
         [switch]$NonInteractive
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Data file context menu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Data file context menu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $filePath = if ($DataFile -is [string]) {
         $DataFile
@@ -278,7 +295,10 @@ function Invoke-ToolkitDataFileContextMenu {
         Show-ToolkitActionCatalog -Actions $contextActions -NavActions $contextNav -Title "DATA FILE ACTIONS: $fileName"
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive context listing complete for data file '$fileName'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive context listing complete for data file '$fileName'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive context listing complete for data file '$fileName'." -ForegroundColor Cyan
             return
         }
 
@@ -450,6 +470,13 @@ function Invoke-ToolkitDataFileContextMenu {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 # 5. Primary Outlook Submenu: Invoke-ToolkitSubmenuOfficeOutlook
 function Invoke-ToolkitSubmenuOfficeOutlook {
@@ -478,10 +505,16 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
         [int]$MenuDepth = 1
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Submenu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $inSubmenu = $true
     while ($inSubmenu) {
@@ -541,7 +574,10 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'OUTLOOK OPERATIONAL FIXES & COMMANDS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Microsoft Outlook & Data Files'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive category listing complete for 'Microsoft Outlook & Data Files'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive category listing complete for 'Microsoft Outlook & Data Files'." -ForegroundColor Cyan
             return
         }
 
@@ -731,6 +767,13 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 # 6. Backward-Compatibility Delegate: Invoke-ToolkitSubmenuOutlook
 function Invoke-ToolkitSubmenuOutlook {

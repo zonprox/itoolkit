@@ -54,6 +54,17 @@ if (-not (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue)
     if (Test-Path -LiteralPath $statusScript) { . $statusScript }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 # Pre-load dedicated submenus if not yet loaded in current session
 $subCommon = Join-Path $PSScriptRoot 'Invoke-ToolkitSubmenuOfficeCommon.ps1'
 if ((-not (Get-Command -Name 'Invoke-ToolkitSubmenuOfficeCommon' -ErrorAction SilentlyContinue)) -and (Test-Path -LiteralPath $subCommon)) {
@@ -145,10 +156,16 @@ function Invoke-ToolkitSubmenuOfficeSuite {
         [int]$MenuDepth = 1
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Office Suite Hub launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Office Suite Hub launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $inSubmenu = $true
     while ($inSubmenu) {
@@ -183,7 +200,10 @@ function Invoke-ToolkitSubmenuOfficeSuite {
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'PRODUCTIVITY SUITE DOMAINS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Office & Productivity Suite'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive category listing complete for 'Office & Productivity Suite'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive category listing complete for 'Office & Productivity Suite'." -ForegroundColor Cyan
             return
         }
 
@@ -249,6 +269,13 @@ function Invoke-ToolkitSubmenuOfficeSuite {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 # 4. Backward Compatibility Aliases
 function Invoke-ToolkitSubmenuOffice {

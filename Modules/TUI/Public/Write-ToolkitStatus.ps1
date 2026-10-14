@@ -12,6 +12,8 @@ function Write-ToolkitStatus {
     Status category: 'OK', 'WARN', 'FAIL', 'INFO' (case-insensitive).
 .PARAMETER NoLog
     Switch to bypass file-based logging.
+.PARAMETER NoConsole
+    Switch to bypass console host output.
 .EXAMPLE
     Write-ToolkitStatus -Message 'Operation succeeded' -Type 'OK'
 #>
@@ -25,7 +27,10 @@ function Write-ToolkitStatus {
         [string]$Type,
 
         [Parameter(Mandatory = $false)]
-        [switch]$NoLog
+        [switch]$NoLog,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoConsole
     )
 
     $normType = $Type.ToUpperInvariant()
@@ -56,7 +61,19 @@ function Write-ToolkitStatus {
         }
     }
 
-    Write-Host "$consolePrefix$Message" -ForegroundColor $foregroundColor
+    $isTuiActive = ($null -ne $global:ToolkitTuiActive -and $global:ToolkitTuiActive) -or
+                   ($null -ne $global:ToolkitTuiDepth -and [int]$global:ToolkitTuiDepth -gt 0) -or
+                   ($null -ne $global:ToolkitTUIMode -and $global:ToolkitTUIMode) -or
+                   ($null -ne $global:ToolkitSuppressConsoleLog -and $global:ToolkitSuppressConsoleLog) -or
+                   ($env:ITOOLKIT_TUI_MODE -eq '1')
+
+    if ($isTuiActive) {
+        $consolePrefix = '  '
+    }
+
+    if (-not $NoConsole) {
+        Write-Host "$consolePrefix$Message" -ForegroundColor $foregroundColor
+    }
 
     # Audit to Write-ToolkitLog if loaded
     if (-not $NoLog -and (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue)) {

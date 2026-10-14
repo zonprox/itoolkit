@@ -318,6 +318,209 @@ Describe 'Unit: Core Module Services' {
         }
     }
 
+    Context 'TUI Mode Session Management & Log Suppression' {
+        BeforeAll {
+            # Tier 1: Snapshot pre-flight state
+            $script:origTuiDepth = $global:ToolkitTuiDepth
+            $script:origTuiActive = $global:ToolkitTuiActive
+            $script:origTuiMode = $global:ToolkitTUIMode
+            $script:origSuppressLog = $global:ToolkitSuppressConsoleLog
+            $script:origEnvTuiMode = $env:ITOOLKIT_TUI_MODE
+        }
+
+        BeforeEach {
+            # Tier 2: Pristine reset before every test
+            $global:ToolkitTuiDepth = 0
+            $global:ToolkitTuiActive = $false
+            $global:ToolkitTUIMode = $false
+            $global:ToolkitSuppressConsoleLog = $false
+            Remove-Item -Path 'env:ITOOLKIT_TUI_MODE' -ErrorAction SilentlyContinue
+            $env:ITOOLKIT_TUI_MODE = $null
+        }
+
+        AfterEach {
+            # Tier 3: Guaranteed teardown after every test
+            if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+                Exit-ToolkitTuiMode -Force
+            }
+            $global:ToolkitTuiDepth = 0
+            $global:ToolkitTuiActive = $false
+            $global:ToolkitTUIMode = $false
+            $global:ToolkitSuppressConsoleLog = $false
+            Remove-Item -Path 'env:ITOOLKIT_TUI_MODE' -ErrorAction SilentlyContinue
+            $env:ITOOLKIT_TUI_MODE = $null
+        }
+
+        AfterAll {
+            # Tier 4: Restore original state to eliminate cross-suite contamination
+            $global:ToolkitTuiDepth = $script:origTuiDepth
+            $global:ToolkitTuiActive = $script:origTuiActive
+            $global:ToolkitTUIMode = $script:origTuiMode
+            $global:ToolkitSuppressConsoleLog = $script:origSuppressLog
+            if ($null -ne $script:origEnvTuiMode) {
+                $env:ITOOLKIT_TUI_MODE = $script:origEnvTuiMode
+            } else {
+                Remove-Item -Path 'env:ITOOLKIT_TUI_MODE' -ErrorAction SilentlyContinue
+                $env:ITOOLKIT_TUI_MODE = $null
+            }
+        }
+
+        It 'Enter-ToolkitTuiMode increments depth, sets active flag, and sets environment variable' -Skip:(-not $isCoreAvailable) {
+            $global:ToolkitTuiDepth | Should -Be 0
+            $global:ToolkitTuiActive | Should -BeFalse
+            $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+
+            $depth = Enter-ToolkitTuiMode -PassThru
+            $depth | Should -Be 1
+            $global:ToolkitTuiDepth | Should -Be 1
+            $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitTUIMode | Should -BeTrue
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+        }
+
+        It 'Exit-ToolkitTuiMode decrements depth, resets active flag, and clears environment variable at depth 0' -Skip:(-not $isCoreAvailable) {
+            Enter-ToolkitTuiMode
+            $global:ToolkitTuiDepth | Should -Be 1
+            $global:ToolkitTuiActive | Should -BeTrue
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+
+            $remaining = Exit-ToolkitTuiMode -PassThru
+            $remaining | Should -Be 0
+            $global:ToolkitTuiDepth | Should -Be 0
+            $global:ToolkitTuiActive | Should -BeFalse
+            $global:ToolkitTUIMode | Should -BeFalse
+            $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+        }
+
+        It 'Enter-ToolkitTuiMode and Exit-ToolkitTuiMode handle nested calls (depth 1 -> 2 -> 1 -> 0)' -Skip:(-not $isCoreAvailable) {
+            # Step 1: Root entry (depth 0 -> 1)
+            $d1 = Enter-ToolkitTuiMode -PassThru
+            $d1 | Should -Be 1
+            $global:ToolkitTuiDepth | Should -Be 1
+            $global:ToolkitTuiActive | Should -BeTrue
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+
+            # Step 2: Nested entry (depth 1 -> 2)
+            $d2 = Enter-ToolkitTuiMode -PassThru
+            $d2 | Should -Be 2
+            $global:ToolkitTuiDepth | Should -Be 2
+            $global:ToolkitTuiActive | Should -BeTrue
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+
+            # Step 3: Nested exit (depth 2 -> 1)
+            $d3 = Exit-ToolkitTuiMode -PassThru
+            $d3 | Should -Be 1
+            $global:ToolkitTuiDepth | Should -Be 1
+            $global:ToolkitTuiActive | Should -BeTrue  # Still active in parent menu
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+
+            # Step 4: Root exit (depth 1 -> 0)
+            $d4 = Exit-ToolkitTuiMode -PassThru
+            $d4 | Should -Be 0
+            $global:ToolkitTuiDepth | Should -Be 0
+            $global:ToolkitTuiActive | Should -BeFalse # Inactive when returning to CLI
+            $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+        }
+
+        It 'Write-ToolkitLog skips Write-Host when TUI mode is active across multiple log levels' -Skip:(-not $isCoreAvailable) {
+            $tempLogDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+            try {
+                Enter-ToolkitTuiMode
+                Mock Write-Host {}
+
+                # Test multiple severity levels that normally emit to console
+                Write-ToolkitLog -Message 'Suppressed info message' -Level 'Info' -Component 'TuiTest' -LogDirectory $tempLogDir
+                Write-ToolkitLog -Message 'Suppressed warning message' -Level 'Warn' -Component 'TuiTest' -LogDirectory $tempLogDir
+                Write-ToolkitLog -Message 'Suppressed error message' -Level 'Error' -Component 'TuiTest' -LogDirectory $tempLogDir
+                Write-ToolkitLog -Message 'Suppressed success message' -Level 'Success' -Component 'TuiTest' -LogDirectory $tempLogDir
+
+                Assert-MockCalled Write-Host -Times 0 -Scope It
+            } finally {
+                Exit-ToolkitTuiMode -Force
+                Remove-Item -Path $tempLogDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Write-ToolkitLog still appends to daily log file when TUI mode is active' -Skip:(-not $isCoreAvailable) {
+            $tempLogDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+            try {
+                Enter-ToolkitTuiMode
+                Mock Write-Host {}
+
+                $uniqueMsg = "Audit entry while in TUI mode - $([System.Guid]::NewGuid().ToString())"
+                Write-ToolkitLog -Message $uniqueMsg -Level 'Info' -Component 'AuditComponent' -LogDirectory $tempLogDir
+
+                # Write-Host must have been suppressed
+                Assert-MockCalled Write-Host -Times 0 -Scope It
+
+                # File log must have captured the audit entry
+                $logFiles = Get-ChildItem -Path $tempLogDir -Filter 'IToolkit_*.log'
+                $logFiles.Count | Should -BeGreaterThan 0
+                $content = Get-Content -Path $logFiles[0].FullName -Raw
+                $content | Should -Match '\[INFO\]'
+                $content | Should -Match '\[AuditComponent\]'
+                $content | Should -Match ([regex]::Escape($uniqueMsg))
+            } finally {
+                Exit-ToolkitTuiMode -Force
+                Remove-Item -Path $tempLogDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Write-ToolkitLog restores normal console output when TUI mode is exited' -Skip:(-not $isCoreAvailable) {
+            $tempLogDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+            try {
+                # 1. Enter TUI mode and verify suppression
+                Enter-ToolkitTuiMode
+                Mock Write-Host {}
+                Write-ToolkitLog -Message 'TUI suppressed message' -Level 'Info' -Component 'CoreTest' -LogDirectory $tempLogDir
+                Assert-MockCalled Write-Host -Times 0 -Scope It
+
+                # 2. Exit TUI mode back to depth 0
+                Exit-ToolkitTuiMode
+                $global:ToolkitTuiActive | Should -BeFalse
+
+                # 3. Verify normal console output is restored
+                Write-ToolkitLog -Message 'Restored normal CLI message' -Level 'Info' -Component 'CoreTest' -LogDirectory $tempLogDir
+                Assert-MockCalled Write-Host -Times 1 -Scope It
+            } finally {
+                Exit-ToolkitTuiMode -Force
+                Remove-Item -Path $tempLogDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Exit-ToolkitTuiMode with -Force resets depth, active flag, and clears environment variable immediately' -Skip:(-not $isCoreAvailable) {
+            Enter-ToolkitTuiMode
+            Enter-ToolkitTuiMode
+            Enter-ToolkitTuiMode
+            $global:ToolkitTuiDepth | Should -Be 3
+
+            Exit-ToolkitTuiMode -Force
+            $global:ToolkitTuiDepth | Should -Be 0
+            $global:ToolkitTuiActive | Should -BeFalse
+            $global:ToolkitTUIMode | Should -BeFalse
+            $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+        }
+
+        It 'Exit-ToolkitTuiMode protects against negative depth and handles extraneous exits safely' -Skip:(-not $isCoreAvailable) {
+            Exit-ToolkitTuiMode -Force
+            $global:ToolkitTuiDepth | Should -Be 0
+
+            # Calling exit when already at 0 should stay at 0 and not throw
+            { Exit-ToolkitTuiMode } | Should -Not -Throw
+            $global:ToolkitTuiDepth | Should -Be 0
+            $global:ToolkitTuiActive | Should -BeFalse
+            $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+        }
+
+        It 'Enter-ToolkitTuiMode and Exit-ToolkitTuiMode do not pollute pipeline unless -PassThru is specified' -Skip:(-not $isCoreAvailable) {
+            $pipeIn = & { Enter-ToolkitTuiMode }
+            $pipeIn | Should -BeNullOrEmpty
+
+            $pipeOut = & { Exit-ToolkitTuiMode }
+            $pipeOut | Should -BeNullOrEmpty
+        }
+    }
+
     Context 'Deterministic COM Object Cleanup' {
         It 'Remove-ToolkitComObject handles null without errors' -Skip:(-not $isCoreAvailable) {
             { Remove-ToolkitComObject -ComObject $null } | Should -Not -Throw

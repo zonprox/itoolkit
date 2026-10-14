@@ -26,7 +26,9 @@
         'Write-ToolkitLog',
         'Format-ToolkitSummary',
         'Show-ToolkitConfirmation',
-        'Remove-ToolkitComObject'
+        'Remove-ToolkitComObject',
+        'Enter-ToolkitTuiMode',
+        'Exit-ToolkitTuiMode'
     )
 
     CmdletsToExport        = @()

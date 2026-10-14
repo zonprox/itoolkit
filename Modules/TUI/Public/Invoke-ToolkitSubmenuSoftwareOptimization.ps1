@@ -5,6 +5,17 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
     }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 function Get-SoftwareOptimizationContextInfoLines {
     [CmdletBinding()]
     param()
@@ -101,10 +112,16 @@ function Invoke-ToolkitApplicationContextMenu {
         [switch]$NonInteractive
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Application context menu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Application context menu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $inContext = $true
     while ($inContext) {
@@ -139,7 +156,10 @@ function Invoke-ToolkitApplicationContextMenu {
         Show-ToolkitActionCatalog -Actions $contextActions -NavActions $navActions -Title "APPLICATION ACTIONS: $dispName"
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive contextual view rendered for '$dispName'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive contextual view rendered for '$dispName'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive contextual view rendered for '$dispName'." -ForegroundColor Cyan
             return
         }
 
@@ -235,6 +255,13 @@ function Invoke-ToolkitApplicationContextMenu {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 if (Get-Command -Name 'Invoke-ToolkitApplicationContextMenu' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Invoke-ToolkitApplicationContextMenu' -Value (Get-Command -Name 'Invoke-ToolkitApplicationContextMenu').ScriptBlock
@@ -271,10 +298,16 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
         [int]$MenuDepth = 1
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Submenu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     if (-not [System.Environment]::Is64BitOperatingSystem) {
         Write-ToolkitStatus -Message "FATAL: IToolkit application deployment strictly requires 64-bit Windows. 32-bit architecture is unsupported." -Type 'FAIL'
@@ -362,7 +395,10 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
         Show-ToolkitActionCatalog -Actions $installerActions -NavActions $navActions -Title 'DEPLOYMENT & OPTIMIZATION ACTIONS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Software & System Optimization'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive category listing complete for 'Software & System Optimization'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive category listing complete for 'Software & System Optimization'." -ForegroundColor Cyan
             return
         }
 
@@ -418,6 +454,13 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 function Invoke-ToolkitSubmenuAppInstaller {
     [CmdletBinding()]

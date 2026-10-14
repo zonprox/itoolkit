@@ -54,6 +54,17 @@ if (-not (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue)
     if (Test-Path $statusScript) { . $statusScript }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 function Get-OfficeExcelContextInfoLines {
     <#
     .SYNOPSIS
@@ -118,10 +129,16 @@ function Invoke-ToolkitSubmenuOfficeExcel {
         [int]$MenuDepth = 2
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Excel Repairs submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Excel Repairs submenu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $inSubmenu = $true
     while ($inSubmenu) {
@@ -157,7 +174,10 @@ function Invoke-ToolkitSubmenuOfficeExcel {
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'EXCEL REPAIR ACTIONS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Microsoft Excel Repairs'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive category listing complete for 'Microsoft Excel Repairs'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive category listing complete for 'Microsoft Excel Repairs'." -ForegroundColor Cyan
             return
         }
 
@@ -319,6 +339,13 @@ function Invoke-ToolkitSubmenuOfficeExcel {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 if (Get-Command -Name 'Get-OfficeExcelContextInfoLines' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Get-OfficeExcelContextInfoLines' -Value (Get-Command -Name 'Get-OfficeExcelContextInfoLines').ScriptBlock

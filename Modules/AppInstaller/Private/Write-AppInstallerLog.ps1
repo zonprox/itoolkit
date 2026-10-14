@@ -67,8 +67,14 @@ function Write-AppInstallerLog {
                 Write-Verbose "Could not append log entry: $($_.Exception.Message)"
             }
 
-            # Console output (DEBUG is suppressed from console/UI output)
-            if ($normalizedLevel -ne 'DEBUG') {
+            # Console output (DEBUG and active TUI sessions are suppressed from console/UI output)
+            $isTuiActive = ($null -ne $global:ToolkitTuiActive -and $global:ToolkitTuiActive) -or
+                           ($null -ne $global:ToolkitTuiDepth -and [int]$global:ToolkitTuiDepth -gt 0) -or
+                           ($null -ne $global:ToolkitTUIMode -and $global:ToolkitTUIMode) -or
+                           ($null -ne $global:ToolkitSuppressConsoleLog -and $global:ToolkitSuppressConsoleLog) -or
+                           ($env:ITOOLKIT_TUI_MODE -eq '1')
+
+            if (-not $isTuiActive -and $normalizedLevel -ne 'DEBUG') {
                 $prefix = switch ($normalizedLevel) {
                     'INFO'    { '[INFO]   ' }
                     'WARN'    { '[WARN]   ' }

@@ -5,6 +5,17 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
     }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 function Get-ConnectivityContextInfoLines {
     [CmdletBinding()]
     param()
@@ -80,10 +91,16 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
         [switch]$NonInteractive
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Device context menu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Device context menu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     $inContext = $true
     while ($inContext) {
@@ -116,7 +133,10 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
         Show-ToolkitActionCatalog -Actions $contextActions -NavActions $navActions -Title "DEVICE ACTIONS: $deviceName"
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive contextual listing complete for device '$deviceName'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive contextual listing complete for device '$deviceName'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive contextual listing complete for device '$deviceName'." -ForegroundColor Cyan
             return
         }
 
@@ -210,6 +230,13 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 function Invoke-ToolkitSubmenuConnectivity {
 <#
@@ -240,10 +267,16 @@ function Invoke-ToolkitSubmenuConnectivity {
         [int]$MenuDepth = 1
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Submenu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Submenu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'TUI' -NoConsole
+            }
+            return
+        }
 
     if (-not (Get-Command -Name 'Show-ToolkitActionCatalog' -ErrorAction SilentlyContinue)) {
         $catScript = Join-Path $PSScriptRoot 'Show-ToolkitActionCatalog.ps1'
@@ -309,7 +342,10 @@ function Invoke-ToolkitSubmenuConnectivity {
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
         if ($NonInteractive) {
-            Write-ToolkitStatus -Message "Non-interactive category listing complete for 'Network & Connectivity'." -Type 'INFO'
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Non-interactive category listing complete for 'Network & Connectivity'." -Level INFO -Component 'TUI' -NoConsole
+            }
+            Write-Host "Non-interactive category listing complete for 'Network & Connectivity'." -ForegroundColor Cyan
             return
         }
 
@@ -437,6 +473,13 @@ function Invoke-ToolkitSubmenuConnectivity {
         }
     }
 }
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
+}
+
 
 function Invoke-ToolkitSubmenuNetwork {
     [CmdletBinding()]

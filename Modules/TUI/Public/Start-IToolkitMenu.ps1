@@ -12,6 +12,17 @@ if (-not (Get-Command -Name 'Get-ToolkitTelemetryData' -ErrorAction SilentlyCont
     }
 }
 
+if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreTui) { . $coreTui }
+}
+
+if (-not (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
+    $coreExit = Join-Path $PSScriptRoot '../../Core/Public/Exit-ToolkitTuiMode.ps1'
+    if (Test-Path -LiteralPath $coreExit) { . $coreExit }
+}
+
+
 function Get-MainSystemInfoLines {
     [CmdletBinding()]
     param()
@@ -162,32 +173,41 @@ function Start-IToolkitMenu {
         [string]$MenuOption
     )
 
-    if ($ExitImmediately) {
-        Write-ToolkitStatus -Message "Menu launched with -ExitImmediately flag. Returning." -Type 'INFO'
-        return
+    if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Enter-ToolkitTuiMode
     }
+    try {
+        if ($ExitImmediately) {
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Menu launched with -ExitImmediately flag. Returning." -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
+            }
+            return
+        }
 
-    $mainNav = @(
-        @{ Key = '9'; Label = 'Refresh Screen' },
-        @{ Key = '0'; Label = 'Exit Console' }
-    )
-    $mainDetails = @(
-        @{ Key = '1'; Action = 'System Health & Maintenance'; Description = 'Unified Windows repair, SFC/DISM servicing, update reset, and component store cleanup.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
-        @{ Key = '2'; Action = 'Office & Productivity Suite'; Description = 'Unified Office and Outlook administration, hardware acceleration, add-ins, and PST/OST repair.'; Prerequisite = 'Office installed [READY]' },
-        @{ Key = '3'; Action = 'Network & Connectivity'; Description = 'Unified network configuration, Winsock/DNS reset, SMB policies, print spooler, and printer repair.'; Prerequisite = 'Network adapter [READY]' },
-        @{ Key = '4'; Action = 'Accounts, Identity & Backup'; Description = 'Unified local and domain account administration, SID -500 activation, profile backup, and certs.'; Prerequisite = 'Administrator rights [READY]' },
-        @{ Key = '5'; Action = 'Software & System Optimization'; Description = 'Unified 64-bit silent application deployment, WinRAR, UniKey, winget update, and system debloat.'; Prerequisite = 'Internet access [READY]' }
-    )
+        $mainNav = @(
+            @{ Key = '9'; Label = 'Refresh Screen' },
+            @{ Key = '0'; Label = 'Exit Console' }
+        )
+        $mainDetails = @(
+            @{ Key = '1'; Action = 'System Health & Maintenance'; Description = 'Unified Windows repair, SFC/DISM servicing, update reset, and component store cleanup.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },
+            @{ Key = '2'; Action = 'Office & Productivity Suite'; Description = 'Unified Office and Outlook administration, hardware acceleration, add-ins, and PST/OST repair.'; Prerequisite = 'Office installed [READY]' },
+            @{ Key = '3'; Action = 'Network & Connectivity'; Description = 'Unified network configuration, Winsock/DNS reset, SMB policies, print spooler, and printer repair.'; Prerequisite = 'Network adapter [READY]' },
+            @{ Key = '4'; Action = 'Accounts, Identity & Backup'; Description = 'Unified local and domain account administration, SID -500 activation, profile backup, and certs.'; Prerequisite = 'Administrator rights [READY]' },
+            @{ Key = '5'; Action = 'Software & System Optimization'; Description = 'Unified 64-bit silent application deployment, WinRAR, UniKey, winget update, and system debloat.'; Prerequisite = 'Internet access [READY]' }
+        )
 
-    # If NonInteractive flag is set without MenuOption, display main menu once and return
-    if ($NonInteractive -and [string]::IsNullOrWhiteSpace($MenuOption)) {
-        $sysInfo = Get-MainSystemInfoLines
-        Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -InfoLines $sysInfo
-        Show-ToolkitDetailPanel -Details $mainDetails -NavActions $mainNav -Title 'ACTIONS & COMMANDS'
-        Write-Host ""
-        Write-ToolkitStatus -Message "Menu launched in non-interactive mode. Returning." -Type 'INFO'
-        return
-    }
+        # If NonInteractive flag is set without MenuOption, display main menu once and return
+        if ($NonInteractive -and [string]::IsNullOrWhiteSpace($MenuOption)) {
+            $sysInfo = Get-MainSystemInfoLines
+            Show-ToolkitHeader -Title 'ITOOLKIT :: ENTERPRISE IT SUPPORT CONSOLE' -Subtitle 'Windows 10 / 11 IT Administration & Repair Toolkit' -InfoLines $sysInfo
+            Show-ToolkitDetailPanel -Details $mainDetails -NavActions $mainNav -Title 'ACTIONS & COMMANDS'
+            Write-Host ""
+            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                Write-ToolkitLog -Message "Menu launched in non-interactive mode. Returning." -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
+            }
+            Write-Host "Non-interactive menu listing complete for 'Main Menu'." -ForegroundColor Cyan
+            return
+        }
 
     # If MenuOption is specified directly, handle single option execution
     if (-not [string]::IsNullOrWhiteSpace($MenuOption)) {
@@ -300,13 +320,22 @@ function Start-IToolkitMenu {
                 Write-ToolkitStatus -Message "Telemetry cache cleared." -Type 'OK'
             }
             '0' {
-                Write-ToolkitStatus -Message "Exiting IToolkit." -Type 'OK'
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Exiting IToolkit." -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
+                }
+                Write-Host "Exiting IToolkit." -ForegroundColor Green
             }
             'Q' {
-                Write-ToolkitStatus -Message "Exiting IToolkit." -Type 'OK'
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Exiting IToolkit." -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
+                }
+                Write-Host "Exiting IToolkit." -ForegroundColor Green
             }
             'X' {
-                Write-ToolkitStatus -Message "Exiting IToolkit." -Type 'OK'
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Exiting IToolkit." -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
+                }
+                Write-Host "Exiting IToolkit." -ForegroundColor Green
             }
             default {
                 Write-ToolkitStatus -Message "Unrecognized menu option '$MenuOption'." -Type 'WARN'
@@ -346,7 +375,10 @@ function Start-IToolkitMenu {
             }
             '0' {
                 Write-Host ""
-                Write-ToolkitStatus -Message "Exiting IToolkit. Goodbye!" -Type 'OK'
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Exiting IToolkit. Goodbye!" -Level INFO -Component 'Start-IToolkitMenu' -NoConsole
+                }
+                Write-Host "Exiting IToolkit. Goodbye!" -ForegroundColor Green
                 $running = $false
             }
             default {
@@ -354,6 +386,12 @@ function Start-IToolkitMenu {
             }
         }
     }
+}
+finally {
+    if (Get-Command -Name 'Exit-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
+        Exit-ToolkitTuiMode
+    }
+}
 }
 
 if (Get-Command -Name 'Start-IToolkitMenu' -CommandType Function -ErrorAction SilentlyContinue) {

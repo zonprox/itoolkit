@@ -146,7 +146,7 @@ $isAdmin = Test-IsAdminLocal
 if ((-not $SkipElevation) -and (-not $isAdmin)) {
     $isWin = ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT)
     if ($isWin) {
-        Write-Host '[IToolkit] Administrative privileges required. Re-launching with elevation...' -ForegroundColor Yellow
+        Write-Host 'Administrative privileges required. Re-launching with elevation...' -ForegroundColor Yellow
 
         # Determine PowerShell host executable
         $psExe = 'powershell.exe'
@@ -293,12 +293,12 @@ if ($ExitImmediately) {
 }
 
 if ($NonInteractive) {
-    Write-Host '[IToolkit] Initialized in non-interactive mode.' -ForegroundColor Green
+    Write-Host 'Initialized in non-interactive mode.' -ForegroundColor Green
     if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
         $menuCmd = Get-Command -Name 'Start-IToolkitMenu'
         $menuParams = @{}
         if (-not [string]::IsNullOrEmpty($MenuOption)) {
-            Write-Host "[IToolkit] Executing option: $MenuOption" -ForegroundColor Cyan
+            Write-Host "Executing option: $MenuOption" -ForegroundColor Cyan
             if ($menuCmd.Parameters.ContainsKey('MenuOption')) {
                 $menuParams['MenuOption'] = $MenuOption
             } elseif ($menuCmd.Parameters.ContainsKey('Option')) {
@@ -332,8 +332,8 @@ if (Get-Command -Name 'Start-IToolkitMenu' -ErrorAction SilentlyContinue) {
     }
     Start-IToolkitMenu @menuParams
 } else {
-    Write-Host '[IToolkit] Core modules loaded successfully.' -ForegroundColor Green
-    Write-Host '[IToolkit] Ready for administration commands.' -ForegroundColor Cyan
+    Write-Host 'Core modules loaded successfully.' -ForegroundColor Green
+    Write-Host 'Ready for administration commands.' -ForegroundColor Cyan
 }
 
 if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
