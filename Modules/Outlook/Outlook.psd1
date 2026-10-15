@@ -31,7 +31,9 @@
         'Public/Reset-OutlookSendReceiveSettings.ps1',
         'Public/Clear-OutlookRoamCache.ps1',
         'Public/Reset-OutlookNavigationPane.ps1',
-        'Public/Test-OutlookDataFileSize.ps1'
+        'Public/Test-OutlookDataFileSize.ps1',
+        'Public/Copy-OutlookFolderHierarchy.ps1',
+        'Public/Copy-OutlookRule.ps1'
     )
 
     # Explicit Whitelist of Public Functions (Strictly hides Private helpers)
@@ -53,7 +55,9 @@
         'Reset-OutlookSendReceiveSettings',
         'Clear-OutlookRoamCache',
         'Reset-OutlookNavigationPane',
-        'Test-OutlookDataFileSize'
+        'Test-OutlookDataFileSize',
+        'Copy-OutlookFolderHierarchy',
+        'Copy-OutlookRule'
     )
 
     CmdletsToExport        = @()

@@ -32,9 +32,33 @@ if (-not (Get-Command -Name 'Wait-UserAcknowledge' -ErrorAction SilentlyContinue
     $waitScript = Join-Path $PSScriptRoot '../Private/Wait-UserAcknowledge.ps1'
     if (Test-Path -LiteralPath $waitScript) { . $waitScript }
 }
-if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinue)) {
-    $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
-    if (Test-Path -LiteralPath $confirmScript) { . $confirmScript }
+function Confirm-ToolkitAction {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$ActionDescription,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NonInteractive
+    )
+
+    if ($NonInteractive) {
+        return $true
+    }
+
+    try {
+        $raw = Read-Host -Prompt "  Confirm ${ActionDescription}? [y/N]"
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return $false
+        }
+        return [bool]($raw.Trim() -match '^(?i)y(?:es)?$')
+    }
+    catch {
+        return $false
+    }
+}
+if (Get-Command -Name 'Confirm-ToolkitAction' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Confirm-ToolkitAction' -Value (Get-Command -Name 'Confirm-ToolkitAction').ScriptBlock
 }
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
@@ -291,7 +315,8 @@ function Invoke-ToolkitDataFileContextMenu {
             @{ Key = '3'; Label = 'Backup Data File' },
             @{ Key = '4'; Label = 'Relocate Data File' },
             @{ Key = '5'; Label = 'Set Default Delivery File' },
-            @{ Key = '6'; Label = 'Permanently Delete Data File' }
+            @{ Key = '6'; Label = 'Permanently Delete Data File' },
+            @{ Key = '7'; Label = 'Create New Default PST (Preserve Rules/Folders)' }
         )
         $contextNav = @(
             @{ Key = '0'; Label = 'Back to Data Files Table' }
@@ -306,7 +331,7 @@ function Invoke-ToolkitDataFileContextMenu {
             return
         }
 
-        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5', '6') -Prompt "  Select action for '$fileName' [1-6, 0]"
+        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5', '6', '7') -Prompt "  Select action for '$fileName' [1-7, 0]"
         if ($null -eq $choice -or $choice.Type -eq 'Exit' -or $choice.Value -eq '0') {
             $inContext = $false
             return
@@ -467,6 +492,64 @@ function Invoke-ToolkitDataFileContextMenu {
                     Wait-UserAcknowledge
                 }
             }
+            '7' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "creating a new default PST for profile '$profileName' (preserving rules/folders)" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Creation of new default PST cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                $docPath = [System.Environment]::GetFolderPath('MyDocuments')
+                if ([string]::IsNullOrWhiteSpace($docPath)) {
+                    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+                        $docPath = Join-Path $env:USERPROFILE 'Documents'
+                    } elseif (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+                        $docPath = Join-Path $env:HOME 'Documents'
+                    } else {
+                        $docPath = [System.IO.Path]::GetTempPath()
+                    }
+                }
+                $defaultPstDir = Join-Path $docPath "Outlook Files"
+                $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+                $defaultPstName = "${profileName}_${timestamp}.pst"
+                $defaultPstPath = Join-Path $defaultPstDir $defaultPstName
+
+                $targetPst = if ($NonInteractive) { $defaultPstPath } else {
+                    Read-Host "  Enter Target PST Path (Default: $defaultPstPath)"
+                }
+                if ([string]::IsNullOrWhiteSpace($targetPst)) {
+                    $targetPst = $defaultPstPath
+                }
+                if (-not ($targetPst -match '[\\/]')) {
+                    $targetPst = Join-Path $defaultPstDir $targetPst
+                }
+                if ($targetPst -notmatch '(?i)\.pst$') {
+                    $targetPst = "$targetPst.pst"
+                }
+
+                if (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Creating new default PST and migrating rules/folders..." -Type 'INFO'
+                        $res = New-OutlookDataFile -Path $targetPst -ProfileName $profileName -SetAsDefault -CloneFolderHierarchy -MigrateRules -SourceStorePath $filePath
+                        if ($res -and $res.Success) {
+                            Write-ToolkitStatus -Message "New default PST created: '$targetPst' for profile '$profileName' with folders and rules preserved." -Type 'OK'
+                            Wait-UserAcknowledge
+                            $inContext = $false
+                            return
+                        } else {
+                            $errMsg = if ($res -and $res.ErrorMessage) { $res.ErrorMessage } else { "Failed to create new default PST." }
+                            Write-ToolkitStatus -Message "Failed: $errMsg" -Type 'FAIL'
+                            Wait-UserAcknowledge
+                        }
+                    } catch {
+                        Write-ToolkitStatus -Message "Error: $($_.Exception.Message)" -Type 'FAIL'
+                        Wait-UserAcknowledge
+                    }
+                } else {
+                    Write-ToolkitStatus -Message "New-OutlookDataFile command unavailable." -Type 'WARN'
+                    Wait-UserAcknowledge
+                }
+            }
             '0' {
                 $inContext = $false
                 return
@@ -496,6 +579,8 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
     Headless automation mode: renders menu once and returns cleanly.
 .PARAMETER MenuDepth
     Optional menu recursion depth.
+.PARAMETER ProfileName
+    Optional profile name filter for data file inventory.
 #>
     [CmdletBinding()]
     param(
@@ -506,7 +591,10 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
         [switch]$NonInteractive,
 
         [Parameter(Mandatory = $false)]
-        [int]$MenuDepth = 1
+        [int]$MenuDepth = 1,
+
+        [Parameter(Mandatory = $false)]
+        [string]$ProfileName
     )
 
     if (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue) {
@@ -520,6 +608,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
             return
         }
 
+    $activeProfileFilter = $ProfileName
     $inSubmenu = $true
     while ($inSubmenu) {
         $clear = if ($NonInteractive) { $false } else { $true }
@@ -532,7 +621,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
         # Discover data files via Get-OutlookDataFileInventory
         $items = @()
         try {
-            $rawInventory = @(Get-OutlookDataFileInventory)
+            $invParams = @{}
+            if (-not [string]::IsNullOrWhiteSpace($activeProfileFilter)) {
+                $invParams['ProfileName'] = $activeProfileFilter
+            }
+            $rawInventory = @(Get-OutlookDataFileInventory @invParams)
             foreach ($item in $rawInventory) {
                 $items += $item
             }
@@ -570,7 +663,8 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
             @{ Key = '13'; Label = 'Reset Navigation Pane Configuration' },
             @{ Key = '14'; Label = 'Compact Outlook Data Files' },
             @{ Key = '15'; Label = 'Test Data File Size Thresholds' },
-            @{ Key = '16'; Label = 'Terminate Outlook Processes' }
+            @{ Key = '16'; Label = 'Terminate Outlook Processes' },
+            @{ Key = '17'; Label = 'Create New Default PST for Profile (Preserve Rules/Folders)' }
         )
         $navActions = @(
             @{ Key = '0'; Label = 'Back to Main Office Hub' }
@@ -585,8 +679,8 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
             return
         }
 
-        $categoryKeys = @('10', '11', '12', '13', '14', '15', '16')
-        $promptText = "  Select Item [1-$($items.Count)], Action [10-16], or [0] Back"
+        $categoryKeys = @('10', '11', '12', '13', '14', '15', '16', '17')
+        $promptText = "  Select Item [1-$($items.Count)], Action [10-17], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex $items.Count -ValidHotkeys $categoryKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
@@ -786,6 +880,97 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                         }
                     } else {
                         Write-ToolkitStatus -Message "Stop-OfficeProcess command unavailable." -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
+                }
+                '17' {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "creating a new default PST with rule/folder preservation" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "New default PST creation cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
+
+                    # Discover available profiles
+                    $discoveredProfiles = @()
+                    $defaultProfile = 'Outlook'
+                    if (Get-Command -Name 'Get-OutlookSystemContext' -ErrorAction SilentlyContinue) {
+                        try {
+                            $sysCtx = Get-OutlookSystemContext
+                            if ($null -ne $sysCtx) {
+                                if ($null -ne $sysCtx.Profiles) {
+                                    $discoveredProfiles = @($sysCtx.Profiles)
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($sysCtx.DefaultProfile) -and $sysCtx.DefaultProfile -ne 'None') {
+                                    $defaultProfile = $sysCtx.DefaultProfile
+                                }
+                            }
+                        } catch { $null = $_ }
+                    }
+
+                    if (-not [string]::IsNullOrWhiteSpace($activeProfileFilter)) {
+                        $defaultProfile = $activeProfileFilter
+                    }
+                    if ($discoveredProfiles.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($defaultProfile)) {
+                        $discoveredProfiles = @($defaultProfile)
+                    }
+
+                    $targetProfile = $defaultProfile
+                    if (-not $NonInteractive) {
+                        if ($discoveredProfiles.Count -gt 0) {
+                            Write-Host "  Available Profiles: $($discoveredProfiles -join ', ')" -ForegroundColor Cyan
+                        }
+                        $chosenProfile = Read-Host "  Enter Target Outlook Profile (Default: $defaultProfile)"
+                        if (-not [string]::IsNullOrWhiteSpace($chosenProfile)) {
+                            $targetProfile = $chosenProfile.Trim()
+                        }
+                    }
+
+                    # Maintain active profile filter across re-renders
+                    $activeProfileFilter = $targetProfile
+
+                    $docPath = [System.Environment]::GetFolderPath('MyDocuments')
+                    if ([string]::IsNullOrWhiteSpace($docPath)) {
+                        if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+                            $docPath = Join-Path $env:USERPROFILE 'Documents'
+                        } elseif (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+                            $docPath = Join-Path $env:HOME 'Documents'
+                        } else {
+                            $docPath = [System.IO.Path]::GetTempPath()
+                        }
+                    }
+                    $defaultPstDir = Join-Path $docPath "Outlook Files"
+                    $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+                    $defaultPstName = "${targetProfile}_${timestamp}.pst"
+                    $defaultPstPath = Join-Path $defaultPstDir $defaultPstName
+
+                    $targetPst = if ($NonInteractive) { $defaultPstPath } else {
+                        Read-Host "  Enter Target PST Path (Default: $defaultPstPath)"
+                    }
+                    if ([string]::IsNullOrWhiteSpace($targetPst)) {
+                        $targetPst = $defaultPstPath
+                    }
+                    if (-not ($targetPst -match '[\\/]')) {
+                        $targetPst = Join-Path $defaultPstDir $targetPst
+                    }
+                    if ($targetPst -notmatch '(?i)\.pst$') {
+                        $targetPst = "$targetPst.pst"
+                    }
+
+                    if (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue) {
+                        try {
+                            Write-ToolkitStatus -Message "Creating new default PST and migrating rules/folders for profile '$targetProfile'..." -Type 'INFO'
+                            $res = New-OutlookDataFile -Path $targetPst -ProfileName $targetProfile -SetAsDefault -CloneFolderHierarchy -MigrateRules
+                            if ($res -and $res.Success) {
+                                Write-ToolkitStatus -Message "New default PST created: '$targetPst' for profile '$targetProfile' with folders and rules preserved." -Type 'OK'
+                            } else {
+                                $errMsg = if ($res -and $res.ErrorMessage) { $res.ErrorMessage } else { "Failed to create new default PST." }
+                                Write-ToolkitStatus -Message "Failed: $errMsg" -Type 'FAIL'
+                            }
+                        } catch {
+                            Write-ToolkitStatus -Message "Error: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "New-OutlookDataFile command unavailable." -Type 'WARN'
                     }
                     Wait-UserAcknowledge
                 }

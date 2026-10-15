@@ -7,7 +7,7 @@
 # - Microsoft Excel Repairs (Invoke-ToolkitSubmenuOfficeExcel) options 1..6 dispatch & GDI
 # - Microsoft PowerPoint Repairs (Invoke-ToolkitSubmenuOfficePowerPoint) options 1..4 dispatch
 # - Office Common Operations (Invoke-ToolkitSubmenuOfficeCommon) options 1..4 & confirmation gate
-# - Microsoft Outlook & Data Files (Invoke-ToolkitSubmenuOfficeOutlook) 1..N context & 10..16 dispatch
+# - Microsoft Outlook & Data Files (Invoke-ToolkitSubmenuOfficeOutlook) 1..N context & 10..17 dispatch
 # - Exception resilience and input stress across all submenus
 # ==============================================================================
 
@@ -1095,6 +1095,87 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             }
             { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
             $script:stopCalled | Should -BeFalse
+        }
+
+        It 'Option 17 dispatches New Default PST creation and rule preservation routine' -Skip:(-not $isTUIAvailable) {
+            $script:newPstCalled = $false
+            $script:pstArgs = $null
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Get-OutlookSystemContext {
+                return [PSCustomObject]@{
+                    Profiles = @('ExecutiveProfile')
+                    DefaultProfile = 'ExecutiveProfile'
+                }
+            }
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Target PST') { return 'D:\Outlook\Default2026.pst' }
+                if ($Prompt -match 'Target Outlook Profile') { return 'ExecutiveProfile' }
+                return ''
+            }
+            Mock New-OutlookDataFile {
+                param($Path, $ProfileName, [switch]$SetAsDefault, [switch]$CloneFolderHierarchy, [switch]$MigrateRules)
+                $script:newPstCalled = $true
+                $script:pstArgs = @{
+                    Path = $Path
+                    ProfileName = $ProfileName
+                    SetAsDefault = $SetAsDefault.IsPresent
+                    CloneFolderHierarchy = $CloneFolderHierarchy.IsPresent
+                    MigrateRules = $MigrateRules.IsPresent
+                }
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '17' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:newPstCalled | Should -BeTrue
+            $script:pstArgs.ProfileName | Should -Be 'ExecutiveProfile'
+            $script:pstArgs.Path | Should -Be 'D:\Outlook\Default2026.pst'
+            $script:pstArgs.SetAsDefault | Should -BeTrue
+            $script:pstArgs.CloneFolderHierarchy | Should -BeTrue
+            $script:pstArgs.MigrateRules | Should -BeTrue
+        }
+
+        It 'Option 17 aborts when user cancels at confirmation prompt' -Skip:(-not $isTUIAvailable) {
+            $script:newPstCalled = $false
+            Mock Confirm-ToolkitAction { return $false }
+            Mock New-OutlookDataFile { $script:newPstCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '17' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:newPstCalled | Should -BeFalse
+        }
+
+        It 'Option 17 resiliently catches and logs errors when default PST creation fails without crashing menu loop' -Skip:(-not $isTUIAvailable) {
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Get-OutlookSystemContext {
+                return [PSCustomObject]@{
+                    Profiles = @('ExecutiveProfile')
+                    DefaultProfile = 'ExecutiveProfile'
+                }
+            }
+            Mock Read-Host { return '' }
+            Mock New-OutlookDataFile {
+                throw "COM Error: Unable to access Outlook object model"
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '17' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
         }
 
         It 'Compatibility alias Invoke-ToolkitSubmenuOutlook forwards to Invoke-ToolkitSubmenuOfficeOutlook' -Skip:(-not $isTUIAvailable) {

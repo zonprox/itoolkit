@@ -1698,7 +1698,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
     }
 
     Context 'Pillar 2 Submenu: Microsoft Outlook & Data Files Workflow' {
-        It 'Invoke-ToolkitSubmenuOfficeOutlook renders data file table and category actions 10-16' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuOfficeOutlook renders data file table and category actions 10-17' -Skip:(-not $isTUIAvailable) {
             $script:renderedTable = $false
             $script:catActions = $null
             $script:catNav = $null
@@ -1715,10 +1715,80 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:renderedTable | Should -BeTrue
             $script:catActions | Should -Not -BeNullOrEmpty
             $keys = $script:catActions | ForEach-Object { $_.Key }
-            for ($k = 10; $k -le 16; $k++) {
+            for ($k = 10; $k -le 17; $k++) {
                 $keys | Should -Contain ([string]$k)
             }
             ($script:catNav | ForEach-Object { $_.Key }) | Should -Contain '0'
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeOutlook renders catalog exposing Option 17 (Create & Set New Default PST)' -Skip:(-not $isTUIAvailable) {
+            $script:catActions = $null
+            Mock Show-ToolkitItemTable { }
+            Mock Show-ToolkitActionCatalog {
+                param($Actions, $NavActions, $Title)
+                $script:catActions = $Actions
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook -NonInteractive } | Should -Not -Throw
+            $opt17 = $script:catActions | Where-Object { $_.Key -eq '17' }
+            $opt17 | Should -Not -BeNullOrEmpty
+            $opt17.Label | Should -Match 'Create New Default PST'
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeOutlook executes Direct Action (key 17) with profile selection and rule preservation' -Skip:(-not $isTUIAvailable) {
+            $script:newPstParams = $null
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Get-OutlookSystemContext {
+                return [PSCustomObject]@{
+                    Profiles = @('WorkProfile')
+                    DefaultProfile = 'WorkProfile'
+                }
+            }
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Target PST') { return 'C:\Outlook\NewStore.pst' }
+                if ($Prompt -match 'Target Outlook Profile') { return 'WorkProfile' }
+                return ''
+            }
+            Mock New-OutlookDataFile {
+                param($Path, $ProfileName, [switch]$SetAsDefault, [switch]$CloneFolderHierarchy, [switch]$MigrateRules)
+                $script:newPstParams = @{
+                    Path = $Path
+                    ProfileName = $ProfileName
+                    SetAsDefault = $SetAsDefault.IsPresent
+                    CloneFolderHierarchy = $CloneFolderHierarchy.IsPresent
+                    MigrateRules = $MigrateRules.IsPresent
+                }
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:oStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:oStep++
+                if ($script:oStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '17' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:newPstParams | Should -Not -BeNullOrEmpty
+            $script:newPstParams.ProfileName | Should -Be 'WorkProfile'
+            $script:newPstParams.Path | Should -Be 'C:\Outlook\NewStore.pst'
+            $script:newPstParams.SetAsDefault | Should -BeTrue
+            $script:newPstParams.CloneFolderHierarchy | Should -BeTrue
+            $script:newPstParams.MigrateRules | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitSubmenuOfficeOutlook aborts Direct Action (key 17) when cancelled by user' -Skip:(-not $isTUIAvailable) {
+            $script:newPstCalled = $false
+            Mock Confirm-ToolkitAction { return $false }
+            Mock New-OutlookDataFile { $script:newPstCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:oStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:oStep++
+                if ($script:oStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '17' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:newPstCalled | Should -BeFalse
         }
 
         It 'Invoke-ToolkitSubmenuOfficeOutlook returns immediately when -ExitImmediately is passed' -Skip:(-not $isTUIAvailable) {
@@ -2660,7 +2730,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:routedFile | Should -Not -BeNullOrEmpty
         }
 
-        It 'Invoke-ToolkitDataFileContextMenu renders action catalog exposing numeric keys 1-6 and 0 back' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitDataFileContextMenu renders action catalog exposing numeric keys 1-7 and 0 back' -Skip:(-not $isTUIAvailable) {
             $script:capturedFileActions = $null
             $script:capturedFileNav = $null
             Mock Show-ToolkitActionCatalog {
@@ -2670,7 +2740,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile -NonInteractive } | Should -Not -Throw
             $keys = $script:capturedFileActions | ForEach-Object { $_.Key }
-            for ($k = 1; $k -le 6; $k++) {
+            for ($k = 1; $k -le 7; $k++) {
                 $keys | Should -Contain ([string]$k)
             }
             ($script:capturedFileNav | ForEach-Object { $_.Key }) | Should -Contain '0'
@@ -2892,6 +2962,58 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
             { Invoke-ToolkitDataFileContextMenu -DataFile $wildDataFile } | Should -Not -Throw
             $script:deleteCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu executes Create New Default PST (key 7) with targeted profile' -Skip:(-not $isTUIAvailable) {
+            $script:newPstContextParams = $null
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'rules/folders') { return 'y' }
+                if ($Prompt -match 'Target PST') { return 'C:\Data\NewDefault.pst' }
+                return ''
+            }
+            Mock New-OutlookDataFile {
+                param($Path, $ProfileName, [switch]$SetAsDefault, [switch]$CloneFolderHierarchy, [switch]$MigrateRules, $SourceStorePath)
+                $script:newPstContextParams = @{
+                    Path = $Path
+                    ProfileName = $ProfileName
+                    SetAsDefault = $SetAsDefault.IsPresent
+                    CloneFolderHierarchy = $CloneFolderHierarchy.IsPresent
+                    MigrateRules = $MigrateRules.IsPresent
+                    SourceStorePath = $SourceStorePath
+                }
+                return [PSCustomObject]@{ Success = $true }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '7' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
+            $script:newPstContextParams | Should -Not -BeNullOrEmpty
+            $script:newPstContextParams.ProfileName | Should -Be 'MainProfile'
+            $script:newPstContextParams.Path | Should -Be 'C:\Data\NewDefault.pst'
+            $script:newPstContextParams.SourceStorePath | Should -Be 'C:\Data\archive.pst'
+            $script:newPstContextParams.SetAsDefault | Should -BeTrue
+            $script:newPstContextParams.CloneFolderHierarchy | Should -BeTrue
+            $script:newPstContextParams.MigrateRules | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitDataFileContextMenu aborts Create New Default PST (key 7) when cancelled by user with n' -Skip:(-not $isTUIAvailable) {
+            $script:newPstCalled = $false
+            Mock Read-Host { return 'n' }
+            Mock New-OutlookDataFile { $script:newPstCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:fStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:fStep++
+                if ($script:fStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '7' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:testDataFile } | Should -Not -Throw
+            $script:newPstCalled | Should -BeFalse
         }
 
         It 'Invoke-ToolkitDataFileContextMenu cleanly returns on key 0 without action dispatch' -Skip:(-not $isTUIAvailable) {

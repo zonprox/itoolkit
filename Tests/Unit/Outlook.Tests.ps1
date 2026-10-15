@@ -1050,4 +1050,465 @@ Describe 'Unit: Outlook Data Management Module' {
             $resCrit.NeedsExpansion | Should -BeTrue
         }
     }
+
+    Context 'Folder Hierarchy Cloning & Rule Target Remapping' {
+        BeforeAll {
+            function New-MockOutlookComTree {
+                param(
+                    [string]$OldPstPath = 'C:\Data\OldDefault.pst',
+                    [string]$NewPstPath = 'C:\Data\NewDefault.pst'
+                )
+
+            # 1. Old Store Folder Hierarchy
+            $mockOldSubSubFolder = [PSCustomObject]@{
+                Name       = 'SubProject'
+                FolderPath = "\\OldStore\Inbox\ProjectA\SubProject"
+                Folders    = [System.Collections.Generic.List[object]]::new()
+            }
+            $mockOldSubFolder = [PSCustomObject]@{
+                Name       = 'ProjectA'
+                FolderPath = "\\OldStore\Inbox\ProjectA"
+                Folders    = [System.Collections.Generic.List[object]]@($mockOldSubSubFolder)
+            }
+            $mockOldInbox = [PSCustomObject]@{
+                Name       = 'Inbox'
+                FolderPath = "\\OldStore\Inbox"
+                Folders    = [System.Collections.Generic.List[object]]@($mockOldSubFolder)
+            }
+            $mockOldFinance = [PSCustomObject]@{
+                Name       = 'Finance'
+                FolderPath = "\\OldStore\Finance"
+                Folders    = [System.Collections.Generic.List[object]]::new()
+            }
+            $mockOldRoot = [PSCustomObject]@{
+                Name       = 'Old Default Store'
+                FolderPath = "\\OldStore"
+                Folders    = [System.Collections.Generic.List[object]]@($mockOldInbox, $mockOldFinance)
+            }
+
+            # 2. Cloned New Store Folder Hierarchy
+            $mockNewRootFolders = [System.Collections.Generic.List[object]]::new()
+            $mockNewRoot = [PSCustomObject]@{
+                Name       = 'New Default Store'
+                FolderPath = "\\NewStore"
+                Folders    = $mockNewRootFolders
+            }
+
+            $script:folderFactory = {
+                param($FolderName)
+                $childList = [System.Collections.Generic.List[object]]::new()
+                $newChild = [PSCustomObject]@{
+                    Name       = $FolderName
+                    FolderPath = "$($this.FolderPath)\$FolderName"
+                    Folders    = $childList
+                }
+                $newChild | Add-Member -MemberType ScriptMethod -Name AddFolder -Value $script:folderFactory
+                $this.Folders.Add($newChild)
+                return $newChild
+            }
+            $mockNewRoot | Add-Member -MemberType ScriptMethod -Name AddFolder -Value $script:folderFactory
+
+            # 3. Old Store Rules Mocking (Source Rules)
+            $script:rulesSaved = $false
+            $mockMoveAction = [PSCustomObject]@{
+                Folder  = $mockOldSubFolder
+                Enabled = $true
+            }
+            $mockCopyAction = [PSCustomObject]@{
+                Folder  = $mockOldFinance
+                Enabled = $true
+            }
+
+            $mockRule1 = [PSCustomObject]@{
+                Name       = 'Route Project Mails'
+                RuleType   = 0
+                Enabled    = $true
+                Conditions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $true; Text = @('ProjectA', 'Urgent') }
+                    From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                }
+                Exceptions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                    From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                }
+                Actions    = [PSCustomObject]@{
+                    MoveToFolder = $mockMoveAction
+                    CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            $mockRule2 = [PSCustomObject]@{
+                Name       = 'Copy Finance Mails'
+                RuleType   = 0
+                Enabled    = $true
+                Conditions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                    From       = [PSCustomObject]@{ Enabled = $true; Recipients = @('finance@company.com') }
+                    SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    Categories = [PSCustomObject]@{ Enabled = $true; Categories = @('Financial') }
+                }
+                Exceptions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $true; Text = @('Draft') }
+                    From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                }
+                Actions    = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    CopyToFolder = $mockCopyAction
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            $mockRule3 = [PSCustomObject]@{
+                Name       = 'Disabled Spam Filter'
+                RuleType   = 0
+                Enabled    = $false
+                Conditions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                    From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                }
+                Exceptions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                    From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                }
+                Actions    = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            $mockRule4 = [PSCustomObject]@{
+                Name       = 'Delete Phishing Mails'
+                RuleType   = 0
+                Enabled    = $true
+                Conditions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $true; Text = @('Phishing Alert', 'Security Warning') }
+                    From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                    Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                }
+                Exceptions = [PSCustomObject]@{
+                    Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                    From       = [PSCustomObject]@{ Enabled = $true; Recipients = @('admin@company.com') }
+                    Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                }
+                Actions    = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    Delete       = [PSCustomObject]@{ Enabled = $true }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $true }
+                }
+            }
+
+            $mockOldRulesList = [System.Collections.Generic.List[object]]@($mockRule1, $mockRule2, $mockRule3, $mockRule4)
+            $mockOldRules = [PSCustomObject]@{
+                Count     = $mockOldRulesList.Count
+                RulesList = $mockOldRulesList
+            }
+            $mockOldRules | Add-Member -MemberType ScriptMethod -Name GetEnumerator -Value { $this.RulesList.GetEnumerator() }
+            $mockOldRules | Add-Member -MemberType ScriptMethod -Name Item -Value { param($idx) return $this.RulesList[$idx] }
+            $mockOldRules | Add-Member -MemberType ScriptMethod -Name Save -Value { param($show) }
+
+            # 4. Target New Store Rules (Initially Empty)
+            $mockNewRulesList = [System.Collections.Generic.List[object]]::new()
+            $mockNewRules = [PSCustomObject]@{
+                Count     = 0
+                RulesList = $mockNewRulesList
+            }
+            $mockNewRules | Add-Member -MemberType ScriptMethod -Name GetEnumerator -Value { $this.RulesList.GetEnumerator() }
+            $mockNewRules | Add-Member -MemberType ScriptMethod -Name Item -Value { param($idx) return $this.RulesList[$idx] }
+            $mockNewRules | Add-Member -MemberType ScriptMethod -Name Save -Value { param($show) $script:rulesSaved = $true }
+            $mockNewRules | Add-Member -MemberType ScriptMethod -Name Create -Value {
+                param($Name, $RuleType)
+                $createdRule = [PSCustomObject]@{
+                    Name       = $Name
+                    RuleType   = $RuleType
+                    Enabled    = $false
+                    Conditions = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                    }
+                    Exceptions = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                    }
+                    Actions    = [PSCustomObject]@{
+                        MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        Delete       = [PSCustomObject]@{ Enabled = $false }
+                        MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                    }
+                }
+                $this.RulesList.Add($createdRule)
+                $this.Count = $this.RulesList.Count
+                return $createdRule
+            }
+
+            # 5. Stores Setup
+            $mockOldStore = [PSCustomObject]@{
+                DisplayName     = 'Old Store'
+                FilePath        = $OldPstPath
+                IsDataFileStore = $true
+                IsDefaultStore  = $true
+                RootFolder      = $mockOldRoot
+                Rules           = $mockOldRules
+            }
+            $mockOldStore | Add-Member -MemberType ScriptMethod -Name GetRootFolder -Value { return $this.RootFolder }
+            $mockOldStore | Add-Member -MemberType ScriptMethod -Name GetRules -Value { return $this.Rules }
+
+            $mockNewStore = [PSCustomObject]@{
+                DisplayName     = 'New Store'
+                FilePath        = $NewPstPath
+                IsDataFileStore = $true
+                IsDefaultStore  = $false
+                RootFolder      = $mockNewRoot
+                Rules           = $mockNewRules
+            }
+            $mockNewStore | Add-Member -MemberType ScriptMethod -Name GetRootFolder -Value { return $this.RootFolder }
+            $mockNewStore | Add-Member -MemberType ScriptMethod -Name GetRules -Value { return $this.Rules }
+
+            $mockStores = @($mockOldStore, $mockNewStore)
+
+            $mockNs = [PSCustomObject]@{
+                DefaultStore = $mockOldStore
+                Stores       = $mockStores
+            }
+            $mockNs | Add-Member -MemberType ScriptMethod -Name AddStoreEx -Value { param($p, $t) }
+
+            $mockApp = [PSCustomObject]@{
+                MapiNamespace = $mockNs
+            }
+            $mockApp | Add-Member -MemberType ScriptMethod -Name GetNamespace -Value { param($ns) return $this.MapiNamespace }
+            $mockApp | Add-Member -MemberType ScriptMethod -Name Quit -Value { }
+
+            return @{
+                App            = $mockApp
+                Namespace      = $mockNs
+                OldStore       = $mockOldStore
+                NewStore       = $mockNewStore
+                OldRoot        = $mockOldRoot
+                NewRoot        = $mockNewRoot
+                Rules          = $mockOldRules
+                OldRules       = $mockOldRules
+                NewRules       = $mockNewRules
+                TargetRules    = $mockNewRules
+                Rule1          = $mockRule1
+                Rule2          = $mockRule2
+                Rule3          = $mockRule3
+                Rule4          = $mockRule4
+                OldSubFolder   = $mockOldSubFolder
+                OldFinance     = $mockOldFinance
+            }
+        }
+    }
+
+        It 'Clones multi-level custom folder hierarchy from source default store into new PST' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+
+            $res = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath
+            $res.Success | Should -BeTrue
+            $res.FoldersCloned | Should -BeGreaterThan 0
+            $res.FolderMap.ContainsKey('Finance') | Should -BeTrue
+            $res.FolderMap.ContainsKey('Inbox\ProjectA') | Should -BeTrue
+            $res.FolderMap.ContainsKey('Inbox\ProjectA\SubProject') | Should -BeTrue
+
+            $newFinance = $res.FolderMap['Finance']
+            $newFinance.FolderPath | Should -Be '\\NewStore\Finance'
+
+            $newProjectA = $res.FolderMap['Inbox\ProjectA']
+            $newProjectA.FolderPath | Should -Be '\\NewStore\Inbox\ProjectA'
+        }
+
+        It 'Remaps MoveToFolder rule actions to the corresponding cloned folders in the new PST' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+
+            $hierRes = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath
+            $ruleRes = Copy-OutlookRule -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath -FolderMap $hierRes.FolderMap
+
+            $ruleRes.Success | Should -BeTrue
+            $ruleRes.RulesRemapped | Should -BeGreaterThan 0
+
+            $targetRule1 = $mockTree.NewStore.Rules.RulesList | Where-Object { $_.Name -eq 'Route Project Mails' }
+            $targetRule1 | Should -Not -BeNullOrEmpty
+            $targetRule1.Actions.MoveToFolder.Folder.FolderPath | Should -Be '\\NewStore\Inbox\ProjectA'
+            $targetRule1.Actions.MoveToFolder.Enabled | Should -BeTrue
+            $targetRule1.Enabled | Should -BeTrue
+            $script:rulesSaved | Should -BeTrue
+        }
+
+        It 'Remaps CopyToFolder rule actions to the corresponding cloned folders in the new PST' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+
+            $hierRes = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath
+            $ruleRes = Copy-OutlookRule -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath -FolderMap $hierRes.FolderMap
+
+            $ruleRes.Success | Should -BeTrue
+            $targetRule2 = $mockTree.NewStore.Rules.RulesList | Where-Object { $_.Name -eq 'Copy Finance Mails' }
+            $targetRule2 | Should -Not -BeNullOrEmpty
+            $targetRule2.Actions.CopyToFolder.Folder.FolderPath | Should -Be '\\NewStore\Finance'
+            $targetRule2.Actions.CopyToFolder.Enabled | Should -BeTrue
+            $script:rulesSaved | Should -BeTrue
+        }
+
+        It 'Preserves disabled rule states and leaves rules without folder actions untouched' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+
+            $hierRes = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath
+            $ruleRes = Copy-OutlookRule -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath -FolderMap $hierRes.FolderMap
+
+            $targetRule3 = $mockTree.NewStore.Rules.RulesList | Where-Object { $_.Name -eq 'Disabled Spam Filter' }
+            $targetRule3 | Should -Not -BeNullOrEmpty
+            $targetRule3.Enabled | Should -BeFalse
+            $targetRule3.Actions.MoveToFolder.Enabled | Should -BeFalse
+            $targetRule3.Actions.CopyToFolder.Enabled | Should -BeFalse
+        }
+
+        It 'Clones rule conditions (Subject, From, Categories) and exceptions to the target store' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+
+            $hierRes = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath
+            $ruleRes = Copy-OutlookRule -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath -FolderMap $hierRes.FolderMap
+
+            $ruleRes.Success | Should -BeTrue
+
+            # Verify Rule 1 conditions (Subject)
+            $targetRule1 = $mockTree.NewStore.Rules.RulesList | Where-Object { $_.Name -eq 'Route Project Mails' }
+            $targetRule1 | Should -Not -BeNullOrEmpty
+            $targetRule1.Conditions.Subject.Enabled | Should -BeTrue
+            $targetRule1.Conditions.Subject.Text | Should -Contain 'ProjectA'
+
+            # Verify Rule 2 conditions (From, Categories)
+            $targetRule2 = $mockTree.NewStore.Rules.RulesList | Where-Object { $_.Name -eq 'Copy Finance Mails' }
+            $targetRule2 | Should -Not -BeNullOrEmpty
+            $targetRule2.Conditions.From.Enabled | Should -BeTrue
+            $targetRule2.Conditions.From.Recipients | Should -Contain 'finance@company.com'
+            $targetRule2.Conditions.Categories.Enabled | Should -BeTrue
+            $targetRule2.Conditions.Categories.Categories | Should -Contain 'Financial'
+
+            # Verify Rule 2 exceptions (Subject)
+            $targetRule2.Exceptions.Subject.Enabled | Should -BeTrue
+            $targetRule2.Exceptions.Subject.Text | Should -Contain 'Draft'
+        }
+
+        It 'Preserves non-folder actions (such as Delete and MarkAsRead) and recipient exceptions' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+
+            $hierRes = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath
+            $ruleRes = Copy-OutlookRule -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath -FolderMap $hierRes.FolderMap
+
+            $ruleRes.Success | Should -BeTrue
+
+            # Verify Rule 4 non-folder actions and conditions/exceptions
+            $targetRule4 = $mockTree.NewStore.Rules.RulesList | Where-Object { $_.Name -eq 'Delete Phishing Mails' }
+            $targetRule4 | Should -Not -BeNullOrEmpty
+            $targetRule4.Enabled | Should -BeTrue
+            $targetRule4.Actions.Delete.Enabled | Should -BeTrue
+            $targetRule4.Actions.MarkAsRead.Enabled | Should -BeTrue
+            $targetRule4.Conditions.Subject.Enabled | Should -BeTrue
+            $targetRule4.Conditions.Subject.Text | Should -Contain 'Phishing Alert'
+            $targetRule4.Exceptions.From.Enabled | Should -BeTrue
+            $targetRule4.Exceptions.From.Recipients | Should -Contain 'admin@company.com'
+        }
+
+        It 'Supports -WhatIf simulation without creating folders or committing rule saves' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+
+            $hierWhatIf = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath -WhatIf
+            $hierWhatIf.Method | Should -Be 'WhatIf'
+            $hierWhatIf.FoldersCloned | Should -Be 0
+            $mockTree.NewRoot.Folders.Count | Should -Be 0
+
+            $script:rulesSaved = $false
+            $ruleWhatIf = Copy-OutlookRule -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath -WhatIf
+            $ruleWhatIf.Method | Should -Be 'WhatIf'
+            $ruleWhatIf.RulesRemapped | Should -Be 0
+            $mockTree.NewStore.Rules.RulesList.Count | Should -Be 0
+            $script:rulesSaved | Should -BeFalse
+        }
+
+        It 'New-OutlookDataFile creates default PST with folder hierarchy and rules preserved' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree -NewPstPath 'C:\Outlook\NewDefault.pst'
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+            Mock Test-Path { return $false }
+            Mock Set-OutlookDefaultDataFile {
+                param($Path, $ProfileName)
+                return [PSCustomObject]@{ Success = $true; Method = 'COM'; FallbackTriggered = $false }
+            }
+
+            $res = New-OutlookDataFile -Path 'C:\Outlook\NewDefault.pst' -SetAsDefault -CloneFolderHierarchy -MigrateRules
+            $res.Success | Should -BeTrue
+            $res.IsDefault | Should -BeTrue
+            $res.Created | Should -BeTrue
+            $res.Attached | Should -BeTrue
+
+            $targetRule1 = $mockTree.NewStore.Rules.RulesList | Where-Object { $_.Name -eq 'Route Project Mails' }
+            $targetRule1 | Should -Not -BeNullOrEmpty
+            $targetRule1.Actions.MoveToFolder.Folder.FolderPath | Should -Be '\\NewStore\Inbox\ProjectA'
+            $script:rulesSaved | Should -BeTrue
+        }
+
+        It 'Deterministically calls Remove-ToolkitComObject to release COM references' -Skip:(-not $isOutlookAvailable) {
+            $mockTree = New-MockOutlookComTree
+            Mock Get-OutlookComApplication { return $mockTree.App } -ModuleName 'Outlook'
+            $script:releasedCount = 0
+            Mock Remove-ToolkitComObject {
+                param($ComObjects)
+                if ($ComObjects) {
+                    $script:releasedCount += $ComObjects.Count
+                }
+            } -ModuleName 'Outlook'
+            Mock Remove-ToolkitComObject {
+                param($ComObjects)
+                if ($ComObjects) {
+                    $script:releasedCount += $ComObjects.Count
+                }
+            }
+
+            $res = Copy-OutlookFolderHierarchy -SourceStorePath $mockTree.OldStore.FilePath -TargetStorePath $mockTree.NewStore.FilePath
+            $script:releasedCount | Should -BeGreaterThan 0
+        }
+
+        It 'Preserves registry profile settings and existing account bindings during default PST switch' -Skip:(-not $isOutlookAvailable) {
+            $mockKeyProps = [PSCustomObject]@{
+                '001f6700' = [byte[]]@(0x43, 0x00, 0x3A, 0x00) # C:
+                '001e6700' = [byte[]]@(0x43, 0x3A)
+                AccountName = 'User@company.com'
+            }
+            Mock Get-ChildItem {
+                return @(
+                    [PSCustomObject]@{
+                        PSChildName = '9375CFF0413111d3B88A00104B2A6676'
+                        Name = 'HKEY_CURRENT_USER\Software\Microsoft\Office\16.0\Outlook\Profiles\TargetProfile\9375CFF0413111d3B88A00104B2A6676'
+                    }
+                )
+            }
+            Mock Get-ItemProperty { return $mockKeyProps }
+
+            $profItems = Get-ChildItem -Path 'HKCU:\Software\Microsoft\Office\16.0\Outlook\Profiles\TargetProfile'
+            $profItems.Count | Should -Be 1
+            $props = Get-ItemProperty -Path $profItems[0].Name
+            $props.AccountName | Should -Be 'User@company.com'
+        }
+    }
 }

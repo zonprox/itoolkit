@@ -14,7 +14,13 @@ function New-OutlookDataFile {
 .PARAMETER DisplayName
     Optional friendly display name for the folder tree.
 .PARAMETER SetAsDefault
-    Configures the data file as the default data file.
+    Configures the data file as the default data file. Auto-enables folder hierarchy cloning and rule migration unless explicitly disabled.
+.PARAMETER CloneFolderHierarchy
+    Switch to clone custom folder structures from the source store. Alias: PreserveHierarchy.
+.PARAMETER MigrateRules
+    Switch to migrate and remap Inbox rules from the source store. Alias: PreserveRules.
+.PARAMETER SourceStorePath
+    Optional explicit path to the source store. Defaults to the default delivery store.
 .PARAMETER Force
     Allows attaching if the target file already exists.
 .OUTPUTS
@@ -37,10 +43,38 @@ function New-OutlookDataFile {
         [switch]$SetAsDefault,
 
         [Parameter(Mandatory = $false)]
+        [Alias('PreserveHierarchy')]
+        [switch]$CloneFolderHierarchy,
+
+        [Parameter(Mandatory = $false)]
+        [Alias('PreserveRules')]
+        [switch]$MigrateRules,
+
+        [Parameter(Mandatory = $false)]
+        [string]$SourceStorePath,
+
+        [Parameter(Mandatory = $false)]
         [switch]$Force
     )
 
     process {
+        # Determine whether to clone folders and migrate rules
+        # When -SetAsDefault is passed, auto-enable unless explicitly set to false
+        $shouldClone = if ($PSBoundParameters.ContainsKey('CloneFolderHierarchy')) {
+            [bool]$CloneFolderHierarchy
+        } elseif ($SetAsDefault) {
+            $true
+        } else {
+            $false
+        }
+
+        $shouldMigrate = if ($PSBoundParameters.ContainsKey('MigrateRules')) {
+            [bool]$MigrateRules
+        } elseif ($SetAsDefault) {
+            $true
+        } else {
+            $false
+        }
         # 1. Path & Extension Validation
         if ($Path -notmatch '(?i)\.pst$') {
             throw "The data file path must have a .pst extension: '$Path'"
@@ -195,6 +229,58 @@ function New-OutlookDataFile {
                             }
                         } catch {
                             Write-Verbose "Could not set store display name: $($_.Exception.Message)"
+                        }
+                    }
+
+                    # Clone folder hierarchy and migrate rules if requested
+                    $folderMap = @{}
+                    if ($shouldClone) {
+                        try {
+                            if (-not (Get-Command -Name 'Copy-OutlookFolderHierarchy' -ErrorAction SilentlyContinue)) {
+                                $copyHierScript = Join-Path -Path $PSScriptRoot -ChildPath 'Copy-OutlookFolderHierarchy.ps1'
+                                if (Test-Path -LiteralPath $copyHierScript) { . $copyHierScript }
+                            }
+                            if (Get-Command -Name 'Copy-OutlookFolderHierarchy' -ErrorAction SilentlyContinue) {
+                                $hierParams = @{
+                                    TargetStorePath = $resolvedPath
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($SourceStorePath)) {
+                                    $hierParams['SourceStorePath'] = $SourceStorePath
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($targetProfile)) {
+                                    $hierParams['ProfileName'] = $targetProfile
+                                }
+                                $hierRes = Copy-OutlookFolderHierarchy @hierParams
+                                if ($null -ne $hierRes -and $null -ne $hierRes.FolderMap) {
+                                    $folderMap = $hierRes.FolderMap
+                                }
+                            }
+                        } catch {
+                            Write-Verbose "Hierarchy cloning notice: $($_.Exception.Message)"
+                        }
+                    }
+
+                    if ($shouldMigrate) {
+                        try {
+                            if (-not (Get-Command -Name 'Copy-OutlookRule' -ErrorAction SilentlyContinue)) {
+                                $copyRuleScript = Join-Path -Path $PSScriptRoot -ChildPath 'Copy-OutlookRule.ps1'
+                                if (Test-Path -LiteralPath $copyRuleScript) { . $copyRuleScript }
+                            }
+                            if (Get-Command -Name 'Copy-OutlookRule' -ErrorAction SilentlyContinue) {
+                                $ruleParams = @{
+                                    TargetStorePath = $resolvedPath
+                                    FolderMap       = $folderMap
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($SourceStorePath)) {
+                                    $ruleParams['SourceStorePath'] = $SourceStorePath
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($targetProfile)) {
+                                    $ruleParams['ProfileName'] = $targetProfile
+                                }
+                                $null = Copy-OutlookRule @ruleParams
+                            }
+                        } catch {
+                            Write-Verbose "Rule migration notice: $($_.Exception.Message)"
                         }
                     }
                 }

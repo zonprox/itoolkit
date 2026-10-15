@@ -72,7 +72,82 @@ function Set-OutlookDefaultDataFile {
         $outlookProcs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
         $isOutlookRunning = ($outlookProcs.Count -gt 0)
 
-        # 6. Locate Outlook Executable
+        # 6. Check if store is already default via Outlook COM
+        $comApp = $null
+        $ns = $null
+        $stores = $null
+        $store = $null
+        $isAlreadyDefault = $false
+
+        try {
+            if (Get-Command -Name 'Get-OutlookComApplication' -ErrorAction SilentlyContinue) {
+                $comApp = Get-OutlookComApplication
+            }
+            else {
+                $outlookMod = Get-Module -Name 'Outlook'
+                if ($null -ne $outlookMod) {
+                    $comApp = & $outlookMod { Get-OutlookComApplication }
+                }
+                else {
+                    $privCom = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'Private/Get-OutlookComApplication.ps1'
+                    if (Test-Path -LiteralPath $privCom) {
+                        . $privCom
+                        $comApp = Get-OutlookComApplication
+                    }
+                }
+            }
+
+            if ($null -ne $comApp) {
+                $ns = $comApp.GetNamespace('MAPI')
+                if ($null -ne $ns) {
+                    if ($ns.PSObject.Properties['Stores']) {
+                        $stores = $ns.Stores
+                        if ($null -ne $stores) {
+                            foreach ($s in $stores) {
+                                $sp = if ($s.FilePath) { [string]$s.FilePath } else { '' }
+                                if ($sp -ieq $resolvedPath -or $sp -ieq $Path) {
+                                    $store = $s
+                                    break
+                                }
+                            }
+                        }
+                    }
+
+                    if ($null -ne $store -and $store.PSObject.Properties['IsDefaultStore'] -and $store.IsDefaultStore) {
+                        $isAlreadyDefault = $true
+                    }
+                    elseif ($ns.PSObject.Properties['DefaultStore'] -and $null -ne $ns.DefaultStore) {
+                        $defP = if ($ns.DefaultStore.FilePath) { [string]$ns.DefaultStore.FilePath } else { '' }
+                        if ($defP -ieq $resolvedPath -or $defP -ieq $Path) {
+                            $isAlreadyDefault = $true
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Verbose "COM default store check notice: $($_.Exception.Message)"
+        }
+        finally {
+            $objectsToRelease = @($store, $stores, $ns, $comApp)
+            if (Get-Command -Name 'Remove-ToolkitComObject' -ErrorAction SilentlyContinue) {
+                Remove-ToolkitComObject -ComObjects $objectsToRelease
+            }
+        }
+
+        if ($isAlreadyDefault) {
+            return [PSCustomObject]@{
+                Path              = $resolvedPath
+                Profile           = $targetProfile
+                Success           = $true
+                Method            = 'COM'
+                FallbackTriggered = $false
+                OutlookRunning    = $isOutlookRunning
+                ErrorMessage      = $null
+            }
+        }
+
+        # 7. Locate Outlook Executable
         $outlookExe = 'outlook.exe'
         if (Get-Command -Name 'Get-OutlookSystemContext' -ErrorAction SilentlyContinue) {
             try {

@@ -92,6 +92,7 @@ Never simplify away or cut corners on:
 - **Code First**: Deliver working, minimal code first.
 - **Brief Rationale**: At most three concise lines explaining what was chosen, what was skipped, and when to add complexity if ever needed.
 - **No Unrequested Fluff**: Avoid lengthy design essays or feature tours unless specifically asked for documentation.
+- **Milestone-Only Progress Updates**: Do not emit granular or periodic heartbeat/liveness status messages. Report progress only when a concrete item or milestone is completed.
 - Pattern:
   ```
   [code or diff]

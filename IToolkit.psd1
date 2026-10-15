@@ -74,6 +74,8 @@
         'Clear-OutlookRoamCache',
         'Reset-OutlookNavigationPane',
         'Test-OutlookDataFileSize',
+        'Copy-OutlookFolderHierarchy',
+        'Copy-OutlookRule',
 
         # Office, Word, Excel & PowerPoint Troubleshooting Services
         'Set-ExcelHardwareAcceleration',
