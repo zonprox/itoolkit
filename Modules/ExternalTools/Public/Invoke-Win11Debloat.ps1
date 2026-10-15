@@ -1,9 +1,9 @@
 function Invoke-Win11Debloat {
 <#
 .SYNOPSIS
-    Pre-flight checks internet connectivity, prompts user confirmation, and launches Win11Debloat.
+    Pre-flight checks internet connectivity and launches Win11Debloat.
 .DESCRIPTION
-    Performs outbound internet validation, prompts the user with Show-ToolkitConfirmation,
+    Performs outbound internet validation, downloads and validates the script,
     and launches the canonical Win11Debloat script (https://debloat.raphi.re/) via an elevated external PowerShell process.
     Complies with SecurityIntegrity rules by avoiding Invoke-Expression.
 .PARAMETER Variant
@@ -70,42 +70,7 @@ function Invoke-Win11Debloat {
             }
         }
 
-        # 5. Mandatory User Confirmation Prompt
-        $confirmed = $false
-        if (Get-Command -Name 'Show-ToolkitConfirmation' -ErrorAction SilentlyContinue) {
-            $confirmed = Show-ToolkitConfirmation -Prompt "Win11Debloat will execute external code from $ScriptUrl. Proceed?" -Default $false
-        } else {
-            try {
-                if ($Host -and $Host.UI -and $Host.UI.PromptForChoice) {
-                    $caption = "Security Confirmation Required"
-                    $message = "Win11Debloat will download and execute external code from $ScriptUrl. Do you want to proceed?"
-                    $choices = @(
-                        [System.Management.Automation.Host.ChoiceDescription]::new('&Yes', 'Execute external script'),
-                        [System.Management.Automation.Host.ChoiceDescription]::new('&No', 'Cancel execution')
-                    )
-                    $choice = $Host.UI.PromptForChoice($caption, $message, $choices, 1)
-                    $confirmed = ($choice -eq 0)
-                } else {
-                    $confirmed = $false
-                }
-            } catch {
-                $confirmed = $false
-            }
-        }
-
-        if (-not $confirmed) {
-            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-                Write-ToolkitLog -Message "Win11Debloat launch cancelled by user." -Level 'WARN' -Component 'Invoke-Win11Debloat'
-            }
-            return [PSCustomObject]@{
-                ToolName  = 'Win11Debloat'
-                ScriptUrl = $ScriptUrl
-                Launched  = $false
-                ExitCode  = $null
-            }
-        }
-
-        # 6. Secure Temporary File Staging & AST Syntax Pre-Validation
+        # 5. Secure Temporary File Staging & AST Syntax Pre-Validation
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
             Write-ToolkitLog -Message "Downloading and validating Win11Debloat from $ScriptUrl..." -Level 'INFO' -Component 'Invoke-Win11Debloat'
         }
@@ -114,12 +79,28 @@ function Invoke-Win11Debloat {
         try {
             $rawContent = $null
             $webResp = Invoke-WebRequest -Uri $ScriptUrl -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
-            if ($webResp -is [string]) {
-                $rawContent = $webResp
-            } elseif ($null -ne $webResp.PSObject.Properties['Content']) {
-                $rawContent = [string]$webResp.Content
+            $contentObj = $webResp
+            if ($null -ne $webResp -and $null -ne $webResp.PSObject.Properties['Content']) {
+                $contentObj = $webResp.Content
+            } elseif ($webResp -is [System.Collections.IDictionary] -and $webResp.Contains('Content')) {
+                $contentObj = $webResp['Content']
+            }
+
+            if ($contentObj -is [byte[]] -or ($contentObj -is [System.Array] -and $contentObj -isnot [string] -and $contentObj.Count -gt 0 -and $contentObj[0] -is [byte])) {
+                $bytes = [byte[]]$contentObj
+                if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+                    $rawContent = [System.Text.Encoding]::UTF8.GetString($bytes, 3, $bytes.Length - 3)
+                } else {
+                    $rawContent = [System.Text.Encoding]::UTF8.GetString($bytes)
+                }
+            } elseif ($contentObj -is [string]) {
+                $rawContent = $contentObj
             } else {
-                $rawContent = [string]$webResp
+                $rawContent = [string]$contentObj
+            }
+
+            if (-not [string]::IsNullOrEmpty($rawContent) -and $rawContent.StartsWith([char]0xFEFF)) {
+                $rawContent = $rawContent.TrimStart([char]0xFEFF)
             }
 
             if ([string]::IsNullOrWhiteSpace($rawContent)) {

@@ -253,31 +253,34 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
     # Context 3: Debloat Tool Safety & Confirmation Prompts
     # ==========================================================================
     Context '3. Debloat Tool Safety Confirmations & Parameters' {
-        It 'Invoke-Win11Debloat respects user cancellation and halts launch' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-Win11Debloat launches directly without user confirmation prompt' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $false } # User rejects
-            Mock Start-Process { throw "Process must not launch when user cancels" }
+            Mock Show-ToolkitConfirmation { throw "Show-ToolkitConfirmation must not be called" }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "ok"' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $res = Invoke-Win11Debloat
-            $res.Launched | Should -BeFalse
-            $res.ExitCode | Should -BeNullOrEmpty
+            $res.Launched | Should -BeTrue
+            $res.ExitCode | Should -Be 0
             $res.ToolName | Should -Be 'Win11Debloat'
         }
 
-        It 'Invoke-BrowserDebloat respects user cancellation and halts launch' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat launches directly without user confirmation prompt' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $false } # User rejects
-            Mock Start-Process { throw "Process must not launch when user cancels" }
+            Mock Show-ToolkitConfirmation { throw "Show-ToolkitConfirmation must not be called" }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "ok"' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $res = Invoke-BrowserDebloat
-            $res.Launched | Should -BeFalse
-            $res.ExitCode | Should -BeNullOrEmpty
+            $res.Launched | Should -BeTrue
+            $res.ExitCode | Should -Be 0
             $res.ToolName | Should -Be 'BrowserDebloat'
         }
 
         It 'Invoke-Win11Debloat targets canonical script URL' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $false }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "ok"' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $resRaphire = Invoke-Win11Debloat -Variant 'Raphire'
             $resRaphire.ScriptUrl | Should -Be 'https://debloat.raphi.re/'
@@ -292,10 +295,33 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
 
         It 'Invoke-BrowserDebloat targets canonical URL' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $false }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "ok"' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $res = Invoke-BrowserDebloat
             $res.ScriptUrl | Should -Be 'https://debloat.yashg.dev/install.ps1'
+        }
+
+        It 'Invoke-Win11Debloat properly decodes octet-stream byte[] response with BOM' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            [byte[]]$bytes = @(0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes("# Win11Debloat script`nWrite-Output 'running'")
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = $bytes } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+
+            $res = Invoke-Win11Debloat
+            $res.Launched | Should -BeTrue
+            $res.ExitCode | Should -Be 0
+        }
+
+        It 'Invoke-BrowserDebloat properly decodes octet-stream byte[] response with BOM' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            [byte[]]$bytes = @(0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes("# BrowserDebloat script`nWrite-Output 'running'")
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = $bytes } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+
+            $res = Invoke-BrowserDebloat
+            $res.Launched | Should -BeTrue
+            $res.ExitCode | Should -Be 0
         }
     }
 
@@ -665,22 +691,23 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             $res.SmbPortOpen | Should -BeTrue
         }
 
-        # 6.3 Confirmation prompt behavior when Show-ToolkitConfirmation is absent
-        It 'Invoke-Win11Debloat safely aborts and avoids remote code execution when Show-ToolkitConfirmation is absent and host rejects' -Skip:(-not $isExtToolsAvailable) {
+        # 6.3 Direct launch behavior without host confirmation prompts
+        It 'Invoke-Win11Debloat executes without invoking host PromptForChoice even when Show-ToolkitConfirmation is absent' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Start-Process { throw "FATAL: Start-Process must NEVER be called when confirmation fails" }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "ok"' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             # Temporarily remove Core module so Show-ToolkitConfirmation is absent
             $coreLoaded = [bool](Get-Module -Name 'Core')
             if ($coreLoaded) { Remove-Module -Name 'Core' -Force }
 
             try {
-                # Override PromptForChoice on $Host.UI to return 1 (&No)
-                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { param($c, $m, $ch, $d) return 1 } -Force
+                # Override PromptForChoice on $Host.UI to throw if invoked
+                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { throw "FATAL: PromptForChoice must NEVER be called" } -Force
 
                 $res = Invoke-Win11Debloat
-                $res.Launched | Should -BeFalse
-                $res.ExitCode | Should -BeNullOrEmpty
+                $res.Launched | Should -BeTrue
+                $res.ExitCode | Should -Be 0
             } finally {
                 # Restore Core module
                 if ($coreLoaded) {
@@ -693,19 +720,21 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             }
         }
 
-        It 'Invoke-Win11Debloat safely aborts when Show-ToolkitConfirmation is absent and host PromptForChoice throws' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-Win11Debloat decodes byte[] Content payload when Show-ToolkitConfirmation is absent' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Start-Process { throw "FATAL: Start-Process must NEVER be called when confirmation fails" }
+            [byte[]]$bytes = @(0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes('Write-Output "no confirmation byte payload"')
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = $bytes } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $coreLoaded = [bool](Get-Module -Name 'Core')
             if ($coreLoaded) { Remove-Module -Name 'Core' -Force }
 
             try {
-                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { throw "Non-interactive host" } -Force
+                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { throw "FATAL: PromptForChoice must NEVER be called" } -Force
 
                 $res = Invoke-Win11Debloat
-                $res.Launched | Should -BeFalse
-                $res.ExitCode | Should -BeNullOrEmpty
+                $res.Launched | Should -BeTrue
+                $res.ExitCode | Should -Be 0
             } finally {
                 if ($coreLoaded) {
                     $root = if ($script:ProjectRoot) { $script:ProjectRoot } elseif ($ProjectRoot) { $ProjectRoot } elseif ($PSScriptRoot) { (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path } else { '.' }
@@ -717,19 +746,20 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             }
         }
 
-        It 'Invoke-BrowserDebloat safely aborts and avoids remote code execution when Show-ToolkitConfirmation is absent and host rejects' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat executes without invoking host PromptForChoice even when Show-ToolkitConfirmation is absent' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Start-Process { throw "FATAL: Start-Process must NEVER be called when confirmation fails" }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "ok"' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $coreLoaded = [bool](Get-Module -Name 'Core')
             if ($coreLoaded) { Remove-Module -Name 'Core' -Force }
 
             try {
-                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { param($c, $m, $ch, $d) return 1 } -Force
+                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { throw "FATAL: PromptForChoice must NEVER be called" } -Force
 
                 $res = Invoke-BrowserDebloat
-                $res.Launched | Should -BeFalse
-                $res.ExitCode | Should -BeNullOrEmpty
+                $res.Launched | Should -BeTrue
+                $res.ExitCode | Should -Be 0
             } finally {
                 if ($coreLoaded) {
                     $root = if ($script:ProjectRoot) { $script:ProjectRoot } elseif ($ProjectRoot) { $ProjectRoot } elseif ($PSScriptRoot) { (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path } else { '.' }
@@ -741,19 +771,21 @@ Describe 'Adversarial: Printers & ExternalTools Module Stress Testing' {
             }
         }
 
-        It 'Invoke-BrowserDebloat safely aborts when Show-ToolkitConfirmation is absent and host PromptForChoice throws' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat decodes byte[] Content payload when Show-ToolkitConfirmation is absent' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Start-Process { throw "FATAL: Start-Process must NEVER be called when confirmation fails" }
+            [byte[]]$bytes = @(0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes('Write-Output "no confirmation browser byte payload"')
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = $bytes } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $coreLoaded = [bool](Get-Module -Name 'Core')
             if ($coreLoaded) { Remove-Module -Name 'Core' -Force }
 
             try {
-                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { throw "Non-interactive host" } -Force
+                $Host.UI | Add-Member -MemberType ScriptMethod -Name 'PromptForChoice' -Value { throw "FATAL: PromptForChoice must NEVER be called" } -Force
 
                 $res = Invoke-BrowserDebloat
-                $res.Launched | Should -BeFalse
-                $res.ExitCode | Should -BeNullOrEmpty
+                $res.Launched | Should -BeTrue
+                $res.ExitCode | Should -Be 0
             } finally {
                 if ($coreLoaded) {
                     $root = if ($script:ProjectRoot) { $script:ProjectRoot } elseif ($ProjectRoot) { $ProjectRoot } elseif ($PSScriptRoot) { (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path } else { '.' }

@@ -49,13 +49,15 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
             { Invoke-Win11Debloat } | Should -Throw
         }
 
-        It 'Invoke-Win11Debloat prompts for user confirmation before launching' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-Win11Debloat launches directly without prompting for confirmation' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $false } # User cancelled
-            Mock Start-Process { throw "Should not launch if user cancelled" }
+            Mock Show-ToolkitConfirmation { throw "Confirmation prompt should not be invoked" }
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "Win11Debloat"' } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
             $res = Invoke-Win11Debloat
-            $res.Launched | Should -BeFalse
+            $res.Launched | Should -BeTrue
+            $res.ExitCode | Should -Be 0
         }
 
         It 'Invoke-Win11Debloat supports WhatIf without launching' -Skip:(-not $isExtToolsAvailable) {
@@ -77,15 +79,13 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
 
         It 'Invoke-Win11Debloat rejects payload with AST syntax errors' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $true }
             Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'function BrokenSyntax {' } }
 
             { Invoke-Win11Debloat } | Should -Throw "*syntax*"
         }
 
-        It 'Invoke-Win11Debloat launches script when confirmed' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-Win11Debloat launches script and returns status' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $true }
             Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "Win11Debloat"' } }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
@@ -94,12 +94,23 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
             $res.ScriptUrl | Should -Be 'https://debloat.raphi.re/'
             $res.Launched | Should -BeTrue
         }
+
+        It 'Invoke-Win11Debloat properly decodes byte[] Content payload with BOM and passes AST validation' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            [byte[]]$bytes = @(0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes("Write-Output 'Win11Debloat byte payload'")
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = $bytes } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+
+            $res = Invoke-Win11Debloat
+            $res.Launched | Should -BeTrue
+            $res.ExitCode | Should -Be 0
+        }
     }
 
     Context 'Browser Debloat Launcher' {
-        It 'Invoke-BrowserDebloat checks internet and prompts confirmation before launch' -Skip:(-not $isExtToolsAvailable) {
+        It 'Invoke-BrowserDebloat launches directly without prompting for confirmation' -Skip:(-not $isExtToolsAvailable) {
             Mock Test-InternetConnectivity { return $true }
-            Mock Show-ToolkitConfirmation { return $true }
+            Mock Show-ToolkitConfirmation { throw "Confirmation prompt should not be invoked" }
             Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = 'Write-Output "BrowserDebloat"' } }
             Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
 
@@ -107,6 +118,17 @@ Describe 'Unit: External Tools & Quick Launchers Module' {
             $res.ToolName | Should -Be 'BrowserDebloat'
             $res.ScriptUrl | Should -Be 'https://debloat.yashg.dev/install.ps1'
             $res.Launched | Should -BeTrue
+        }
+
+        It 'Invoke-BrowserDebloat properly decodes byte[] Content payload with BOM and passes AST validation' -Skip:(-not $isExtToolsAvailable) {
+            Mock Test-InternetConnectivity { return $true }
+            [byte[]]$bytes = @(0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes("Write-Output 'BrowserDebloat byte payload'")
+            Mock Invoke-WebRequest { return [PSCustomObject]@{ StatusCode = 200; Content = $bytes } }
+            Mock Start-Process { return [PSCustomObject]@{ ExitCode = 0 } }
+
+            $res = Invoke-BrowserDebloat
+            $res.Launched | Should -BeTrue
+            $res.ExitCode | Should -Be 0
         }
 
         It 'Invoke-BrowserDebloat rejects non-HTTPS URL' -Skip:(-not $isExtToolsAvailable) {

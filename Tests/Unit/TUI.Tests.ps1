@@ -2287,9 +2287,9 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:upgradeAllCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Win11Debloat on key 10' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Win11Debloat on key 10 without confirmation' -Skip:(-not $isTUIAvailable) {
             $script:debloatCalled = $false
-            Mock Read-Host { return 'y' }
+            Mock Confirm-ToolkitAction { throw "Confirm-ToolkitAction should not be called" }
             Mock Invoke-Win11Debloat {
                 $script:debloatCalled = $true
                 return [PSCustomObject]@{ Success = $true }
@@ -2305,10 +2305,14 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:debloatCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuSoftwareOptimization aborts Win11Debloat on key 10 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Win11Debloat without calling Read-Host or Show-ToolkitConfirmation on key 10' -Skip:(-not $isTUIAvailable) {
             $script:debloatCalled = $false
-            Mock Read-Host { return 'n' }
-            Mock Invoke-Win11Debloat { $script:debloatCalled = $true }
+            Mock Read-Host { throw "Read-Host should not be called" }
+            Mock Show-ToolkitConfirmation { throw "Show-ToolkitConfirmation should not be called" }
+            Mock Invoke-Win11Debloat {
+                $script:debloatCalled = $true
+                return [PSCustomObject]@{ Success = $true }
+            }
             Mock Wait-UserAcknowledge { }
             $script:sCount = 0
             Mock Read-ToolkitItemSelection {
@@ -2317,12 +2321,12 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
             }
             { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
-            $script:debloatCalled | Should -BeFalse
+            $script:debloatCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Browser Debloat on key 11' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Browser Debloat on key 11 without confirmation' -Skip:(-not $isTUIAvailable) {
             $script:browserDebloatCalled = $false
-            Mock Read-Host { return 'y' }
+            Mock Confirm-ToolkitAction { throw "Confirm-ToolkitAction should not be called" }
             Mock Invoke-BrowserDebloat {
                 $script:browserDebloatCalled = $true
                 return [PSCustomObject]@{ Success = $true }
@@ -2338,10 +2342,14 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             $script:browserDebloatCalled | Should -BeTrue
         }
 
-        It 'Invoke-ToolkitSubmenuSoftwareOptimization aborts Browser Debloat on key 11 when cancelled by user' -Skip:(-not $isTUIAvailable) {
+        It 'Invoke-ToolkitSubmenuSoftwareOptimization dispatches Browser Debloat without calling Read-Host or Show-ToolkitConfirmation on key 11' -Skip:(-not $isTUIAvailable) {
             $script:browserDebloatCalled = $false
-            Mock Read-Host { return 'n' }
-            Mock Invoke-BrowserDebloat { $script:browserDebloatCalled = $true }
+            Mock Read-Host { throw "Read-Host should not be called" }
+            Mock Show-ToolkitConfirmation { throw "Show-ToolkitConfirmation should not be called" }
+            Mock Invoke-BrowserDebloat {
+                $script:browserDebloatCalled = $true
+                return [PSCustomObject]@{ Success = $true }
+            }
             Mock Wait-UserAcknowledge { }
             $script:sCount = 0
             Mock Read-ToolkitItemSelection {
@@ -2350,7 +2358,7 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
                 return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
             }
             { Invoke-ToolkitSubmenuSoftwareOptimization } | Should -Not -Throw
-            $script:browserDebloatCalled | Should -BeFalse
+            $script:browserDebloatCalled | Should -BeTrue
         }
     }
 

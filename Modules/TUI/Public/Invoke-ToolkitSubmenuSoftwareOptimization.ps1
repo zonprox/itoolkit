@@ -446,22 +446,12 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
                     Wait-UserAcknowledge
                 }
                 '10' {
-                    if (-not (Confirm-ToolkitAction -ActionDescription "launching Win11Debloat system modification utility" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Win11Debloat cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
                     if (Get-Command -Name 'Invoke-Win11Debloat' -ErrorAction SilentlyContinue) {
                         Invoke-Win11Debloat | Format-List
                     }
                     Wait-UserAcknowledge
                 }
                 '11' {
-                    if (-not (Confirm-ToolkitAction -ActionDescription "applying Browser Debloat policy modifications" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Browser Debloat cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
                     if (Get-Command -Name 'Invoke-BrowserDebloat' -ErrorAction SilentlyContinue) {
                         Invoke-BrowserDebloat | Format-List
                     }
