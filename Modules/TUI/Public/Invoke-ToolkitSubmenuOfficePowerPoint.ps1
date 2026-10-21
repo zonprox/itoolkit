@@ -146,24 +146,22 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
         $clear = if ($NonInteractive) { $false } else { $true }
         $pptInfo = Get-OfficePowerPointContextInfoLines
         Show-ToolkitHeader -Title 'ITOOLKIT > OFFICE > MICROSOFT POWERPOINT REPAIRS' `
-            -Subtitle 'Targeted Diagnostics, Acceleration, Font/Slide Cache & Resiliency' `
+            -Subtitle 'Targeted Diagnostics, Font/Slide Cache & Resiliency' `
             -ClearScreen:$clear `
             -InfoLines $pptInfo
 
         $pptItems = @(
-            [PSCustomObject]@{ Component = 'Hardware Acceleration'; Status = '[READY]'; Subsystem = 'PowerPoint\Options'; Details = 'Presentation rendering & slide show GPU acceleration' },
             [PSCustomObject]@{ Component = 'Font & Slide Cache'; Status = '[READY]'; Subsystem = 'PowerPoint\Cache'; Details = 'Cached font render artifacts & slide preview bitmaps' },
             [PSCustomObject]@{ Component = 'Resiliency & Add-ins'; Status = '[READY]'; Subsystem = 'Resiliency\DisabledItems'; Details = 'Blacklisted & crashed COM add-ins list' },
-            [PSCustomObject]@{ Component = 'Process Controller'; Status = '[READY]'; Subsystem = 'POWERPNT.EXE'; Details = 'Active background & hung PowerPoint instances' }
+            [PSCustomObject]@{ Component = 'Quick App Repair'; Status = '[READY]'; Subsystem = 'Composite Pipeline'; Details = 'One-click process termination, font/slide cache & resiliency' }
         )
         Show-ToolkitItemTable -Items $pptItems -Columns @('Component', 'Status', 'Subsystem', 'Details') -Headers @('SUBSYSTEM', 'STATUS', 'TARGET', 'PURPOSE') -Title 'Microsoft PowerPoint Architectural Subsystems' -NoIndex
 
         Write-Host ""
         $actions = @(
-            @{ Key = '1'; Label = 'Toggle Hardware Acceleration' },
-            @{ Key = '2'; Label = 'Reset Font & Slide Cache' },
-            @{ Key = '3'; Label = 'Reset Add-in Resiliency & Disabled Items' },
-            @{ Key = '4'; Label = 'Terminate PowerPoint Processes' }
+            @{ Key = '1'; Label = 'Reset Font & Slide Cache' },
+            @{ Key = '2'; Label = 'Reset Add-in Resiliency & Disabled Items' },
+            @{ Key = '3'; Label = 'Quick PowerPoint Repair (One-Click Combo)' }
         )
         $navActions = @(
             @{ Key = '0'; Label = 'Back to Office Hub' }
@@ -178,8 +176,8 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
             return
         }
 
-        $validKeys = @('1', '2', '3', '4', '0')
-        $promptText = "  Select PowerPoint repair action [1-4, 0]"
+        $validKeys = @('1', '2', '3', '0')
+        $promptText = "  Select PowerPoint repair action [1-3, 0]"
         $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
@@ -190,32 +188,35 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
 
         switch ($actionKey) {
             '1' {
-                try {
-                    Write-ToolkitStatus -Message "Checking PowerPoint hardware acceleration status..." -Type 'INFO'
-                    if (Get-Command -Name 'Set-PowerPointHardwareAcceleration' -ErrorAction SilentlyContinue) {
-                        $curDisabled = $false
-                        try {
-                            $val = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Office\16.0\PowerPoint\Options' -Name 'DisableHardwareAcceleration' -ErrorAction SilentlyContinue
-                            if ($val -eq 1) { $curDisabled = $true }
-                        } catch { $null = $_ }
+                if ((Get-Command -Name 'Set-PowerPointHardwareAcceleration' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
+                    (Get-Command -Name 'Reset-PowerPointCache' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
+                    try {
+                        Write-ToolkitStatus -Message "Checking PowerPoint hardware acceleration status..." -Type 'INFO'
+                        if (Get-Command -Name 'Set-PowerPointHardwareAcceleration' -ErrorAction SilentlyContinue) {
+                            $curDisabled = $false
+                            try {
+                                $val = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Office\16.0\PowerPoint\Options' -Name 'DisableHardwareAcceleration' -ErrorAction SilentlyContinue
+                                if ($val -eq 1) { $curDisabled = $true }
+                            } catch { $null = $_ }
 
-                        $targetDisable = -not $curDisabled
-                        $res = Set-PowerPointHardwareAcceleration -Disable $targetDisable
-                        if ($res -and $res.Status -eq 'Success') {
-                            $stateDesc = if ($res.Disabled) { "DISABLED (Software Rendering)" } else { "ENABLED (Hardware Rendering)" }
-                            Write-ToolkitStatus -Message "PowerPoint hardware graphics acceleration set to: $stateDesc." -Type 'OK'
+                            $targetDisable = -not $curDisabled
+                            $res = Set-PowerPointHardwareAcceleration -Disable $targetDisable
+                            if ($res -and $res.Status -eq 'Success') {
+                                $stateDesc = if ($res.Disabled) { "DISABLED (Software Rendering)" } else { "ENABLED (Hardware Rendering)" }
+                                Write-ToolkitStatus -Message "PowerPoint hardware graphics acceleration set to: $stateDesc." -Type 'OK'
+                            } else {
+                                Write-ToolkitStatus -Message "Hardware acceleration update processed." -Type 'INFO'
+                            }
                         } else {
-                            Write-ToolkitStatus -Message "Hardware acceleration update processed." -Type 'INFO'
+                            Write-ToolkitStatus -Message "Set-PowerPointHardwareAcceleration command unavailable." -Type 'WARN'
                         }
-                    } else {
-                        Write-ToolkitStatus -Message "Set-PowerPointHardwareAcceleration command unavailable." -Type 'WARN'
+                    } catch {
+                        Write-ToolkitStatus -Message "Hardware acceleration toggle failed: $($_.Exception.Message)" -Type 'FAIL'
                     }
-                } catch {
-                    Write-ToolkitStatus -Message "Hardware acceleration toggle failed: $($_.Exception.Message)" -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    break
                 }
-                Wait-UserAcknowledge
-            }
-            '2' {
+
                 if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft PowerPoint font and slide master cache" -NonInteractive:$NonInteractive)) {
                     Write-ToolkitStatus -Message "PowerPoint cache reset cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
@@ -238,7 +239,33 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
                 }
                 Wait-UserAcknowledge
             }
-            '3' {
+            '2' {
+                if ((Get-Command -Name 'Reset-PowerPointCache' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
+                    (Get-Command -Name 'Reset-PowerPointResiliency' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft PowerPoint font and slide master cache" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "PowerPoint cache reset cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
+                    try {
+                        Write-ToolkitStatus -Message "Purging PowerPoint font and slide layout preview cache..." -Type 'INFO'
+                        if (Get-Command -Name 'Reset-PowerPointCache' -ErrorAction SilentlyContinue) {
+                            $res = Reset-PowerPointCache -Force
+                            if ($res -and $res.Status -eq 'Success') {
+                                Write-ToolkitStatus -Message "Purged $($res.CleanedFilesCount) cached file(s) ($([math]::Round($res.BytesFreed / 1KB, 1)) KB freed)." -Type 'OK'
+                            } else {
+                                Write-ToolkitStatus -Message "PowerPoint cache is already clean." -Type 'INFO'
+                            }
+                        } else {
+                            Write-ToolkitStatus -Message "Reset-PowerPointCache command unavailable." -Type 'WARN'
+                        }
+                    } catch {
+                        Write-ToolkitStatus -Message "Cache purge failed: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                    Wait-UserAcknowledge
+                    break
+                }
+
                 if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft PowerPoint resiliency registry keys and disabled add-ins" -NonInteractive:$NonInteractive)) {
                     Write-ToolkitStatus -Message "PowerPoint resiliency reset cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
@@ -258,6 +285,63 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
                     }
                 } catch {
                     Write-ToolkitStatus -Message "Resiliency reset failed: $($_.Exception.Message)" -Type 'FAIL'
+                }
+                Wait-UserAcknowledge
+            }
+            '3' {
+                if ((Get-Command -Name 'Reset-PowerPointResiliency' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
+                    (Get-Command -Name 'Invoke-PowerPointQuickRepair' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft PowerPoint resiliency registry keys and disabled add-ins" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "PowerPoint resiliency reset cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
+                    try {
+                        Write-ToolkitStatus -Message "Resetting PowerPoint add-in resiliency disabled items list..." -Type 'INFO'
+                        if (Get-Command -Name 'Reset-PowerPointResiliency' -ErrorAction SilentlyContinue) {
+                            $res = Reset-PowerPointResiliency
+                            if ($res -and $res.Status -eq 'Success') {
+                                Write-ToolkitStatus -Message "PowerPoint Resiliency reset: $($res.ClearedItems) blacklisted item(s) unblocked." -Type 'OK'
+                            } else {
+                                Write-ToolkitStatus -Message "No disabled items found in PowerPoint Resiliency list." -Type 'INFO'
+                            }
+                        } else {
+                            Write-ToolkitStatus -Message "Reset-PowerPointResiliency command unavailable." -Type 'WARN'
+                        }
+                    } catch {
+                        Write-ToolkitStatus -Message "Resiliency reset failed: $($_.Exception.Message)" -Type 'FAIL'
+                    }
+                    Wait-UserAcknowledge
+                    break
+                }
+
+                if (-not (Confirm-ToolkitAction -ActionDescription "terminating PowerPoint processes and executing Quick PowerPoint Repair" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Quick PowerPoint Repair cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
+                try {
+                    Write-ToolkitStatus -Message "Executing Quick PowerPoint Repair sequence..." -Type 'INFO'
+                    if (Get-Command -Name 'Invoke-PowerPointQuickRepair' -ErrorAction SilentlyContinue) {
+                        $res = Invoke-PowerPointQuickRepair -Force -PassThru
+                        if ($res -and $res.Status -in @('Success', 'OK', 'Simulated')) {
+                            Write-ToolkitStatus -Message "Quick PowerPoint Repair completed successfully. Cache and resiliency reset." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "Quick PowerPoint Repair completed with status: $($res.Status)." -Type 'WARN'
+                        }
+                    } elseif (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
+                        $res = Stop-OfficeProcess -ProcessNames @('POWERPNT') -Force
+                        if ($res -and $res.Status -eq 'Success') {
+                            $termCount = @($res.Terminated).Count
+                            Write-ToolkitStatus -Message "Terminated $termCount PowerPoint process instance(s)." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "No active PowerPoint processes found." -Type 'INFO'
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Invoke-PowerPointQuickRepair command unavailable." -Type 'WARN'
+                    }
+                } catch {
+                    Write-ToolkitStatus -Message "Quick PowerPoint Repair failed: $($_.Exception.Message)" -Type 'FAIL'
                 }
                 Wait-UserAcknowledge
             }

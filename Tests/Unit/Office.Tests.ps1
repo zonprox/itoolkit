@@ -712,5 +712,239 @@ Describe 'Unit: Office & Excel Troubleshooting Module' {
             $res.Status | Should -BeIn @('Success', 'Simulated', 'Failed')
         }
     }
+
+    Context 'Centralized Suite-Wide Hardware Acceleration' {
+        It 'Set-OfficeHardwareAcceleration disables hardware acceleration by default and synchronizes suites' -Skip:(-not $isOfficeAvailable) {
+            Mock Set-ToolkitRegistryValue { return [PSCustomObject]@{ RegBackupFile = 'C:\Backups\OfficeGfx.reg' } }
+
+            $res = Set-OfficeHardwareAcceleration -PassThru
+            $res | Should -Not -BeNullOrEmpty
+            $res.Status | Should -Be 'Success'
+            $res.Disabled | Should -BeTrue
+            $res.RegistryPath | Should -Be 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics'
+            $res.TargetKeys | Should -Contain 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics'
+            $res.TargetKeys | Should -Contain 'HKCU:\Software\Microsoft\Office\16.0\Word\Options'
+            $res.TargetKeys | Should -Contain 'HKCU:\Software\Microsoft\Office\16.0\Excel\Options'
+            $res.TargetKeys | Should -Contain 'HKCU:\Software\Microsoft\Office\16.0\PowerPoint\Options'
+            $res.RegBackupFile | Should -Match 'OfficeGfx\.reg'
+        }
+
+        It 'Set-OfficeHardwareAcceleration re-enables hardware acceleration when -Enable is specified' -Skip:(-not $isOfficeAvailable) {
+            Mock Set-ToolkitRegistryValue { return [PSCustomObject]@{ RegBackupFile = 'C:\Backups\OfficeGfx.reg' } }
+
+            $res = Set-OfficeHardwareAcceleration -Enable -PassThru
+            $res.Status | Should -Be 'Success'
+            $res.Disabled | Should -BeFalse
+        }
+
+        It 'Set-OfficeHardwareAcceleration supports WhatIf dry run' -Skip:(-not $isOfficeAvailable) {
+            $res = Set-OfficeHardwareAcceleration -WhatIf -PassThru
+            $res.Status | Should -Be 'Simulated'
+            $res.Disabled | Should -BeTrue
+        }
+    }
+
+    Context 'One-Click Quick App Repairs (Word, Excel, PowerPoint)' {
+        It 'Invoke-WordQuickRepair executes 5-step repair sequence with -Force' -Skip:(-not $isOfficeAvailable) {
+            Mock Stop-OfficeProcess { return [PSCustomObject]@{ Status = 'Success'; Terminated = @('WINWORD') } }
+            Mock Reset-WordTemplate { return [PSCustomObject]@{ Status = 'Success'; Backup = 'C:\Normal.dotm.bak' } }
+            Mock Reset-WordStartupAddin { return [PSCustomObject]@{ Status = 'Success'; AddinsIsolated = 1 } }
+            Mock Clear-WordOrphanedLocks { return [PSCustomObject]@{ Status = 'Success'; CleanedFiles = @('~$doc.docx') } }
+            Mock Reset-WordRegistryData { return [PSCustomObject]@{ Status = 'Success' } }
+
+            $res = Invoke-WordQuickRepair -Force -PassThru
+            $res | Should -Not -BeNullOrEmpty
+            $res.Status | Should -Be 'Success'
+            $res.ProcessStopped.Terminated | Should -Contain 'WINWORD'
+            $res.TemplateReset.Backup | Should -Be 'C:\Normal.dotm.bak'
+            $res.AddinsIsolated.AddinsIsolated | Should -Be 1
+            $res.LocksCleared.CleanedFiles | Should -Contain '~$doc.docx'
+            $res.RegistryReset.Status | Should -Be 'Success'
+        }
+
+        It 'Invoke-WordQuickRepair supports WhatIf dry-run' -Skip:(-not $isOfficeAvailable) {
+            $res = Invoke-WordQuickRepair -WhatIf
+            $res.Status | Should -Be 'Simulated'
+            $res.TemplateReset | Should -Be '[Simulated - WhatIf]'
+        }
+
+        It 'Invoke-ExcelQuickRepair executes 5-step repair sequence with -Force' -Skip:(-not $isOfficeAvailable) {
+            Mock Stop-OfficeProcess { return [PSCustomObject]@{ Status = 'Success'; Terminated = @('EXCEL') } }
+            Mock Clear-ExcelStartupFolder { return [PSCustomObject]@{ Status = 'Success'; RemovedFiles = @(); PersonalBackupPath = 'C:\Personal.xlsb.bak' } }
+            Mock Reset-ExcelUiCache { return [PSCustomObject]@{ Status = 'Success'; QuarantinedFiles = @('Excel16.xlb') } }
+            Mock Reset-ExcelDdeSettings { return [PSCustomObject]@{ Status = 'Success'; IgnoreRemoteRequests = 0; Calculation = 1 } }
+            Mock Reset-ExcelResiliency { return [PSCustomObject]@{ Status = 'Success'; ClearedItemsCount = 2 } }
+
+            $res = Invoke-ExcelQuickRepair -Force -PassThru
+            $res | Should -Not -BeNullOrEmpty
+            $res.Status | Should -Be 'Success'
+            $res.ProcessStopped.Terminated | Should -Contain 'EXCEL'
+            $res.XlStartCleared.PersonalBackupPath | Should -Be 'C:\Personal.xlsb.bak'
+            $res.UiCacheReset.QuarantinedFiles | Should -Contain 'Excel16.xlb'
+            $res.DdeReset.Calculation | Should -Be 1
+            $res.ResiliencyReset.ClearedItemsCount | Should -Be 2
+        }
+
+        It 'Invoke-ExcelQuickRepair supports WhatIf dry-run' -Skip:(-not $isOfficeAvailable) {
+            $res = Invoke-ExcelQuickRepair -WhatIf
+            $res.Status | Should -Be 'Simulated'
+            $res.DdeReset | Should -Be '[Simulated - WhatIf]'
+        }
+
+        It 'Invoke-PowerPointQuickRepair executes 3-step repair sequence with -Force' -Skip:(-not $isOfficeAvailable) {
+            Mock Stop-OfficeProcess { return [PSCustomObject]@{ Status = 'Success'; Terminated = @('POWERPNT') } }
+            Mock Reset-PowerPointCache { return [PSCustomObject]@{ Status = 'Success'; CleanedFilesCount = 3 } }
+            Mock Reset-PowerPointResiliency { return [PSCustomObject]@{ Status = 'Success'; ClearedItems = 1 } }
+
+            $res = Invoke-PowerPointQuickRepair -Force -PassThru
+            $res | Should -Not -BeNullOrEmpty
+            $res.Status | Should -Be 'Success'
+            $res.ProcessStopped.Terminated | Should -Contain 'POWERPNT'
+            $res.CacheReset.CleanedFilesCount | Should -Be 3
+            $res.ResiliencyReset.ClearedItems | Should -Be 1
+        }
+
+        It 'Invoke-PowerPointQuickRepair supports WhatIf dry-run' -Skip:(-not $isOfficeAvailable) {
+            $res = Invoke-PowerPointQuickRepair -WhatIf
+            $res.Status | Should -Be 'Simulated'
+            $res.CacheReset | Should -Be '[Simulated - WhatIf]'
+        }
+    }
+
+    Context 'Process-Safe Pre-Execution Guards' {
+        It 'Reset-ExcelDdeSettings warns and aborts when EXCEL is active without -Force' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'EXCEL') {
+                    return @([PSCustomObject]@{ Id = 1234; ProcessName = 'EXCEL' })
+                }
+                return @()
+            }
+            Mock Set-ToolkitRegistryValue { throw "Set-ToolkitRegistryValue should not be called when process guard aborts" }
+
+            $res = Reset-ExcelDdeSettings
+            $res.Status | Should -Be 'Warning'
+            $res.ErrorMessage | Should -Match 'Active EXCEL process detected'
+        }
+
+        It 'Reset-ExcelDdeSettings terminates EXCEL and proceeds when -Force is supplied' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'EXCEL') {
+                    return @([PSCustomObject]@{ Id = 1234; ProcessName = 'EXCEL' })
+                }
+                return @()
+            }
+            Mock Stop-OfficeProcess { return [PSCustomObject]@{ Status = 'Success'; Terminated = @('EXCEL') } }
+            Mock Set-ToolkitRegistryValue { return [PSCustomObject]@{ RegBackupFile = 'C:\Backups\Excel.reg' } }
+
+            $res = Reset-ExcelDdeSettings -Force
+            $res.Status | Should -Be 'Success'
+            $res.IgnoreRemoteRequests | Should -Be 0
+        }
+
+        It 'Reset-ExcelResiliency warns and aborts when EXCEL is active without -Force' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'EXCEL') {
+                    return @([PSCustomObject]@{ Id = 1234; ProcessName = 'EXCEL' })
+                }
+                return @()
+            }
+            Mock Remove-ItemProperty { throw "Remove-ItemProperty should not be called when process guard aborts" }
+
+            $res = Reset-ExcelResiliency
+            $res.Status | Should -Be 'Warning'
+            $res.ErrorMessage | Should -Match 'Active EXCEL process detected'
+        }
+
+        It 'Reset-ExcelResiliency terminates EXCEL and proceeds when -Force is supplied' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'EXCEL') {
+                    return @([PSCustomObject]@{ Id = 1234; ProcessName = 'EXCEL' })
+                }
+                return @()
+            }
+            Mock Stop-OfficeProcess { return [PSCustomObject]@{ Status = 'Success'; Terminated = @('EXCEL') } }
+            Mock Test-Path { return $true }
+            Mock Get-Item { return [PSCustomObject]@{ Property = @('AddinA') } }
+            Mock Remove-ItemProperty { }
+            Mock Export-RegistryKeyBackup { return 'C:\Backups\Resiliency.reg' }
+
+            $res = Reset-ExcelResiliency -Force
+            $res.Status | Should -Be 'Success'
+            $res.ClearedItemsCount | Should -Be 1
+        }
+
+        It 'Reset-PowerPointResiliency warns and aborts when POWERPNT is active without -Force' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'POWERPNT') {
+                    return @([PSCustomObject]@{ Id = 5678; ProcessName = 'POWERPNT' })
+                }
+                return @()
+            }
+            Mock Remove-ItemProperty { throw "Remove-ItemProperty should not be called when process guard aborts" }
+
+            $res = Reset-PowerPointResiliency
+            $res.Status | Should -Be 'Warning'
+            $res.ErrorMessage | Should -Match 'Active POWERPNT process detected'
+        }
+
+        It 'Reset-PowerPointResiliency terminates POWERPNT and proceeds when -Force is supplied' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'POWERPNT') {
+                    return @([PSCustomObject]@{ Id = 5678; ProcessName = 'POWERPNT' })
+                }
+                return @()
+            }
+            Mock Stop-OfficeProcess { return [PSCustomObject]@{ Status = 'Success'; Terminated = @('POWERPNT') } }
+            Mock Test-Path { return $true }
+            Mock Get-Item { return [PSCustomObject]@{ Property = @('AddinPpt') } }
+            Mock Remove-ItemProperty { }
+            Mock Export-RegistryKeyBackup { return 'C:\Backups\PptResiliency.reg' }
+
+            $res = Reset-PowerPointResiliency -Force
+            $res.Status | Should -Be 'Success'
+            $res.ClearedItems | Should -Be 1
+        }
+
+        It 'Clear-OfficeTempCache warns and aborts when Office processes are active without -Force' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'WINWORD') {
+                    return @([PSCustomObject]@{ Id = 9999; ProcessName = 'WINWORD' })
+                }
+                return @()
+            }
+            Mock Remove-Item { throw "Remove-Item should not be called when process guard aborts" }
+
+            $res = Clear-OfficeTempCache
+            $res.Status | Should -Be 'Warning'
+            $res.ErrorMessage | Should -Match 'Active Office process'
+            $res.CleanedFilesCount | Should -Be 0
+        }
+
+        It 'Clear-OfficeTempCache terminates active processes and cleans files when -Force is supplied' -Skip:(-not $isOfficeAvailable) {
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'WINWORD') {
+                    return @([PSCustomObject]@{ Id = 9999; ProcessName = 'WINWORD' })
+                }
+                return @()
+            }
+            Mock Stop-OfficeProcess { return [PSCustomObject]@{ Status = 'Success'; Terminated = @('WINWORD') } }
+            Mock Test-Path { return $true }
+            Mock Get-ChildItem { return @([PSCustomObject]@{ Length = 4096; FullName = '/tmp/cache_file.dat' }) }
+            Mock Remove-Item { }
+
+            $res = Clear-OfficeTempCache -Force
+            $res.Status | Should -Be 'Success'
+            $res.CleanedFilesCount | Should -BeGreaterThan 0
+            $res.BytesFreed | Should -BeGreaterThan 0
+        }
+    }
 }
 

@@ -9,6 +9,8 @@ function Reset-ExcelDdeSettings {
     2. Sets Calculation to 1 (Automatic), resolving formula calculation freezes.
     Generates automated .reg rollback files via Set-ToolkitRegistryValue.
     Supports -WhatIf for non-destructive dry-run preview.
+.PARAMETER Force
+    Terminates active EXCEL processes prior to resetting DDE and calculation settings.
 .OUTPUTS
     [PSCustomObject] containing Status, DdeDisabled, IgnoreRemoteRequests, Calculation, and RegBackupFile.
 .EXAMPLE
@@ -18,7 +20,10 @@ function Reset-ExcelDdeSettings {
 #>
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([PSCustomObject])]
-    param()
+    param(
+        [Parameter(Mandatory = $false)]
+        [switch]$Force
+    )
 
     process {
         $keyPath = 'HKCU:\Software\Microsoft\Office\16.0\Excel\Options'
@@ -30,6 +35,37 @@ function Reset-ExcelDdeSettings {
                 IgnoreRemoteRequests = 0
                 Calculation          = 1
                 RegBackupFile        = '[Simulated - WhatIf]'
+            }
+        }
+
+        # Pre-execution process guard
+        $runningProcs = @(Get-Process -Name 'EXCEL' -ErrorAction SilentlyContinue)
+        if ($runningProcs.Count -gt 0) {
+            if ($Force) {
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Terminating active EXCEL process prior to DDE reset..." -Level 'WARN' -Component 'Reset-ExcelDdeSettings'
+                }
+                if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
+                    $null = Stop-OfficeProcess -ProcessNames @('EXCEL') -Force:$true -TimeoutSeconds 5
+                } elseif (Get-Command -Name 'Stop-ToolkitProcess' -ErrorAction SilentlyContinue) {
+                    $null = Stop-ToolkitProcess -ProcessName 'EXCEL' -TimeoutSeconds 5 -Force
+                } else {
+                    Stop-Process -Name 'EXCEL' -Force -ErrorAction SilentlyContinue
+                }
+            } else {
+                $warnMsg = "Active EXCEL process detected. Close EXCEL or specify -Force to terminate."
+                Write-Warning $warnMsg
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message $warnMsg -Level 'WARN' -Component 'Reset-ExcelDdeSettings'
+                }
+                return [PSCustomObject]@{
+                    Status               = 'Warning'
+                    DdeDisabled          = $false
+                    IgnoreRemoteRequests = $null
+                    Calculation          = $null
+                    RegBackupFile        = $null
+                    ErrorMessage         = "Active EXCEL process detected. Mutating state while running causes lock conflicts or registry overwrites."
+                }
             }
         }
 

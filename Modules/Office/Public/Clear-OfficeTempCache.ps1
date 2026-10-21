@@ -10,8 +10,10 @@ function Clear-OfficeTempCache {
     When $true, clears OfficeFileCache. Default is $true.
 .PARAMETER IncludeWefCache
     When $true, clears Web Add-in cache (Wef). Default is $true.
+.PARAMETER Force
+    Terminates active Office processes prior to purging temporary cache files.
 .OUTPUTS
-    [PSCustomObject] containing CleanedFilesCount and BytesFreed.
+    [PSCustomObject] containing Status, CleanedFilesCount, and BytesFreed.
 #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([PSCustomObject])]
@@ -20,14 +22,55 @@ function Clear-OfficeTempCache {
         [bool]$IncludeDocumentCache = $true,
 
         [Parameter(Mandatory = $false)]
-        [bool]$IncludeWefCache = $true
+        [bool]$IncludeWefCache = $true,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$Force
     )
 
     process {
         if (-not $PSCmdlet.ShouldProcess("Office Temporary Cache", "Purge Office document and Web Add-in cache")) {
             return [PSCustomObject]@{
+                Status            = 'Simulated'
                 CleanedFilesCount = 0
                 BytesFreed        = [int64]0
+            }
+        }
+
+        # Pre-execution process guard
+        $targetProcs = @('WINWORD', 'EXCEL', 'POWERPNT', 'OUTLOOK')
+        $activeProcs = [System.Collections.Generic.List[string]]::new()
+        foreach ($p in $targetProcs) {
+            $running = @(Get-Process -Name $p -ErrorAction SilentlyContinue)
+            if ($running.Count -gt 0) {
+                $activeProcs.Add($p)
+            }
+        }
+
+        if ($activeProcs.Count -gt 0) {
+            if ($Force) {
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Terminating active Office processes ($($activeProcs -join ', ')) prior to cache cleanup..." -Level 'WARN' -Component 'Clear-OfficeTempCache'
+                }
+                if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
+                    $null = Stop-OfficeProcess -ProcessNames @($activeProcs) -Force:$true -TimeoutSeconds 5
+                } else {
+                    foreach ($procName in $activeProcs) {
+                        Stop-Process -Name $procName -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            } else {
+                $warnMsg = "Active Office process(es) detected: $($activeProcs -join ', '). Close running Office applications or specify -Force to terminate."
+                Write-Warning $warnMsg
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message $warnMsg -Level 'WARN' -Component 'Clear-OfficeTempCache'
+                }
+                return [PSCustomObject]@{
+                    Status            = 'Warning'
+                    CleanedFilesCount = 0
+                    BytesFreed        = [int64]0
+                    ErrorMessage      = "Active Office process(es) detected: $($activeProcs -join ', '). Mutating cache while running causes lock conflicts or file deletion errors."
+                }
             }
         }
 
@@ -91,6 +134,7 @@ function Clear-OfficeTempCache {
         }
 
         return [PSCustomObject]@{
+            Status            = 'Success'
             CleanedFilesCount = $cleanedCount
             BytesFreed        = $bytesFreed
         }

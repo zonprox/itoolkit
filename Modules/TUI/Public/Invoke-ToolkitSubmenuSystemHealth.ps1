@@ -80,7 +80,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
     - System File Checker (sfc /scannow)
     - DISM Component Store (/RestoreHealth)
     - Windows Update services reset
-    - Network stack & DNS flush
     - WMI repository salvage
     - Component Store (WinSxS) cleanup
     - Safe system temp & logs cleanup
@@ -150,7 +149,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
             [PSCustomObject]@{ Subsystem = 'System File Checker (SFC)'; Status = '[READY]'; Method = 'sfc /scannow'; Details = 'Verify protected system files' },
             [PSCustomObject]@{ Subsystem = 'DISM Component Store'; Status = '[READY]'; Method = 'DISM /RestoreHealth'; Details = 'Repair component store corruption' },
             [PSCustomObject]@{ Subsystem = 'Windows Update Services'; Status = '[READY]'; Method = 'Reset-WindowsUpdate'; Details = 'Reset update components and cache' },
-            [PSCustomObject]@{ Subsystem = 'Network & Winsock Stack'; Status = '[READY]'; Method = 'Reset-NetworkStack'; Details = 'Reset Winsock, IP stack, flush DNS' },
             [PSCustomObject]@{ Subsystem = 'WMI Repository'; Status = '[READY]'; Method = 'Repair-WmiRepository'; Details = 'Verify and salvage WMI repository' },
             [PSCustomObject]@{ Subsystem = 'Component Store (WinSxS)'; Status = '[READY]'; Method = 'StartComponentCleanup'; Details = 'Clean superseded system packages' },
             [PSCustomObject]@{ Subsystem = 'System Logs & Dumps'; Status = '[READY]'; Method = 'Clear-WindowsSystemLogs'; Details = 'Purge WER dumps, memory dumps, logs' },
@@ -160,15 +158,12 @@ function Invoke-ToolkitSubmenuSystemHealth {
 
         Write-Host ""
         $healthActions = @(
-            @{ Key = '1'; Label = 'Auto System Repair (DISM + SFC)' },
+            @{ Key = '1'; Label = 'Automated DISM + SFC Repair' },
             @{ Key = '2'; Label = 'SFC Integrity Scan' },
             @{ Key = '3'; Label = 'DISM RestoreHealth' },
             @{ Key = '4'; Label = 'Reset Windows Update' },
-            @{ Key = '5'; Label = 'Reset Network Stack' },
-            @{ Key = '6'; Label = 'Repair WMI Repository' },
-            @{ Key = '7'; Label = 'Clean Component Store' },
-            @{ Key = '8'; Label = 'Quick Disk Cleanup' },
-            @{ Key = '9'; Label = 'Clear Temp & System Logs' }
+            @{ Key = '5'; Label = 'Repair WMI Repository' },
+            @{ Key = '6'; Label = 'Unified Storage Cleanup' }
         )
         $navActions = @(
             @{ Key = '0'; Label = 'Back to Main Menu' }
@@ -183,8 +178,8 @@ function Invoke-ToolkitSubmenuSystemHealth {
             return
         }
 
-        $validKeys = @('1', '2', '3', '4', '5', '6', '7', '8', '9', '0')
-        $promptText = "  Select action [1-9, 0]"
+        $validKeys = @('1', '2', '3', '4', '5', '6', '0')
+        $promptText = "  Select action [1-6, 0]"
         $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
@@ -279,28 +274,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '5' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "resetting TCP/IP stack and Winsock catalog" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Reset network stack cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
-                try {
-                    Write-ToolkitStatus -Message "Resetting network stack and DNS cache..." -Type 'INFO'
-                    if (Get-Command -Name 'Reset-NetworkStack' -ErrorAction SilentlyContinue) {
-                        $netRes = Reset-NetworkStack
-                        if ($netRes -and $netRes.Success) {
-                            Write-ToolkitStatus -Message "Network stack reset completed successfully." -Type 'OK'
-                        } else {
-                            Write-ToolkitStatus -Message "Network stack reset completed with warnings." -Type 'WARN'
-                        }
-                    }
-                }
-                catch {
-                    Write-ToolkitStatus -Message "Network stack reset failed: $($_.Exception.Message)" -Type 'FAIL'
-                }
-                Wait-UserAcknowledge
-            }
-            '6' {
                 if (-not (Confirm-ToolkitAction -ActionDescription "verifying and salvaging WMI repository" -NonInteractive:$NonInteractive)) {
                     Write-ToolkitStatus -Message "Repair WMI repository cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
@@ -322,24 +295,48 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 }
                 Wait-UserAcknowledge
             }
-            '7' {
+            '6' {
+                if (-not (Confirm-ToolkitAction -ActionDescription "initiating unified storage cleanup" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Unified storage cleanup cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
                 try {
-                    Write-ToolkitStatus -Message "Cleaning Component Store (WinSxS)..." -Type 'INFO'
-                    if (Get-Command -Name 'Invoke-WindowsComponentCleanup' -ErrorAction SilentlyContinue) {
-                        $ccRes = Invoke-WindowsComponentCleanup
-                        if ($ccRes -and $ccRes.Success) {
-                            Write-ToolkitStatus -Message "Component Store cleanup completed: $($ccRes.Status)." -Type 'OK'
+                    Write-ToolkitStatus -Message "Executing unified storage cleanup..." -Type 'INFO'
+                    if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
+                        $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
+                        if ($cleanRes -and $cleanRes.Success) {
+                            Write-ToolkitStatus -Message "Unified storage cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
                         } else {
-                            Write-ToolkitStatus -Message "Component Store cleanup notice: $($ccRes.ErrorMessage)." -Type 'WARN'
+                            Write-ToolkitStatus -Message "Unified storage cleanup completed with warnings." -Type 'WARN'
                         }
                     }
                 }
                 catch {
-                    Write-ToolkitStatus -Message "Component Store cleanup failed: $($_.Exception.Message)" -Type 'FAIL'
+                    Write-ToolkitStatus -Message "Unified storage cleanup failed: $($_.Exception.Message)" -Type 'FAIL'
+                }
+                Wait-UserAcknowledge
+            }
+            '7' {
+                # Legacy alias: Clean Component Store -> Invoke-WindowsCleanup
+                try {
+                    Write-ToolkitStatus -Message "Executing storage cleanup for Component Store..." -Type 'INFO'
+                    if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
+                        $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
+                        if ($cleanRes -and $cleanRes.Success) {
+                            Write-ToolkitStatus -Message "Storage cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "Storage cleanup completed with warnings." -Type 'WARN'
+                        }
+                    }
+                }
+                catch {
+                    Write-ToolkitStatus -Message "Storage cleanup failed: $($_.Exception.Message)" -Type 'FAIL'
                 }
                 Wait-UserAcknowledge
             }
             '8' {
+                # Legacy alias: Quick Disk Cleanup -> Invoke-WindowsCleanup
                 if (-not (Confirm-ToolkitAction -ActionDescription "initiating deep disk and component store cleanup" -NonInteractive:$NonInteractive)) {
                     Write-ToolkitStatus -Message "Deep disk cleanup cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
@@ -348,7 +345,7 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 try {
                     Write-ToolkitStatus -Message "Executing master system disk cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
-                        $cleanRes = Invoke-WindowsCleanup
+                        $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
                         if ($cleanRes -and $cleanRes.Success) {
                             Write-ToolkitStatus -Message "System disk cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
                         } else {
@@ -362,20 +359,28 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '9' {
+                # Legacy alias: Clear Temp & System Logs -> Invoke-WindowsCleanup
                 if (-not (Confirm-ToolkitAction -ActionDescription "clearing Windows temporary caches and system event logs" -NonInteractive:$NonInteractive)) {
                     Write-ToolkitStatus -Message "Clear temp caches and logs cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
                     break
                 }
                 try {
-                    Write-ToolkitStatus -Message "Purging temporary files and system logs..." -Type 'INFO'
+                    Write-ToolkitStatus -Message "Executing master system disk cleanup..." -Type 'INFO'
+                    if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
+                        $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
+                        if ($cleanRes -and $cleanRes.Success) {
+                            Write-ToolkitStatus -Message "System disk cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "System disk cleanup completed with warnings." -Type 'WARN'
+                        }
+                    }
                     if (Get-Command -Name 'Clear-WindowsTempCache' -ErrorAction SilentlyContinue) {
                         Clear-WindowsTempCache
                     }
                     if (Get-Command -Name 'Clear-WindowsSystemLogs' -ErrorAction SilentlyContinue) {
                         Clear-WindowsSystemLogs
                     }
-                    Write-ToolkitStatus -Message "Temporary files and system logs cleared." -Type 'OK'
                 }
                 catch {
                     Write-ToolkitStatus -Message "Clear temp & logs failed: $($_.Exception.Message)" -Type 'FAIL'

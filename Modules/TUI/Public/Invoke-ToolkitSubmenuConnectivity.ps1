@@ -494,7 +494,11 @@ function Invoke-ToolkitSubmenuConnectivity {
                 Wait-UserAcknowledge
             }
             { $_ -in @('18', '9') } {
-                $regPath = Read-Host "  Enter Registry Backup Path"
+                $regPath = if ($NonInteractive) {
+                    Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath 'Registry_Backup.reg'
+                } else {
+                    Read-Host "  Enter Registry Backup Path"
+                }
                 if (-not [string]::IsNullOrWhiteSpace($regPath) -and (Get-Command -Name 'Restore-RegistryKeyBackup' -ErrorAction SilentlyContinue)) {
                     try {
                         Restore-RegistryKeyBackup -BackupFilePath $regPath

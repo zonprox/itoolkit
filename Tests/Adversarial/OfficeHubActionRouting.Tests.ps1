@@ -1101,6 +1101,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             $script:newPstCalled = $false
             $script:pstArgs = $null
             Mock Confirm-ToolkitAction { return $true }
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
             Mock Get-OutlookSystemContext {
                 return [PSCustomObject]@{
                     Profiles = @('ExecutiveProfile')
@@ -1158,6 +1159,7 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
 
         It 'Option 17 resiliently catches and logs errors when default PST creation fails without crashing menu loop' -Skip:(-not $isTUIAvailable) {
             Mock Confirm-ToolkitAction { return $true }
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
             Mock Get-OutlookSystemContext {
                 return [PSCustomObject]@{
                     Profiles = @('ExecutiveProfile')
@@ -1184,5 +1186,504 @@ Describe 'Adversarial: Office Hub & App Submenu Action Routing Integration' {
             { Invoke-ToolkitSubmenuOutlook -ExitImmediately } | Should -Not -Throw
             $script:forwarded | Should -BeTrue
         }
+
+        It 'Option 18 dispatches Export-OutlookRule for selected profile with calculated manifest path' -Skip:(-not $isTUIAvailable) {
+            $script:exportCalled = $false
+            $script:exportParams = $null
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Read-Host { return '' }
+            Mock Export-OutlookRule {
+                param($Path, $ProfileName, [switch]$Force)
+                $script:exportCalled = $true
+                $script:exportParams = @{
+                    Path        = $Path
+                    ProfileName = $ProfileName
+                    Force       = $Force.IsPresent
+                }
+                return [PSCustomObject]@{ Success = $true; RulesExported = 5; CustomFoldersExported = 2 }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '18' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:exportCalled | Should -BeTrue
+            $script:exportParams.ProfileName | Should -Be 'ExecutiveProfile'
+            $script:exportParams.Path | Should -Match 'OutlookRules_ExecutiveProfile_.*\.json$'
+            $script:exportParams.Force | Should -BeTrue
+        }
+
+        It 'Option 18 aborts Export-OutlookRule when user cancels at confirmation prompt' -Skip:(-not $isTUIAvailable) {
+            $script:exportCalled = $false
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+            Mock Read-Host { return '' }
+            Mock Confirm-ToolkitAction { return $false }
+            Mock Export-OutlookRule { $script:exportCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '18' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:exportCalled | Should -BeFalse
+        }
+
+        It 'Option 18 resiliently catches errors when Export-OutlookRule fails without crashing menu loop' -Skip:(-not $isTUIAvailable) {
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Read-Host { return '' }
+            Mock Export-OutlookRule {
+                throw "MAPI initialization failed"
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '18' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+        }
+
+        It 'Option 19 dispatches Import-OutlookRule with auto-create folders and parameter remapping' -Skip:(-not $isTUIAvailable) {
+            $tempManifest = [System.IO.Path]::GetTempFileName()
+            Set-Content -Path $tempManifest -Value '{"Rules":[]}' -Encoding UTF8
+            try {
+                $script:importCalled = $false
+                $script:importParams = $null
+                Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+                Mock Read-Host {
+                    param($Prompt)
+                    if ($Prompt -match 'Path to Rule Manifest') { return $tempManifest }
+                    return ''
+                }
+                Mock Confirm-ToolkitAction { return $true }
+                Mock Import-OutlookRule {
+                    param($Path, $ProfileName, [switch]$AutoCreateFolders, [string]$DuplicateHandling)
+                    $script:importCalled = $true
+                    $script:importParams = @{
+                        Path              = $Path
+                        ProfileName       = $ProfileName
+                        AutoCreateFolders = $AutoCreateFolders.IsPresent
+                        DuplicateHandling = $DuplicateHandling
+                    }
+                    return [PSCustomObject]@{ Success = $true; RulesImported = 3; FoldersCreated = 1; RulesSkipped = 0 }
+                }
+                Mock Wait-UserAcknowledge { }
+                $script:step = 0
+                Mock Read-ToolkitItemSelection {
+                    $script:step++
+                    if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '19' } }
+                    return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+                }
+                { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+                $script:importCalled | Should -BeTrue
+                $script:importParams.ProfileName | Should -Be 'ExecutiveProfile'
+                $script:importParams.Path | Should -Be $tempManifest
+                $script:importParams.AutoCreateFolders | Should -BeTrue
+                $script:importParams.DuplicateHandling | Should -Be 'Skip'
+            } finally {
+                if (Test-Path -LiteralPath $tempManifest) { Remove-Item -LiteralPath $tempManifest -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        It 'Option 19 aborts cleanly when rule manifest file path is empty or non-existent' -Skip:(-not $isTUIAvailable) {
+            $script:importCalled = $false
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Path to Rule Manifest') { return 'C:\NonExistent\Manifest_XYZ.json' }
+                return ''
+            }
+            Mock Import-OutlookRule { $script:importCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '19' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:importCalled | Should -BeFalse
+        }
+
+        It 'Option 19 aborts when user cancels at confirmation prompt' -Skip:(-not $isTUIAvailable) {
+            $tempManifest = [System.IO.Path]::GetTempFileName()
+            Set-Content -Path $tempManifest -Value '{"Rules":[]}' -Encoding UTF8
+            try {
+                $script:importCalled = $false
+                Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+                Mock Read-Host {
+                    param($Prompt)
+                    if ($Prompt -match 'Path to Rule Manifest') { return $tempManifest }
+                    return ''
+                }
+                Mock Confirm-ToolkitAction { return $false }
+                Mock Import-OutlookRule { $script:importCalled = $true }
+                Mock Wait-UserAcknowledge { }
+                $script:step = 0
+                Mock Read-ToolkitItemSelection {
+                    $script:step++
+                    if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '19' } }
+                    return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+                }
+                { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+                $script:importCalled | Should -BeFalse
+            } finally {
+                if (Test-Path -LiteralPath $tempManifest) { Remove-Item -LiteralPath $tempManifest -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        It 'Option 20 dispatches Repair-OutlookRule in scan-only mode when user declines auto-repair' -Skip:(-not $isTUIAvailable) {
+            $script:repairCalled = $false
+            $script:repairParams = $null
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Enable Auto-Repair') { return 'n' }
+                return ''
+            }
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Repair-OutlookRule {
+                param($ProfileName, [switch]$AutoRepair)
+                $script:repairCalled = $true
+                $script:repairParams = @{
+                    ProfileName = $ProfileName
+                    AutoRepair  = $AutoRepair.IsPresent
+                }
+                return [PSCustomObject]@{
+                    Success        = $true
+                    TotalRules     = 10
+                    BrokenRules    = @('Rule1')
+                    DuplicateRules = @()
+                    EmptyRules     = @()
+                    DisabledRules  = @()
+                }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '20' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:repairCalled | Should -BeTrue
+            $script:repairParams.ProfileName | Should -Be 'ExecutiveProfile'
+            $script:repairParams.AutoRepair | Should -BeFalse
+        }
+
+        It 'Option 20 dispatches Repair-OutlookRule with -AutoRepair when confirmed with y' -Skip:(-not $isTUIAvailable) {
+            $script:repairCalled = $false
+            $script:repairParams = $null
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Enable Auto-Repair') { return 'y' }
+                return ''
+            }
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Repair-OutlookRule {
+                param($ProfileName, [switch]$AutoRepair)
+                $script:repairCalled = $true
+                $script:repairParams = @{
+                    ProfileName = $ProfileName
+                    AutoRepair  = $AutoRepair.IsPresent
+                }
+                return [PSCustomObject]@{
+                    Success                = $true
+                    TotalRules             = 10
+                    BrokenRules            = @()
+                    DuplicateRules         = @()
+                    EmptyRules             = @()
+                    RepairedRulesCount     = 1
+                    RemovedDuplicatesCount = 0
+                    RemovedEmptyCount      = 0
+                }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '20' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:repairCalled | Should -BeTrue
+            $script:repairParams.AutoRepair | Should -BeTrue
+        }
+
+        It 'Option 20 resiliently catches COM errors without crashing menu loop' -Skip:(-not $isTUIAvailable) {
+            Mock Select-ToolkitOutlookProfile { return 'ExecutiveProfile' }
+            Mock Read-Host { return 'n' }
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Repair-OutlookRule {
+                throw "COM Error: Unable to access Outlook object model"
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '20' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+        }
+
+        It 'Option 21 updates active profile filter and refreshes data file inventory' -Skip:(-not $isTUIAvailable) {
+            $script:inventoryProfilePassed = $null
+            Mock Select-ToolkitOutlookProfile { return 'SelectedProfileX' }
+            Mock Get-OutlookDataFileInventory {
+                param($ProfileName, $ProfileFilter)
+                $script:inventoryProfilePassed = if ($ProfileName) { $ProfileName } else { $ProfileFilter }
+                return @()
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '21' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
+            $script:inventoryProfilePassed | Should -Be 'SelectedProfileX'
+        }
+    }
+
+    Context '7. Outlook Data File Context Menu Action Dispatch (Invoke-ToolkitDataFileContextMenu)' {
+        BeforeEach {
+            $script:mockFile = [PSCustomObject]@{
+                Filename   = 'Finance.pst'
+                Path       = 'C:\Data\Finance.pst'
+                Format     = 'PST'
+                Status     = '[READY]'
+                Profile    = 'FinanceProfile'
+                Item       = 'Finance.pst'
+                Type       = 'PST'
+                Details    = 'C:\Data\Finance.pst'
+                SizeGB     = 1.2
+                FileObject = $null
+            }
+        }
+
+        It 'Context menu Option 8 dispatches Export-OutlookRule targeting store path and profile' -Skip:(-not $isTUIAvailable) {
+            $script:exportCalled = $false
+            $script:exportParams = $null
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Read-Host { return '' }
+            Mock Export-OutlookRule {
+                param($Path, $ProfileName, $StorePath, [switch]$Force)
+                $script:exportCalled = $true
+                $script:exportParams = @{
+                    Path        = $Path
+                    ProfileName = $ProfileName
+                    StorePath   = $StorePath
+                    Force       = $Force.IsPresent
+                }
+                return [PSCustomObject]@{ Success = $true; RulesExported = 4 }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '8' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile } | Should -Not -Throw
+            $script:exportCalled | Should -BeTrue
+            $script:exportParams.StorePath | Should -Be 'C:\Data\Finance.pst'
+            $script:exportParams.ProfileName | Should -Be 'FinanceProfile'
+            $script:exportParams.Force | Should -BeTrue
+        }
+
+        It 'Context menu Option 8 aborts when user cancels confirmation prompt' -Skip:(-not $isTUIAvailable) {
+            $script:exportCalled = $false
+            Mock Confirm-ToolkitAction { return $false }
+            Mock Export-OutlookRule { $script:exportCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '8' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile } | Should -Not -Throw
+            $script:exportCalled | Should -BeFalse
+        }
+
+        It 'Context menu Option 9 dispatches Import-OutlookRule with target store path and profile' -Skip:(-not $isTUIAvailable) {
+            $tempManifest = [System.IO.Path]::GetTempFileName()
+            Set-Content -Path $tempManifest -Value '{"Rules":[]}' -Encoding UTF8
+            try {
+                $script:importCalled = $false
+                $script:importParams = $null
+                Mock Confirm-ToolkitAction { return $true }
+                Mock Read-Host {
+                    param($Prompt)
+                    if ($Prompt -match 'Path to Rule Manifest') { return $tempManifest }
+                    return ''
+                }
+                Mock Import-OutlookRule {
+                    param($Path, $TargetStorePath, $ProfileName, [switch]$AutoCreateFolders, [string]$DuplicateHandling)
+                    $script:importCalled = $true
+                    $script:importParams = @{
+                        Path              = $Path
+                        TargetStorePath   = $TargetStorePath
+                        ProfileName       = $ProfileName
+                        AutoCreateFolders = $AutoCreateFolders.IsPresent
+                        DuplicateHandling = $DuplicateHandling
+                    }
+                    return [PSCustomObject]@{ Success = $true; RulesImported = 2; FoldersCreated = 1; RulesSkipped = 0 }
+                }
+                Mock Wait-UserAcknowledge { }
+                $script:step = 0
+                Mock Read-ToolkitItemSelection {
+                    $script:step++
+                    if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '9' } }
+                    return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+                }
+                { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile } | Should -Not -Throw
+                $script:importCalled | Should -BeTrue
+                $script:importParams.TargetStorePath | Should -Be 'C:\Data\Finance.pst'
+                $script:importParams.ProfileName | Should -Be 'FinanceProfile'
+                $script:importParams.Path | Should -Be $tempManifest
+                $script:importParams.AutoCreateFolders | Should -BeTrue
+                $script:importParams.DuplicateHandling | Should -Be 'Skip'
+            } finally {
+                if (Test-Path -LiteralPath $tempManifest) { Remove-Item -LiteralPath $tempManifest -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        It 'Context menu Option 9 aborts cleanly when rule manifest file path does not exist' -Skip:(-not $isTUIAvailable) {
+            $script:importCalled = $false
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Path to Rule Manifest') { return 'C:\NonExistent\Manifest_XYZ.json' }
+                return ''
+            }
+            Mock Import-OutlookRule { $script:importCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '9' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile } | Should -Not -Throw
+            $script:importCalled | Should -BeFalse
+        }
+
+        It 'Context menu Option 10 dispatches Repair-OutlookRule targeting store path with AutoRepair toggle' -Skip:(-not $isTUIAvailable) {
+            $script:repairCalled = $false
+            $script:repairParams = $null
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Enable Auto-Repair') { return 'y' }
+                return ''
+            }
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Repair-OutlookRule {
+                param($StorePath, $ProfileName, [switch]$AutoRepair)
+                $script:repairCalled = $true
+                $script:repairParams = @{
+                    StorePath   = $StorePath
+                    ProfileName = $ProfileName
+                    AutoRepair  = $AutoRepair.IsPresent
+                }
+                return [PSCustomObject]@{
+                    Success            = $true
+                    TotalRules         = 8
+                    BrokenRules        = 0
+                    DuplicateRules     = 0
+                    EmptyRules         = 0
+                    RepairedRulesCount = 1
+                }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '10' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile } | Should -Not -Throw
+            $script:repairCalled | Should -BeTrue
+            $script:repairParams.StorePath | Should -Be 'C:\Data\Finance.pst'
+            $script:repairParams.ProfileName | Should -Be 'FinanceProfile'
+            $script:repairParams.AutoRepair | Should -BeTrue
+        }
+
+        It 'Context menu Option 10 dispatches Repair-OutlookRule in scan-only mode when user declines auto-repair' -Skip:(-not $isTUIAvailable) {
+            $script:repairCalled = $false
+            $script:repairParams = $null
+            Mock Read-Host {
+                param($Prompt)
+                if ($Prompt -match 'Enable Auto-Repair') { return 'n' }
+                return ''
+            }
+            Mock Confirm-ToolkitAction { return $true }
+            Mock Repair-OutlookRule {
+                param($StorePath, $ProfileName, [switch]$AutoRepair)
+                $script:repairCalled = $true
+                $script:repairParams = @{
+                    StorePath   = $StorePath
+                    ProfileName = $ProfileName
+                    AutoRepair  = $AutoRepair.IsPresent
+                }
+                return [PSCustomObject]@{
+                    Success            = $true
+                    TotalRules         = 8
+                    BrokenRules        = 0
+                    DuplicateRules     = 0
+                    EmptyRules         = 0
+                    RepairedRulesCount = 0
+                }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '10' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile } | Should -Not -Throw
+            $script:repairCalled | Should -BeTrue
+            $script:repairParams.StorePath | Should -Be 'C:\Data\Finance.pst'
+            $script:repairParams.ProfileName | Should -Be 'FinanceProfile'
+            $script:repairParams.AutoRepair | Should -BeFalse
+        }
+
+        It 'Context menu Option 10 aborts when user cancels confirmation prompt' -Skip:(-not $isTUIAvailable) {
+            $script:repairCalled = $false
+            Mock Read-Host { return 'y' }
+            Mock Confirm-ToolkitAction { return $false }
+            Mock Repair-OutlookRule { $script:repairCalled = $true }
+            Mock Wait-UserAcknowledge { }
+            $script:step = 0
+            Mock Read-ToolkitItemSelection {
+                $script:step++
+                if ($script:step -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '10' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile } | Should -Not -Throw
+            $script:repairCalled | Should -BeFalse
+        }
+
+        It 'Context menu handles -NonInteractive mode cleanly without prompting' -Skip:(-not $isTUIAvailable) {
+            { Invoke-ToolkitDataFileContextMenu -DataFile $script:mockFile -NonInteractive } | Should -Not -Throw
+        }
+
+        It 'Alias Test-OutlookRule resolves to Repair-OutlookRule via module export' -Skip:(-not $isTUIAvailable) {
+            $cmd = Get-Command -Name 'Test-OutlookRule' -ErrorAction SilentlyContinue
+            $cmd | Should -Not -BeNullOrEmpty
+            $cmd.Definition | Should -Be 'Repair-OutlookRule'
+        }
     }
 }
+

@@ -14,7 +14,7 @@ function New-OutlookDataFile {
 .PARAMETER DisplayName
     Optional friendly display name for the folder tree.
 .PARAMETER SetAsDefault
-    Configures the data file as the default data file. Auto-enables folder hierarchy cloning and rule migration unless explicitly disabled.
+    Configures the data file as the default data file. Auto-bundles 100GB PST threshold expansion, folder hierarchy cloning, and rule migration unless explicitly disabled.
 .PARAMETER CloneFolderHierarchy
     Switch to clone custom folder structures from the source store. Alias: PreserveHierarchy.
 .PARAMETER MigrateRules
@@ -169,6 +169,24 @@ function New-OutlookDataFile {
                 $null = New-Item -ItemType Directory -Path $parentDir -Force -ErrorAction Stop
             } catch {
                 Write-Verbose "Could not create directory '$parentDir': $($_.Exception.Message)"
+            }
+        }
+
+        # 5b. Bundle Threshold Expansion for Default Store
+        if ($SetAsDefault) {
+            if (-not (Get-Command -Name 'Set-OutlookPstThreshold' -ErrorAction SilentlyContinue)) {
+                $setThresholdScript = Join-Path -Path $PSScriptRoot -ChildPath 'Set-OutlookPstThreshold.ps1'
+                if (Test-Path -LiteralPath $setThresholdScript) { . $setThresholdScript }
+            }
+            if (Get-Command -Name 'Set-OutlookPstThreshold' -ErrorAction SilentlyContinue) {
+                try {
+                    $null = Set-OutlookPstThreshold -MaxLargeFileSizeMB 102400 -WarnLargeFileSizeMB 97280
+                    if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                        Write-ToolkitLog -Message "Bundled PST threshold expansion to 100GB (Warn: 95GB) for default store." -Level 'INFO' -Component 'Outlook:NewPst'
+                    }
+                } catch {
+                    Write-Verbose "Could not expand PST threshold: $($_.Exception.Message)"
+                }
             }
         }
 

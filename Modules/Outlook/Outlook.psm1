@@ -48,7 +48,7 @@ if (Test-Path -LiteralPath $publicPath) {
     }
 }
 
-# 3. Export public functions explicitly
+# 3. Export public functions and aliases explicitly
 if ($exportedFunctions.Count -gt 0) {
-    Export-ModuleMember -Function $exportedFunctions -Variable @()
+    Export-ModuleMember -Function $exportedFunctions -Alias * -Variable @()
 }

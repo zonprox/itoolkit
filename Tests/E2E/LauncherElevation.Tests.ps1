@@ -137,7 +137,7 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
             $output = & $psExe -NoProfile -Command $bootstrap
             $LASTEXITCODE | Should -Be 0
             $outputStr = $output -join "`n"
-            $outputStr | Should -Match '(?i)Outlook & PST Data Management'
+            $outputStr | Should -Match '(?i)(?:System Health & Maintenance|Outlook & PST Data Management)'
             $outputStr | Should -Match '(?i)Non-interactive category listing complete'
         }
 
@@ -241,7 +241,7 @@ Describe 'E2E Tier 1: Launcher & Automatic Self-Elevation' {
 
             $completed | Should -BeTrue
             $proc.ExitCode | Should -Be 0
-            $stdout | Should -Match '(?i)ITOOLKIT > OUTLOOK'
+            $stdout | Should -Match '(?i)ITOOLKIT > (?:SYSTEM HEALTH|OUTLOOK)'
             $stdout | Should -Match '(?i)Initialized in non-interactive mode'
         }
     }

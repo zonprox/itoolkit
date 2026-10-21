@@ -145,7 +145,7 @@ function Invoke-ToolkitSubmenuOfficeWord {
             [PSCustomObject]@{ Component = 'Startup Add-ins'; Status = '[READY]'; Subsystem = 'Word\STARTUP'; Details = 'Third-party auto-load templates & WLLs' },
             [PSCustomObject]@{ Component = 'Registry Settings'; Status = '[READY]'; Subsystem = 'Data & Options'; Details = 'HKCU 16.0\Word data structures & options' },
             [PSCustomObject]@{ Component = 'Document Locks'; Status = '[READY]'; Subsystem = '~$*.docx / *.asd'; Details = 'Orphaned owner lock files & corrupt auto-recovery' },
-            [PSCustomObject]@{ Component = 'Process Controller'; Status = '[READY]'; Subsystem = 'WINWORD.EXE'; Details = 'Active background & hanging Word processes' }
+            [PSCustomObject]@{ Component = 'Quick App Repair'; Status = '[READY]'; Subsystem = 'Composite Pipeline'; Details = 'One-click process termination, template, add-in, lock & registry repair' }
         )
         Show-ToolkitItemTable -Items $wordItems -Columns @('Component', 'Status', 'Subsystem', 'Details') -Headers @('SUBSYSTEM', 'STATUS', 'TARGET', 'PURPOSE') -Title 'Microsoft Word Architectural Subsystems' -NoIndex
 
@@ -155,7 +155,7 @@ function Invoke-ToolkitSubmenuOfficeWord {
             @{ Key = '2'; Label = 'Isolate Word Startup Add-ins' },
             @{ Key = '3'; Label = 'Reset Word Registry Data & Options' },
             @{ Key = '4'; Label = 'Clear Orphaned Lock / ASD Files' },
-            @{ Key = '5'; Label = 'Terminate Word Processes' }
+            @{ Key = '5'; Label = 'Quick Word Repair (One-Click Combo)' }
         )
         $navActions = @(
             @{ Key = '0'; Label = 'Back to Office Hub' }
@@ -272,14 +272,21 @@ function Invoke-ToolkitSubmenuOfficeWord {
                 Wait-UserAcknowledge
             }
             '5' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Word processes" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Terminate Word processes cancelled by user." -Type 'INFO'
+                if (-not (Confirm-ToolkitAction -ActionDescription "terminating Word processes and executing Quick Word Repair" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Quick Word Repair cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
                     break
                 }
                 try {
-                    Write-ToolkitStatus -Message "Terminating active Word (WINWORD) processes..." -Type 'INFO'
-                    if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Executing Quick Word Repair sequence..." -Type 'INFO'
+                    if (Get-Command -Name 'Invoke-WordQuickRepair' -ErrorAction SilentlyContinue) {
+                        $res = Invoke-WordQuickRepair -Force -PassThru
+                        if ($res -and $res.Status -in @('Success', 'OK', 'Simulated')) {
+                            Write-ToolkitStatus -Message "Quick Word Repair completed successfully. Template, add-ins, locks, and registry repaired." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "Quick Word Repair completed with status: $($res.Status)." -Type 'WARN'
+                        }
+                    } elseif (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
                         $res = Stop-OfficeProcess -ProcessNames @('WINWORD') -Force
                         if ($res -and $res.Status -eq 'Success') {
                             $termCount = @($res.Terminated).Count
@@ -288,10 +295,10 @@ function Invoke-ToolkitSubmenuOfficeWord {
                             Write-ToolkitStatus -Message "No active Word processes found." -Type 'INFO'
                         }
                     } else {
-                        Write-ToolkitStatus -Message "Stop-OfficeProcess command unavailable." -Type 'WARN'
+                        Write-ToolkitStatus -Message "Invoke-WordQuickRepair command unavailable." -Type 'WARN'
                     }
                 } catch {
-                    Write-ToolkitStatus -Message "Process termination failed: $($_.Exception.Message)" -Type 'FAIL'
+                    Write-ToolkitStatus -Message "Quick Word Repair failed: $($_.Exception.Message)" -Type 'FAIL'
                 }
                 Wait-UserAcknowledge
             }

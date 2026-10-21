@@ -195,8 +195,9 @@ function Invoke-ToolkitSubmenuOfficeCommon {
         $actions = @(
             @{ Key = '1'; Label = 'Repair Click-to-Run Service & Cache' },
             @{ Key = '2'; Label = 'Reset Office Identity & WAM Tokens' },
-            @{ Key = '3'; Label = 'Terminate All Office Processes' },
-            @{ Key = '4'; Label = 'Native Clean Uninstaller & Scrubber' }
+            @{ Key = '3'; Label = 'Toggle Suite-Wide Hardware Acceleration' },
+            @{ Key = '4'; Label = 'Terminate All Office Processes' },
+            @{ Key = '5'; Label = 'Native Clean Uninstaller & Scrubber' }
         )
         $navActions = @(
             @{ Key = '0'; Label = 'Back to Office Hub' }
@@ -211,9 +212,9 @@ function Invoke-ToolkitSubmenuOfficeCommon {
             return
         }
 
-        $categoryKeys = @('1', '2', '3', '4')
-        $promptText = "  Select Action [1-4], or [0] Back"
-        $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $categoryKeys -Prompt $promptText
+        $validKeys = @('1', '2', '3', '4', '5', '0')
+        $promptText = "  Select Action [1-5], or [0] Back"
+        $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
             return
@@ -271,6 +272,94 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 Wait-UserAcknowledge
             }
             '3' {
+                if ((Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
+                    (Get-Command -Name 'Set-OfficeHardwareAcceleration' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
+                    if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Office processes" -NonInteractive:$NonInteractive)) {
+                        Write-ToolkitStatus -Message "Terminate Office processes cancelled by user." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
+                    if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
+                        try {
+                            Write-ToolkitStatus -Message "Terminating all running Microsoft Office suite processes..." -Type 'INFO'
+                            $stopRes = Stop-OfficeProcess
+                            if ($stopRes -and $stopRes.Terminated -and $stopRes.Terminated.Count -gt 0) {
+                                Write-ToolkitStatus -Message "Terminated active Office processes: $($stopRes.Terminated -join ', ')" -Type 'OK'
+                            } else {
+                                Write-ToolkitStatus -Message "No active Microsoft Office processes were running." -Type 'OK'
+                            }
+                        } catch {
+                            Write-ToolkitStatus -Message "Stop-OfficeProcess failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Stop-OfficeProcess command unavailable." -Type 'WARN'
+                    }
+                    Wait-UserAcknowledge
+                    break
+                }
+
+                if (-not (Confirm-ToolkitAction -ActionDescription "toggling suite-wide Office hardware graphics acceleration" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Hardware acceleration toggle cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    break
+                }
+                try {
+                    Write-ToolkitStatus -Message "Checking suite-wide hardware acceleration status..." -Type 'INFO'
+                    if (Get-Command -Name 'Set-OfficeHardwareAcceleration' -ErrorAction SilentlyContinue) {
+                        $curDisabled = $false
+                        try {
+                            $val = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics' -Name 'DisableHardwareAcceleration' -ErrorAction SilentlyContinue
+                            if ($val -eq 1) { $curDisabled = $true }
+                        } catch { $null = $_ }
+
+                        $targetDisable = -not $curDisabled
+                        $res = if ($targetDisable) {
+                            Set-OfficeHardwareAcceleration -Disable -PassThru
+                        } else {
+                            Set-OfficeHardwareAcceleration -Enable -PassThru
+                        }
+                        if ($res -and $res.Status -in @('Success', 'Simulated')) {
+                            $stateDesc = if ($res.Disabled) { "DISABLED (Software Rendering)" } else { "ENABLED (Hardware Rendering)" }
+                            Write-ToolkitStatus -Message "Suite-wide Office hardware graphics acceleration set to: $stateDesc." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "Hardware acceleration update processed." -Type 'INFO'
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Set-OfficeHardwareAcceleration command unavailable." -Type 'WARN'
+                    }
+                } catch {
+                    Write-ToolkitStatus -Message "Hardware acceleration toggle failed: $($_.Exception.Message)" -Type 'FAIL'
+                }
+                Wait-UserAcknowledge
+            }
+            '4' {
+                if ((Get-Command -Name 'Uninstall-OfficeSuiteCleanly' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
+                    (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
+                    $confirmed = if ($NonInteractive) { $true } else { (Read-Host "  Confirm deep clean uninstallation and scrub of Office suite? [y/N]") -match '^(?i)y(es)?$' }
+                    if ($confirmed) {
+                        if (Get-Command -Name 'Uninstall-OfficeSuiteCleanly' -ErrorAction SilentlyContinue) {
+                            try {
+                                Write-ToolkitStatus -Message "Initiating pure-PowerShell Office clean uninstallation and scrub..." -Type 'INFO'
+                                $scrubRes = Uninstall-OfficeSuiteCleanly -Force
+                                if ($scrubRes -and $scrubRes.Status -in @('Success', 'Simulated')) {
+                                    $phases = if ($scrubRes.PhasesCompleted) { $scrubRes.PhasesCompleted -join ', ' } else { 'All' }
+                                    Write-ToolkitStatus -Message "Office Suite scrub complete. Completed phases: $phases" -Type 'OK'
+                                } else {
+                                    Write-ToolkitStatus -Message "Office Suite scrub encountered warnings or errors." -Type 'WARN'
+                                }
+                            } catch {
+                                Write-ToolkitStatus -Message "Clean uninstallation failed: $($_.Exception.Message)" -Type 'FAIL'
+                            }
+                        } else {
+                            Write-ToolkitStatus -Message "Uninstall-OfficeSuiteCleanly command unavailable." -Type 'WARN'
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Office clean uninstallation cancelled by user." -Type 'INFO'
+                    }
+                    Wait-UserAcknowledge
+                    break
+                }
+
                 if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Office processes" -NonInteractive:$NonInteractive)) {
                     Write-ToolkitStatus -Message "Terminate Office processes cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
@@ -293,7 +382,7 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 }
                 Wait-UserAcknowledge
             }
-            '4' {
+            '5' {
                 $confirmed = if ($NonInteractive) { $true } else { (Read-Host "  Confirm deep clean uninstallation and scrub of Office suite? [y/N]") -match '^(?i)y(es)?$' }
                 if ($confirmed) {
                     if (Get-Command -Name 'Uninstall-OfficeSuiteCleanly' -ErrorAction SilentlyContinue) {

@@ -70,5 +70,5 @@ else {
 
 
 
-# Export functions defined in or imported through IToolkit
-Export-ModuleMember -Function * -Variable @()
+# Export functions and aliases defined in or imported through IToolkit
+Export-ModuleMember -Function * -Alias * -Variable @()

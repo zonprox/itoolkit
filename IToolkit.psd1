@@ -76,6 +76,9 @@
         'Test-OutlookDataFileSize',
         'Copy-OutlookFolderHierarchy',
         'Copy-OutlookRule',
+        'Export-OutlookRule',
+        'Import-OutlookRule',
+        'Repair-OutlookRule',
 
         # Office, Word, Excel & PowerPoint Troubleshooting Services
         'Set-ExcelHardwareAcceleration',
@@ -100,6 +103,10 @@
         'Reset-PowerPointCache',
         'Reset-PowerPointResiliency',
         'Uninstall-OfficeSuiteCleanly',
+        'Set-OfficeHardwareAcceleration',
+        'Invoke-WordQuickRepair',
+        'Invoke-ExcelQuickRepair',
+        'Invoke-PowerPointQuickRepair',
 
         # Printers Troubleshooting Services
         'Get-PrintSpoolerStatus',
@@ -236,13 +243,15 @@
         'Get-OutlookContextInfoLines',
         'Invoke-ToolkitSubmenuOutlook',
         'Get-PrintersContextInfoLines',
-        'Invoke-ToolkitSubmenuPrinters'
+        'Invoke-ToolkitSubmenuPrinters',
+        'Select-ToolkitOutlookProfile'
     )
 
     CmdletsToExport        = @()
     VariablesToExport      = @()
     AliasesToExport        = @(
-        'Invoke-OutlookPstCompaction'
+        'Invoke-OutlookPstCompaction',
+        'Test-OutlookRule'
     )
 
     # Private Metadata

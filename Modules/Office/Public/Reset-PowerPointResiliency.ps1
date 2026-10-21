@@ -8,6 +8,8 @@ function Reset-PowerPointResiliency {
     allowing crashed or blacklisted add-ins to load again.
     Also inspects and verifies DoNotDisableAddinList.
     Supports -WhatIf for safe execution preview.
+.PARAMETER Force
+    Terminates active POWERPNT processes prior to clearing the resiliency list.
 .OUTPUTS
     [PSCustomObject] containing Status, ClearedItems, RegBackupFile, and TargetKey.
 .EXAMPLE
@@ -17,7 +19,10 @@ function Reset-PowerPointResiliency {
 #>
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([PSCustomObject])]
-    param()
+    param(
+        [Parameter(Mandatory = $false)]
+        [switch]$Force
+    )
 
     process {
         $disabledKey = 'HKCU:\Software\Microsoft\Office\16.0\PowerPoint\Resiliency\DisabledItems'
@@ -28,6 +33,36 @@ function Reset-PowerPointResiliency {
                 ClearedItems  = 0
                 RegBackupFile = '[Simulated - WhatIf]'
                 TargetKey     = $disabledKey
+            }
+        }
+
+        # Pre-execution process guard
+        $runningProcs = @(Get-Process -Name 'POWERPNT' -ErrorAction SilentlyContinue)
+        if ($runningProcs.Count -gt 0) {
+            if ($Force) {
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message "Terminating active POWERPNT process prior to resiliency reset..." -Level 'WARN' -Component 'Reset-PowerPointResiliency'
+                }
+                if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
+                    $null = Stop-OfficeProcess -ProcessNames @('POWERPNT') -Force:$true -TimeoutSeconds 5
+                } elseif (Get-Command -Name 'Stop-ToolkitProcess' -ErrorAction SilentlyContinue) {
+                    $null = Stop-ToolkitProcess -ProcessName 'POWERPNT' -TimeoutSeconds 5 -Force
+                } else {
+                    Stop-Process -Name 'POWERPNT' -Force -ErrorAction SilentlyContinue
+                }
+            } else {
+                $warnMsg = "Active POWERPNT process detected. Close POWERPNT or specify -Force to terminate."
+                Write-Warning $warnMsg
+                if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitLog -Message $warnMsg -Level 'WARN' -Component 'Reset-PowerPointResiliency'
+                }
+                return [PSCustomObject]@{
+                    Status        = 'Warning'
+                    ClearedItems  = 0
+                    RegBackupFile = $null
+                    TargetKey     = $disabledKey
+                    ErrorMessage  = "Active POWERPNT process detected. Mutating state while running causes lock conflicts or registry overwrites."
+                }
             }
         }
 

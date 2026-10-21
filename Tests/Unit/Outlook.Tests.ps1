@@ -1511,4 +1511,1598 @@ Describe 'Unit: Outlook Data Management Module' {
             $props.AccountName | Should -Be 'User@company.com'
         }
     }
+
+    Context 'Portable Rule & Hierarchy Export (Export-OutlookRule)' {
+        BeforeAll {
+            function script:New-MockExportOutlookTree {
+                param(
+                    [string]$StorePath = 'C:\Data\Corporate.pst',
+                    [string]$StoreName = 'Corporate Store'
+                )
+
+                # 1. Custom and System Folder Mocking
+                $mockFolderSubTask = [PSCustomObject]@{
+                    Name       = 'SubTask'
+                    FolderPath = "\\$StoreName\Inbox\ProjectA\SubTask"
+                    Folders    = [System.Collections.Generic.List[object]]::new()
+                }
+                $mockFolderProjectA = [PSCustomObject]@{
+                    Name       = 'ProjectA'
+                    FolderPath = "\\$StoreName\Inbox\ProjectA"
+                    Folders    = [System.Collections.Generic.List[object]]@($mockFolderSubTask)
+                }
+                $mockFolderInbox = [PSCustomObject]@{
+                    Name       = 'Inbox'
+                    FolderPath = "\\$StoreName\Inbox"
+                    Folders    = [System.Collections.Generic.List[object]]@($mockFolderProjectA)
+                }
+                $mockFolderFinance = [PSCustomObject]@{
+                    Name       = 'Finance'
+                    FolderPath = "\\$StoreName\Finance"
+                    Folders    = [System.Collections.Generic.List[object]]::new()
+                }
+                $mockFolderSent = [PSCustomObject]@{
+                    Name       = 'Sent Items'
+                    FolderPath = "\\$StoreName\Sent Items"
+                    Folders    = [System.Collections.Generic.List[object]]::new()
+                }
+                $mockFolderDeleted = [PSCustomObject]@{
+                    Name       = 'Deleted Items'
+                    FolderPath = "\\$StoreName\Deleted Items"
+                    Folders    = [System.Collections.Generic.List[object]]::new()
+                }
+
+                $mockRootFolder = [PSCustomObject]@{
+                    Name       = $StoreName
+                    FolderPath = "\\$StoreName"
+                    Folders    = [System.Collections.Generic.List[object]]@($mockFolderInbox, $mockFolderFinance, $mockFolderSent, $mockFolderDeleted)
+                }
+
+                # 2. Source Rules Mocking
+                $mockRule1 = [PSCustomObject]@{
+                    Name           = 'Route Project Mails'
+                    RuleType       = 0
+                    Enabled        = $true
+                    ExecutionOrder = 1
+                    Conditions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $true; Text = @('Project Alpha', 'Urgent') }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                        Importance = [PSCustomObject]@{ Enabled = $false; Importance = 1 }
+                    }
+                    Exceptions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                    }
+                    Actions        = [PSCustomObject]@{
+                        MoveToFolder = [PSCustomObject]@{ Folder = $mockFolderProjectA; Enabled = $true }
+                        CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        Delete       = [PSCustomObject]@{ Enabled = $false }
+                        MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                        Stop         = [PSCustomObject]@{ Enabled = $true }
+                    }
+                }
+
+                $mockRule2 = [PSCustomObject]@{
+                    Name           = 'Copy Finance Invoices'
+                    RuleType       = 0
+                    Enabled        = $true
+                    ExecutionOrder = 2
+                    Conditions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                        From       = [PSCustomObject]@{ Enabled = $true; Recipients = @('billing@vendor.com') }
+                        SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $true; Categories = @('Invoices', 'Finance') }
+                        Importance = [PSCustomObject]@{ Enabled = $true; Importance = 2 }
+                    }
+                    Exceptions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $true; Text = @('Draft', 'Estimate') }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                    }
+                    Actions        = [PSCustomObject]@{
+                        MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        CopyToFolder = [PSCustomObject]@{ Folder = $mockFolderFinance; Enabled = $true }
+                        Delete       = [PSCustomObject]@{ Enabled = $false }
+                        MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                        Stop         = [PSCustomObject]@{ Enabled = $false }
+                    }
+                }
+
+                $mockRule3 = [PSCustomObject]@{
+                    Name           = 'Disabled Spam Filter'
+                    RuleType       = 0
+                    Enabled        = $false
+                    ExecutionOrder = 3
+                    Conditions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                        Importance = [PSCustomObject]@{ Enabled = $false; Importance = 1 }
+                    }
+                    Exceptions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                    }
+                    Actions        = [PSCustomObject]@{
+                        MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        Delete       = [PSCustomObject]@{ Enabled = $false }
+                        MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                        Stop         = [PSCustomObject]@{ Enabled = $false }
+                    }
+                }
+
+                $mockRule4 = [PSCustomObject]@{
+                    Name           = 'Delete Phishing Mails'
+                    RuleType       = 0
+                    Enabled        = $true
+                    ExecutionOrder = 4
+                    Conditions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $true; Text = @('Phishing Alert', 'Password Expired') }
+                        From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                        Importance = [PSCustomObject]@{ Enabled = $false; Importance = 1 }
+                    }
+                    Exceptions     = [PSCustomObject]@{
+                        Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                        From       = [PSCustomObject]@{ Enabled = $true; Recipients = @('security@company.com') }
+                        Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                    }
+                    Actions        = [PSCustomObject]@{
+                        MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                        Delete       = [PSCustomObject]@{ Enabled = $true }
+                        MarkAsRead   = [PSCustomObject]@{ Enabled = $true }
+                        Stop         = [PSCustomObject]@{ Enabled = $true }
+                    }
+                }
+
+                $mockRulesList = [System.Collections.Generic.List[object]]@($mockRule1, $mockRule2, $mockRule3, $mockRule4)
+                $mockRules = [PSCustomObject]@{
+                    Count     = $mockRulesList.Count
+                    RulesList = $mockRulesList
+                }
+                $mockRules | Add-Member -MemberType ScriptMethod -Name GetEnumerator -Value { $this.RulesList.GetEnumerator() }
+                $mockRules | Add-Member -MemberType ScriptMethod -Name Item -Value { param($idx) return $this.RulesList[$idx] }
+
+                # 3. Store Mocking
+                $mockStore = [PSCustomObject]@{
+                    DisplayName     = $StoreName
+                    FilePath        = $StorePath
+                    IsDataFileStore = $true
+                    IsDefaultStore  = $true
+                    RootFolder      = $mockRootFolder
+                    Rules           = $mockRules
+                }
+                $mockStore | Add-Member -MemberType ScriptMethod -Name GetRootFolder -Value { return $this.RootFolder }
+                $mockStore | Add-Member -MemberType ScriptMethod -Name GetRules -Value { return $this.Rules }
+
+                $mockStores = @($mockStore)
+                $mockNs = [PSCustomObject]@{
+                    DefaultStore = $mockStore
+                    Stores       = $mockStores
+                }
+                $mockNs | Add-Member -MemberType ScriptMethod -Name Logon -Value { param($p, $pwd, $ui, $new) }
+                $mockNs | Add-Member -MemberType ScriptMethod -Name Logoff -Value { }
+
+                $mockApp = [PSCustomObject]@{
+                    MapiNamespace = $mockNs
+                }
+                $mockApp | Add-Member -MemberType ScriptMethod -Name GetNamespace -Value { param($ns) return $this.MapiNamespace }
+                $mockApp | Add-Member -MemberType ScriptMethod -Name Quit -Value {
+                    $script:quitCallCount++
+                    $script:quitCalled = $true
+                }
+
+                return @{
+                    App          = $mockApp
+                    Namespace    = $mockNs
+                    Store        = $mockStore
+                    RootFolder   = $mockRootFolder
+                    Rules        = $mockRules
+                    Rule1        = $mockRule1
+                    Rule2        = $mockRule2
+                    Rule3        = $mockRule3
+                    Rule4        = $mockRule4
+                }
+            }
+        }
+
+        It 'Exports rules and custom hierarchy to a valid JSON manifest file' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext {
+                return [PSCustomObject]@{
+                    DefaultProfile = 'CorporateProfile'
+                    Profiles       = @('CorporateProfile')
+                }
+            } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_export_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -ProfileName 'CorporateProfile' -StorePath $mockEnv.Store.FilePath -PassThru
+                $res.Success | Should -BeTrue
+                $res.RulesExported | Should -Be 4
+                $res.CustomFoldersExported | Should -BeGreaterThan 0
+                Test-Path -LiteralPath $testJson | Should -BeTrue
+
+                $manifest = Get-Content -LiteralPath $testJson -Raw | ConvertFrom-Json
+                $manifest.SchemaVersion | Should -Match '^(v)?1\.0\.0$'
+                $manifest.SourceContext.ProfileName | Should -Be 'CorporateProfile'
+                $manifest.SourceContext.StoreDisplayName | Should -Be 'Corporate Store'
+                $manifest.Rules.Count | Should -Be 4
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Normalizes folder paths in MoveToFolder and CopyToFolder to store-relative paths' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'CorporateProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_relpath_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath
+                $manifest = Get-Content -LiteralPath $testJson -Raw | ConvertFrom-Json
+
+                # Rule 1 MoveToFolder normalization
+                $r1 = $manifest.Rules | Where-Object { $_.Name -eq 'Route Project Mails' }
+                $r1.Actions.MoveToFolder.Enabled | Should -BeTrue
+                $r1.Actions.MoveToFolder.FolderPath | Should -Be 'Inbox\ProjectA'
+
+                # Rule 2 CopyToFolder normalization
+                $r2 = $manifest.Rules | Where-Object { $_.Name -eq 'Copy Finance Invoices' }
+                $r2.Actions.CopyToFolder.Enabled | Should -BeTrue
+                $r2.Actions.CopyToFolder.FolderPath | Should -Be 'Finance'
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Accurately serializes rule conditions, exceptions, and non-folder actions' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'CorporateProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_cond_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath
+                $manifest = Get-Content -LiteralPath $testJson -Raw | ConvertFrom-Json
+
+                # Rule 1 Subject conditions
+                $r1 = $manifest.Rules | Where-Object { $_.Name -eq 'Route Project Mails' }
+                $r1.Conditions.Subject.Enabled | Should -BeTrue
+                $r1.Conditions.Subject.Text | Should -Contain 'Project Alpha'
+
+                # Rule 2 From, Categories, Importance conditions & Subject exception
+                $r2 = $manifest.Rules | Where-Object { $_.Name -eq 'Copy Finance Invoices' }
+                $r2.Conditions.From.Enabled | Should -BeTrue
+                $r2.Conditions.From.Recipients | Should -Contain 'billing@vendor.com'
+                $r2.Conditions.Categories.Categories | Should -Contain 'Invoices'
+                $r2.Conditions.Importance.Importance | Should -Be 2
+                $r2.Exceptions.Subject.Enabled | Should -BeTrue
+                $r2.Exceptions.Subject.Text | Should -Contain 'Draft'
+
+                # Rule 4 Delete, MarkAsRead, Stop actions & From exception
+                $r4 = $manifest.Rules | Where-Object { $_.Name -eq 'Delete Phishing Mails' }
+                $r4.Actions.Delete.Enabled | Should -BeTrue
+                $r4.Actions.MarkAsRead.Enabled | Should -BeTrue
+                $r4.Actions.Stop.Enabled | Should -BeTrue
+                $r4.Exceptions.From.Recipients | Should -Contain 'security@company.com'
+
+                # Rule 3 preserves disabled state
+                $r3 = $manifest.Rules | Where-Object { $_.Name -eq 'Disabled Spam Filter' }
+                $r3.Enabled | Should -BeFalse
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Captures custom folder hierarchy while strictly excluding built-in system root folders' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'CorporateProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_hier_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath
+                $manifest = Get-Content -LiteralPath $testJson -Raw | ConvertFrom-Json
+
+                $manifest.CustomFolders | Should -Contain 'Finance'
+                $manifest.CustomFolders | Should -Contain 'Inbox\ProjectA'
+                $manifest.CustomFolders | Should -Contain 'Inbox\ProjectA\SubTask'
+
+                # Ensure system folders are excluded
+                $manifest.CustomFolders | Should -Not -Contain 'Inbox'
+                $manifest.CustomFolders | Should -Not -Contain 'Sent Items'
+                $manifest.CustomFolders | Should -Not -Contain 'Deleted Items'
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Omits custom folder hierarchy when -IncludeHierarchy is set to $false' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'CorporateProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_nohier_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath -IncludeHierarchy:$false
+                $manifest = Get-Content -LiteralPath $testJson -Raw | ConvertFrom-Json
+
+                $manifest.CustomFolders.Count | Should -Be 0
+                $manifest.Rules.Count | Should -Be 4
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Supports -WhatIf execution without writing manifest files to disk' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_whatif_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath -WhatIf
+                $res | Should -Not -BeNullOrEmpty
+                Test-Path -LiteralPath $testJson | Should -BeFalse
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Normalizes relative destination file path using session provider path' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $relFileName = "rel_test_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path ".\$relFileName" -StorePath $mockEnv.Store.FilePath
+                $res.Success | Should -BeTrue
+                Test-Path -LiteralPath $res.Path | Should -BeTrue
+            }
+            finally {
+                if (Test-Path -LiteralPath ".\$relFileName") { Remove-Item -LiteralPath ".\$relFileName" -Force }
+            }
+        }
+
+        It 'Refuses overwrite of existing file without -Force, and overwrites cleanly when -Force is passed' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_collision_$([System.Guid]::NewGuid().ToString('N')).json"
+            'INITIAL_PLACEHOLDER' | Set-Content -LiteralPath $testJson -Force
+
+            try {
+                # Attempt 1: Without -Force
+                $resNoForce = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath
+                $resNoForce.Success | Should -BeFalse
+                $content = Get-Content -LiteralPath $testJson -Raw
+                $content.Trim() | Should -Be 'INITIAL_PLACEHOLDER'
+
+                # Attempt 2: With -Force
+                $resForce = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath -Force
+                $resForce.Success | Should -BeTrue
+                $manifest = Get-Content -LiteralPath $testJson -Raw | ConvertFrom-Json
+                $manifest.Rules.Count | Should -Be 4
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Returns structured error object when target store path is not found' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_err_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath 'C:\NonExistent\Ghost.pst'
+                $res.Success | Should -BeFalse
+                $res.ErrorMessage | Should -Match 'not found'
+                Test-Path -LiteralPath $testJson | Should -BeFalse
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Deterministically calls Remove-ToolkitComObject to release COM references' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $script:comReleasedCount = 0
+            Mock Remove-ToolkitComObject {
+                param($ComObjects)
+                if ($null -ne $ComObjects) {
+                    $script:comReleasedCount += $ComObjects.Count
+                }
+            } -ModuleName 'Outlook'
+            Mock Remove-ToolkitComObject {
+                param($ComObjects)
+                if ($null -ne $ComObjects) {
+                    $script:comReleasedCount += $ComObjects.Count
+                }
+            }
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_cleanup_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath
+                $script:comReleasedCount | Should -BeGreaterThan 0
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+    }
+
+    Context 'Outlook COM Lifecycle Hardening & Process Safety' {
+        It 'Calls Quit() when Outlook was NOT running prior to Export-OutlookRule execution' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            $script:quitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @() } -ModuleName 'Outlook'
+            Mock Get-Process { return @() }
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_quit1_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath
+                $script:quitCallCount | Should -BeGreaterThan 0
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Skips calling Quit() when Outlook WAS running prior to Export-OutlookRule execution' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            $script:quitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 1234; ProcessName = 'OUTLOOK' }) } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 1234; ProcessName = 'OUTLOOK' }) }
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "test_quit2_$([System.Guid]::NewGuid().ToString('N')).json"
+            try {
+                $res = Export-OutlookRule -Path $testJson -StorePath $mockEnv.Store.FilePath
+                $script:quitCallCount | Should -Be 0
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Set-OutlookDefaultDataFile calls Quit() when Outlook was NOT running before' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            $script:quitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @() } -ModuleName 'Outlook'
+            Mock Get-Process { return @() }
+            Mock Test-Path { return $true }
+
+            $res = Set-OutlookDefaultDataFile -Path $mockEnv.Store.FilePath
+            $script:quitCallCount | Should -BeGreaterThan 0
+        }
+
+        It 'Clear-OutlookStuckOutbox does NOT call Quit() when Outlook WAS already running' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockExportOutlookTree
+            $script:quitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 5678; ProcessName = 'OUTLOOK' }) } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 5678; ProcessName = 'OUTLOOK' }) }
+            Mock Test-Path { return $true }
+
+            $res = Clear-OutlookStuckOutbox -ProfileName 'CorporateProfile'
+            $script:quitCallCount | Should -Be 0
+        }
+
+        It 'Clear-OutlookStuckOutbox calls Quit() when Outlook was stopped via -Force' -Skip:(-not $isOutlookAvailable) {
+            $script:procCalls = 0
+            Mock Get-Process {
+                param($Name)
+                $script:procCalls++
+                if ($script:procCalls -eq 1) { return @([PSCustomObject]@{ ProcessName = 'OUTLOOK'; Id = 3003 }) }
+                return @()
+            }
+            Mock Stop-ToolkitProcess { [PSCustomObject]@{ Terminated = $true } }
+
+            $mockEnv = New-MockExportOutlookTree
+            $script:quitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Remove-ToolkitComObject { }
+            Mock Set-ToolkitRegistryValue { }
+
+            $res = Clear-OutlookStuckOutbox -Force
+            $script:quitCallCount | Should -BeGreaterThan 0
+        }
+    }
+
+    Context 'Intelligent Rule & Hierarchy Import (Import-OutlookRule)' {
+        BeforeAll {
+            function script:New-MockRuleManifestJson {
+                param(
+                    [string]$Path,
+                    [switch]$WithCustomFolders,
+                    [switch]$EmptyRules
+                )
+
+                $folders = if ($WithCustomFolders) {
+                    @('Finance', 'Inbox\ProjectA', 'Inbox\ProjectA\SubTask')
+                } else {
+                    @()
+                }
+
+                $rules = if ($EmptyRules) {
+                    @()
+                } else {
+                    @(
+                        [ordered]@{
+                            Name           = 'Route Project Mails'
+                            RuleType       = 0
+                            ExecutionOrder = 1
+                            Enabled        = $true
+                            Conditions     = [ordered]@{
+                                Subject    = [ordered]@{ Enabled = $true; Text = @('Project Alpha', 'Urgent') }
+                                From       = [ordered]@{ Enabled = $false; Recipients = @() }
+                                Categories = [ordered]@{ Enabled = $false; Categories = @() }
+                                Importance = [ordered]@{ Enabled = $false; Importance = 1 }
+                                Account    = [ordered]@{ Enabled = $false; Account = $null }
+                            }
+                            Exceptions     = [ordered]@{
+                                Subject    = [ordered]@{ Enabled = $false; Text = @() }
+                                From       = [ordered]@{ Enabled = $false; Recipients = @() }
+                            }
+                            Actions        = [ordered]@{
+                                MoveToFolder = [ordered]@{ Enabled = $true; FolderPath = 'Inbox\ProjectA' }
+                                CopyToFolder = [ordered]@{ Enabled = $false; FolderPath = $null }
+                                Delete       = [ordered]@{ Enabled = $false }
+                                MarkAsRead   = [ordered]@{ Enabled = $false }
+                                Stop         = [ordered]@{ Enabled = $true }
+                            }
+                        },
+                        [ordered]@{
+                            Name           = 'Copy Finance Invoices'
+                            RuleType       = 0
+                            ExecutionOrder = 2
+                            Enabled        = $true
+                            Conditions     = [ordered]@{
+                                Subject    = [ordered]@{ Enabled = $false; Text = @() }
+                                From       = [ordered]@{ Enabled = $true; Recipients = @('billing@vendor.com') }
+                                Categories = [ordered]@{ Enabled = $true; Categories = @('Invoices') }
+                                Importance = [ordered]@{ Enabled = $true; Importance = 2 }
+                                Account    = [ordered]@{ Enabled = $false; Account = $null }
+                            }
+                            Exceptions     = [ordered]@{
+                                Subject    = [ordered]@{ Enabled = $true; Text = @('Draft') }
+                                From       = [ordered]@{ Enabled = $false; Recipients = @() }
+                            }
+                            Actions        = [ordered]@{
+                                MoveToFolder = [ordered]@{ Enabled = $false; FolderPath = $null }
+                                CopyToFolder = [ordered]@{ Enabled = $true; FolderPath = 'Finance' }
+                                Delete       = [ordered]@{ Enabled = $false }
+                                MarkAsRead   = [ordered]@{ Enabled = $false }
+                                Stop         = [ordered]@{ Enabled = $false }
+                            }
+                        },
+                        [ordered]@{
+                            Name           = 'Disabled Spam Filter'
+                            RuleType       = 0
+                            ExecutionOrder = 3
+                            Enabled        = $false
+                            Conditions     = [ordered]@{
+                                Subject    = [ordered]@{ Enabled = $false; Text = @() }
+                                From       = [ordered]@{ Enabled = $false; Recipients = @() }
+                                Categories = [ordered]@{ Enabled = $false; Categories = @() }
+                                Importance = [ordered]@{ Enabled = $false; Importance = 1 }
+                                Account    = [ordered]@{ Enabled = $false; Account = $null }
+                            }
+                            Exceptions     = [ordered]@{}
+                            Actions        = [ordered]@{
+                                MoveToFolder = [ordered]@{ Enabled = $false; FolderPath = $null }
+                                CopyToFolder = [ordered]@{ Enabled = $false; FolderPath = $null }
+                                Delete       = [ordered]@{ Enabled = $false }
+                                MarkAsRead   = [ordered]@{ Enabled = $false }
+                                Stop         = [ordered]@{ Enabled = $false }
+                            }
+                        },
+                        [ordered]@{
+                            Name           = 'Delete Phishing Mails'
+                            RuleType       = 0
+                            ExecutionOrder = 4
+                            Enabled        = $true
+                            Conditions     = [ordered]@{
+                                Subject    = [ordered]@{ Enabled = $true; Text = @('Phishing Alert') }
+                                From       = [ordered]@{ Enabled = $false; Recipients = @() }
+                                Categories = [ordered]@{ Enabled = $false; Categories = @() }
+                                Importance = [ordered]@{ Enabled = $false; Importance = 1 }
+                                Account    = [ordered]@{ Enabled = $true; Account = 'SourceAccount' }
+                            }
+                            Exceptions     = [ordered]@{
+                                Subject    = [ordered]@{ Enabled = $false; Text = @() }
+                                From       = [ordered]@{ Enabled = $true; Recipients = @('security@company.com') }
+                            }
+                            Actions        = [ordered]@{
+                                MoveToFolder = [ordered]@{ Enabled = $false; FolderPath = $null }
+                                CopyToFolder = [ordered]@{ Enabled = $false; FolderPath = $null }
+                                Delete       = [ordered]@{ Enabled = $true }
+                                MarkAsRead   = [ordered]@{ Enabled = $true }
+                                Stop         = [ordered]@{ Enabled = $true }
+                            }
+                        }
+                    )
+                }
+
+                $manifest = [ordered]@{
+                    ManifestVersion = '1.0.0'
+                    SchemaVersion   = '1.0.0'
+                    ExportTimestamp = [System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+                    ExportedBy      = 'IToolkit'
+                    SourceContext   = [ordered]@{
+                        ProfileName        = 'CorporateProfile'
+                        StoreName          = 'Corporate Store'
+                        StoreDisplayName   = 'Corporate Store'
+                        StoreFilePath      = 'C:\Data\Corporate.pst'
+                        AccountName        = 'SourceAccount'
+                        PrimarySmtpAddress = 'source@company.com'
+                        OfficeVersion      = '16.0'
+                    }
+                    CustomFolders   = $folders
+                    Rules           = $rules
+                }
+
+                $jsonContent = ConvertTo-Json -InputObject $manifest -Depth 10
+                Set-Content -LiteralPath $Path -Value $jsonContent -Encoding UTF8
+            }
+
+            function script:New-MockImportOutlookEnvironment {
+                param(
+                    [string]$StorePath = 'C:\Data\TargetStore.pst',
+                    [string]$StoreName = 'Target Store',
+                    [bool]$WithExistingRule = $false
+                )
+
+                # 1. Folder Mocking
+                $mockTargetFolders = [System.Collections.Generic.List[object]]::new()
+                $mockTargetRoot = [PSCustomObject]@{
+                    Name       = $StoreName
+                    FolderPath = "\\$StoreName"
+                    Folders    = $mockTargetFolders
+                }
+
+                $script:importFolderFactory = {
+                    param($FolderName)
+                    $childList = [System.Collections.Generic.List[object]]::new()
+                    $newChild = [PSCustomObject]@{
+                        Name       = $FolderName
+                        FolderPath = "$($this.FolderPath)\$FolderName"
+                        Folders    = $childList
+                    }
+                    $newChild | Add-Member -MemberType ScriptMethod -Name AddFolder -Value $script:importFolderFactory
+                    $newChild | Add-Member -MemberType ScriptMethod -Name EnsureFolder -Value {
+                        param($fName)
+                        foreach ($c in $this.Folders) {
+                            if ($c.Name -ieq $fName) { return $c }
+                        }
+                        return $this.AddFolder($fName)
+                    }
+                    $this.Folders.Add($newChild)
+                    return $newChild
+                }
+                $mockTargetRoot | Add-Member -MemberType ScriptMethod -Name AddFolder -Value $script:importFolderFactory
+
+                # Pre-populate Inbox and system folders
+                $mockInbox = $mockTargetRoot.AddFolder('Inbox')
+                $null = $mockTargetRoot.AddFolder('Sent Items')
+                $null = $mockTargetRoot.AddFolder('Deleted Items')
+
+                # 2. Rules Mocking
+                $mockRulesList = [System.Collections.Generic.List[object]]::new()
+                if ($WithExistingRule) {
+                    $existingRule = [PSCustomObject]@{
+                        Name           = 'Route Project Mails'
+                        RuleType       = 0
+                        Enabled        = $true
+                        ExecutionOrder = 1
+                        Conditions     = [PSCustomObject]@{
+                            Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                            From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                            SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                            Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                            Importance = [PSCustomObject]@{ Enabled = $false; Importance = 1 }
+                            Account    = [PSCustomObject]@{ Enabled = $false; Account = $null }
+                        }
+                        Exceptions     = [PSCustomObject]@{
+                            Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                            From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                            Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                        }
+                        Actions        = [PSCustomObject]@{
+                            MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                            CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                            Delete       = [PSCustomObject]@{ Enabled = $false }
+                            MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                            Stop         = [PSCustomObject]@{ Enabled = $false }
+                        }
+                    }
+                    $mockRulesList.Add($existingRule)
+                }
+
+                $mockRules = [PSCustomObject]@{
+                    Count                = $mockRulesList.Count
+                    RulesList            = $mockRulesList
+                    SaveCalled           = $false
+                    LastSaveShowProgress = $null
+                }
+                $mockRules | Add-Member -MemberType ScriptMethod -Name GetEnumerator -Value { $this.RulesList.GetEnumerator() }
+                $mockRules | Add-Member -MemberType ScriptMethod -Name Item -Value { param($idx) return $this.RulesList[$idx] }
+                $mockRules | Add-Member -MemberType ScriptMethod -Name Save -Value {
+                    param($showProgress)
+                    $this.SaveCalled = $true
+                    $this.LastSaveShowProgress = $showProgress
+                    $script:rulesSaveCallCount++
+                }
+                $mockRules | Add-Member -MemberType ScriptMethod -Name Create -Value {
+                    param($RuleName, $RuleType)
+                    $createdRule = [PSCustomObject]@{
+                        Name           = $RuleName
+                        RuleType       = $RuleType
+                        Enabled        = $false
+                        ExecutionOrder = $this.RulesList.Count + 1
+                        Conditions     = [PSCustomObject]@{
+                            Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                            From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                            SentTo     = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                            Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                            Importance = [PSCustomObject]@{ Enabled = $false; Importance = 1 }
+                            Account    = [PSCustomObject]@{ Enabled = $false; Account = $null }
+                        }
+                        Exceptions     = [PSCustomObject]@{
+                            Subject    = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                            From       = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                            Categories = [PSCustomObject]@{ Enabled = $false; Categories = @() }
+                        }
+                        Actions        = [PSCustomObject]@{
+                            MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                            CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                            Delete       = [PSCustomObject]@{ Enabled = $false }
+                            MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                            Stop         = [PSCustomObject]@{ Enabled = $false }
+                        }
+                    }
+                    $this.RulesList.Add($createdRule)
+                    $this.Count = $this.RulesList.Count
+                    return $createdRule
+                }
+
+                # 3. Target Store Setup
+                $mockTargetStore = [PSCustomObject]@{
+                    DisplayName     = $StoreName
+                    FilePath        = $StorePath
+                    IsDataFileStore = $true
+                    IsDefaultStore  = $true
+                    RootFolder      = $mockTargetRoot
+                    Rules           = $mockRules
+                }
+                $mockTargetStore | Add-Member -MemberType ScriptMethod -Name GetRootFolder -Value { return $this.RootFolder }
+                $mockTargetStore | Add-Member -MemberType ScriptMethod -Name GetRules -Value { return $this.Rules }
+
+                $mockStores = @($mockTargetStore)
+                $mockNs = [PSCustomObject]@{
+                    DefaultStore  = $mockTargetStore
+                    Stores        = $mockStores
+                    Accounts      = @([PSCustomObject]@{ DisplayName = 'Target Account'; SmtpAddress = 'target@company.com' })
+                    LoggedOff     = $false
+                }
+                $mockNs | Add-Member -MemberType ScriptMethod -Name Logon -Value { param($p, $pwd, $ui, $new) }
+                $mockNs | Add-Member -MemberType ScriptMethod -Name Logoff -Value {
+                    $this.LoggedOff = $true
+                    $script:logoffCallCount++
+                }
+
+                $mockApp = [PSCustomObject]@{
+                    MapiNamespace = $mockNs
+                }
+                $mockApp | Add-Member -MemberType ScriptMethod -Name GetNamespace -Value { param($ns) return $this.MapiNamespace }
+                $mockApp | Add-Member -MemberType ScriptMethod -Name Quit -Value {
+                    $script:quitCallCount++
+                }
+
+                return @{
+                    App        = $mockApp
+                    Namespace  = $mockNs
+                    Store      = $mockTargetStore
+                    RootFolder = $mockTargetRoot
+                    Inbox      = $mockInbox
+                    Rules      = $mockRules
+                    RulesList  = $mockRulesList
+                }
+            }
+        }
+
+        It 'Imports valid rule manifest and reconstructs rules silently in target store' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_valid_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath
+                $res.Success | Should -BeTrue
+                $res.RulesImported | Should -Be 4
+                $res.FoldersCreated | Should -Be 3
+                $mockEnv.Rules.SaveCalled | Should -BeTrue
+                $mockEnv.Rules.LastSaveShowProgress | Should -BeFalse
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Pre-creates missing custom folders in target store hierarchy and reuses existing ones' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            # Pre-create Finance so only Inbox\ProjectA and Inbox\ProjectA\SubTask are new
+            $null = $mockEnv.RootFolder.AddFolder('Finance')
+
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_hier_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath
+                $res.Success | Should -BeTrue
+                $res.FoldersCreated | Should -Be 2
+
+                # Verify folders exist in hierarchy
+                $projA = $mockEnv.Inbox.Folders | Where-Object { $_.Name -eq 'ProjectA' }
+                $projA | Should -Not -BeNullOrEmpty
+                $subTask = $projA.Folders | Where-Object { $_.Name -eq 'SubTask' }
+                $subTask | Should -Not -BeNullOrEmpty
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Remaps MoveToFolder and CopyToFolder actions to matching target store folder objects' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_remap_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath
+                $res.Success | Should -BeTrue
+
+                $rule1 = $mockEnv.RulesList | Where-Object { $_.Name -eq 'Route Project Mails' }
+                $rule1.Actions.MoveToFolder.Enabled | Should -BeTrue
+                $rule1.Actions.MoveToFolder.Folder | Should -Not -BeNullOrEmpty
+                $rule1.Actions.MoveToFolder.Folder.Name | Should -Be 'ProjectA'
+
+                $rule2 = $mockEnv.RulesList | Where-Object { $_.Name -eq 'Copy Finance Invoices' }
+                $rule2.Actions.CopyToFolder.Enabled | Should -BeTrue
+                $rule2.Actions.CopyToFolder.Folder | Should -Not -BeNullOrEmpty
+                $rule2.Actions.CopyToFolder.Folder.Name | Should -Be 'Finance'
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Substitutes recipient addresses in conditions and exceptions using -AddressMap' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_addrmap_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            $addressMap = @{
+                'billing@vendor.com'   = 'invoices@corp.net'
+                'security@company.com' = 'soc-alerts@corp.net'
+            }
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -AddressMap $addressMap
+                $res.Success | Should -BeTrue
+
+                $rule2 = $mockEnv.RulesList | Where-Object { $_.Name -eq 'Copy Finance Invoices' }
+                $rule2.Conditions.From.Recipients | Should -Contain 'invoices@corp.net'
+                $rule2.Conditions.From.Recipients | Should -Not -Contain 'billing@vendor.com'
+
+                $rule4 = $mockEnv.RulesList | Where-Object { $_.Name -eq 'Delete Phishing Mails' }
+                $rule4.Exceptions.From.Recipients | Should -Contain 'soc-alerts@corp.net'
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Substitutes account names in conditions using -AccountMap and -AutoRemapAccounts' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_acctmap_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                # Test with -AccountMap
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -AccountMap @{ 'SourceAccount' = 'Target Account' }
+                $res.Success | Should -BeTrue
+                $rule4 = $mockEnv.RulesList | Where-Object { $_.Name -eq 'Delete Phishing Mails' }
+                $rule4.Conditions.Account.Account | Should -Be 'Target Account'
+
+                # Test with -AutoRemapAccounts
+                $mockEnvAuto = New-MockImportOutlookEnvironment
+                Mock Get-OutlookComApplication { return $mockEnvAuto.App } -ModuleName 'Outlook'
+                $resAuto = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnvAuto.Store.FilePath -AutoRemapAccounts
+                $resAuto.Success | Should -BeTrue
+                $rule4Auto = $mockEnvAuto.RulesList | Where-Object { $_.Name -eq 'Delete Phishing Mails' }
+                $rule4Auto.Conditions.Account.Account | Should -Be 'Target Account'
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Preserves disabled rule state and honors -EnableImportedRules force switch' -Skip:(-not $isOutlookAvailable) {
+            # Run 1: Preserve disabled rule state
+            $mockEnv1 = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv1.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_state_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res1 = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv1.Store.FilePath
+                $rule3 = $mockEnv1.RulesList | Where-Object { $_.Name -eq 'Disabled Spam Filter' }
+                $rule3.Enabled | Should -BeFalse
+
+                # Run 2: Force enable all imported rules
+                $mockEnv2 = New-MockImportOutlookEnvironment
+                Mock Get-OutlookComApplication { return $mockEnv2.App } -ModuleName 'Outlook'
+
+                $res2 = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv2.Store.FilePath -EnableImportedRules
+                $rule3Force = $mockEnv2.RulesList | Where-Object { $_.Name -eq 'Disabled Spam Filter' }
+                $rule3Force.Enabled | Should -BeTrue
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Skips existing duplicate rule by default under DuplicateHandling Skip mode' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment -WithExistingRule $true
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_skip_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -DuplicateHandling 'Skip'
+                $res.Success | Should -BeTrue
+                $res.RulesSkipped | Should -Be 1
+                $res.RulesImported | Should -Be 3
+                # Existing rule subject was not changed to manifest value
+                $existing = $mockEnv.RulesList | Where-Object { $_.Name -eq 'Route Project Mails' }
+                $existing.Conditions.Subject.Enabled | Should -BeFalse
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Overwrites existing duplicate rule when DuplicateHandling Overwrite is specified' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment -WithExistingRule $true
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_ow_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -DuplicateHandling 'Overwrite'
+                $res.Success | Should -BeTrue
+                $res.RulesOverwritten | Should -Be 1
+
+                $updated = $mockEnv.RulesList | Where-Object { $_.Name -eq 'Route Project Mails' }
+                $updated.Conditions.Subject.Enabled | Should -BeTrue
+                $updated.Conditions.Subject.Text | Should -Contain 'Project Alpha'
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Imports duplicate rule under disambiguated name when DuplicateHandling Rename is specified' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment -WithExistingRule $true
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_ren_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -DuplicateHandling 'Rename'
+                $res.Success | Should -BeTrue
+                $res.RulesImported | Should -Be 4
+
+                $renamedRule = $mockEnv.RulesList | Where-Object { $_.Name -match '^Route Project Mails \(' }
+                $renamedRule | Should -Not -BeNullOrEmpty
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Allows duplicate rule coexistence when DuplicateHandling KeepBoth is specified' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment -WithExistingRule $true
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_both_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -DuplicateHandling 'KeepBoth'
+                $res.Success | Should -BeTrue
+                $res.RulesImported | Should -Be 4
+                $mockEnv.RulesList.Count | Should -Be 5
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Suppresses folder creation when -AutoCreateFolders is explicitly set to false' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_nofolders_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -AutoCreateFolders:$false
+                $res.Success | Should -BeTrue
+                $res.FoldersCreated | Should -Be 0
+                $finance = $mockEnv.RootFolder.Folders | Where-Object { $_.Name -eq 'Finance' }
+                $finance | Should -BeNullOrEmpty
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Supports -WhatIf execution without modifying target store or committing rule saves' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_whatif_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath -WhatIf
+                $res | Should -Not -BeNullOrEmpty
+                $res.Success | Should -BeTrue
+                $res.Method | Should -Be 'WhatIf'
+
+                # Verify target store state remains pristine
+                $mockEnv.Rules.SaveCalled | Should -BeFalse
+                $mockEnv.RulesList.Count | Should -Be 0
+                $mockEnv.RootFolder.Folders.Count | Should -Be 3
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Returns structured error object when source manifest file does not exist' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $ghostFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "ghost_manifest_$([System.Guid]::NewGuid().ToString('N')).json"
+            $res = Import-OutlookRule -Path $ghostFile -TargetStorePath $mockEnv.Store.FilePath
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'not found'
+            $mockEnv.Rules.SaveCalled | Should -BeFalse
+        }
+
+        It 'Returns structured error object when source JSON manifest is corrupted' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $corruptJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "corrupt_$([System.Guid]::NewGuid().ToString('N')).json"
+            '{ "ManifestVersion": "1.0.0", invalid_syntax ' | Set-Content -LiteralPath $corruptJson -Force
+
+            try {
+                $res = Import-OutlookRule -Path $corruptJson -TargetStorePath $mockEnv.Store.FilePath
+                $res.Success | Should -BeFalse
+                $res.ErrorMessage | Should -Match 'JSON'
+                $mockEnv.Rules.SaveCalled | Should -BeFalse
+            }
+            finally {
+                if (Test-Path -LiteralPath $corruptJson) { Remove-Item -LiteralPath $corruptJson -Force }
+            }
+        }
+
+        It 'Returns structured error object when target Outlook store cannot be found' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_nostore_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath 'C:\NonExistent\GhostStore.pst'
+                $res.Success | Should -BeFalse
+                $res.ErrorMessage | Should -Match 'store.*not found'
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Calls Quit() when Outlook was NOT running prior to Import-OutlookRule execution' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            $script:quitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @() } -ModuleName 'Outlook'
+            Mock Get-Process { return @() }
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_quit1_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath
+                $script:quitCallCount | Should -BeGreaterThan 0
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+
+        It 'Skips calling Quit() when Outlook WAS running prior to Import-OutlookRule execution' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockImportOutlookEnvironment
+            $script:quitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 4321; ProcessName = 'OUTLOOK' }) } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 4321; ProcessName = 'OUTLOOK' }) }
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'TargetProfile' } } -ModuleName 'Outlook'
+
+            $testJson = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "import_quit2_$([System.Guid]::NewGuid().ToString('N')).json"
+            New-MockRuleManifestJson -Path $testJson -WithCustomFolders
+
+            try {
+                $res = Import-OutlookRule -Path $testJson -TargetStorePath $mockEnv.Store.FilePath
+                $script:quitCallCount | Should -Be 0
+            }
+            finally {
+                if (Test-Path -LiteralPath $testJson) { Remove-Item -LiteralPath $testJson -Force }
+            }
+        }
+    }
+
+    # ==============================================================================
+    # Context: Rule Diagnostics, Deduplication & Auto-Repair (Repair-OutlookRule & Test-OutlookRule)
+    # ==============================================================================
+    Context 'Rule Diagnostics, Deduplication & Auto-Repair (Repair-OutlookRule & Test-OutlookRule)' {
+
+        function script:New-MockRepairOutlookEnvironment {
+            param(
+                [string]$StorePath = 'C:\Data\DiagnosticsStore.pst',
+                [string]$StoreName = 'Diagnostics Store'
+            )
+
+            # 1. Folder Mocking
+            $mockRootFolders = [System.Collections.Generic.List[object]]::new()
+            $mockRoot = [PSCustomObject]@{
+                Name       = $StoreName
+                FolderPath = "\\$StoreName"
+                Folders    = $mockRootFolders
+            }
+
+            $script:repairFolderFactory = {
+                param($FolderName)
+                $childList = [System.Collections.Generic.List[object]]::new()
+                $newChild = [PSCustomObject]@{
+                    Name       = $FolderName
+                    FolderPath = "$($this.FolderPath)\$FolderName"
+                    Folders    = $childList
+                }
+                $newChild | Add-Member -MemberType ScriptMethod -Name AddFolder -Value $script:repairFolderFactory
+                $this.Folders.Add($newChild)
+                return $newChild
+            }
+            $mockRoot | Add-Member -MemberType ScriptMethod -Name AddFolder -Value $script:repairFolderFactory
+
+            $mockInbox = $mockRoot.AddFolder('Inbox')
+            $mockAlpha = $mockInbox.AddFolder('Alpha')
+            $mockFinance = $mockRoot.AddFolder('Finance')
+            $mockInvoices = $mockFinance.AddFolder('Invoices')
+            $null = $mockRoot.AddFolder('Deleted Items')
+            $null = $mockRoot.AddFolder('Sent Items')
+
+            # 2. Rules Mocking
+            # Rule 1: Broken MoveToFolder action (target folder is null)
+            $mockRule1 = [PSCustomObject]@{
+                Name           = 'Route Project Alpha'
+                RuleType       = 0
+                Enabled        = $true
+                ExecutionOrder = 1
+                Conditions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $true; Text = @('Project Alpha') }
+                    From    = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                }
+                Exceptions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                }
+                Actions        = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $true }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                    Stop         = [PSCustomObject]@{ Enabled = $true }
+                }
+            }
+
+            # Rule 2: Valid CopyToFolder rule
+            $mockRule2 = [PSCustomObject]@{
+                Name           = 'Copy Finance Invoices'
+                RuleType       = 0
+                Enabled        = $true
+                ExecutionOrder = 2
+                Conditions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $true; Text = @('Invoice', 'Billing') }
+                    From    = [PSCustomObject]@{ Enabled = $true; Recipients = @('vendor@external.org') }
+                }
+                Exceptions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                }
+                Actions        = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $mockInvoices; Enabled = $true }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                    Stop         = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            # Rule 3: Exact Duplicate of Rule 2
+            $mockRule3 = [PSCustomObject]@{
+                Name           = 'Copy Finance Invoices Duplicate'
+                RuleType       = 0
+                Enabled        = $true
+                ExecutionOrder = 3
+                Conditions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $true; Text = @('Invoice', 'Billing') }
+                    From    = [PSCustomObject]@{ Enabled = $true; Recipients = @('vendor@external.org') }
+                }
+                Exceptions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                }
+                Actions        = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $mockInvoices; Enabled = $true }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                    Stop         = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            # Rule 4: Empty Zombie Rule (0 active conditions and 0 active actions)
+            $mockRule4 = [PSCustomObject]@{
+                Name           = 'Empty Zombie Rule'
+                RuleType       = 0
+                Enabled        = $false
+                ExecutionOrder = 4
+                Conditions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                    From    = [PSCustomObject]@{ Enabled = $false; Recipients = @() }
+                }
+                Exceptions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                }
+                Actions        = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                    MarkAsRead   = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            # Rule 5: Disabled Valid Rule (Enabled=$false, but has active conditions and actions)
+            $mockRule5 = [PSCustomObject]@{
+                Name           = 'Disabled Critical Alert'
+                RuleType       = 0
+                Enabled        = $false
+                ExecutionOrder = 5
+                Conditions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $true; Text = @('CRITICAL') }
+                }
+                Exceptions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                }
+                Actions        = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $mockInbox; Enabled = $true }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            # Rule 6: Broken CopyToFolder action (target folder is null)
+            $mockRule6 = [PSCustomObject]@{
+                Name           = 'Copy to Missing Archive'
+                RuleType       = 0
+                Enabled        = $true
+                ExecutionOrder = 6
+                Conditions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $true; Text = @('Archive') }
+                }
+                Exceptions     = [PSCustomObject]@{
+                    Subject = [PSCustomObject]@{ Enabled = $false; Text = @() }
+                }
+                Actions        = [PSCustomObject]@{
+                    MoveToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $false }
+                    CopyToFolder = [PSCustomObject]@{ Folder = $null; Enabled = $true }
+                    Delete       = [PSCustomObject]@{ Enabled = $false }
+                }
+            }
+
+            $mockRulesList = [System.Collections.Generic.List[object]]@($mockRule1, $mockRule2, $mockRule3, $mockRule4, $mockRule5, $mockRule6)
+            $mockRules = [PSCustomObject]@{
+                Count                = $mockRulesList.Count
+                RulesList            = $mockRulesList
+                SaveCalled           = $false
+                LastSaveShowProgress = $null
+            }
+            $mockRules | Add-Member -MemberType ScriptMethod -Name Item -Value { param($i) return $this.RulesList[$i - 1] }
+            $mockRules | Add-Member -MemberType ScriptMethod -Name Remove -Value {
+                param($i)
+                $this.RulesList.RemoveAt($i - 1)
+                $this.Count = $this.RulesList.Count
+            }
+            $mockRules | Add-Member -MemberType ScriptMethod -Name Save -Value {
+                param($showProgress)
+                $this.SaveCalled = $true
+                $this.LastSaveShowProgress = $showProgress
+            }
+
+            # 3. Store Mocking
+            $mockStore = [PSCustomObject]@{
+                DisplayName     = $StoreName
+                FilePath        = $StorePath
+                IsDataFileStore = $true
+                IsDefaultStore  = $true
+                RootFolder      = $mockRoot
+                Rules           = $mockRules
+            }
+            $mockStore | Add-Member -MemberType ScriptMethod -Name GetRootFolder -Value { return $this.RootFolder }
+            $mockStore | Add-Member -MemberType ScriptMethod -Name GetRules -Value { return $this.Rules }
+
+            # 4. Namespace Mocking
+            $mockNs = [PSCustomObject]@{
+                Stores        = @($mockStore)
+                DefaultStore  = $mockStore
+                ActiveProfile = 'DiagnosticsProfile'
+            }
+            $mockNs | Add-Member -MemberType ScriptMethod -Name Logon -Value { param($p, $w, $u, $n) $this.ActiveProfile = $p }
+            $mockNs | Add-Member -MemberType ScriptMethod -Name Logoff -Value { }
+
+            # 5. Application Mocking
+            $mockApp = [PSCustomObject]@{
+                MapiNamespace = $mockNs
+                QuitCalled    = $false
+            }
+            $mockApp | Add-Member -MemberType ScriptMethod -Name GetNamespace -Value { param($t) return $this.MapiNamespace }
+            $mockApp | Add-Member -MemberType ScriptMethod -Name Quit -Value {
+                $this.QuitCalled = $true
+                $script:repairQuitCallCount++
+            }
+
+            return [PSCustomObject]@{
+                App          = $mockApp
+                Namespace    = $mockNs
+                Store        = $mockStore
+                RootFolder   = $mockRoot
+                InboxFolder  = $mockInbox
+                AlphaFolder  = $mockAlpha
+                FinanceFolder= $mockFinance
+                Rules        = $mockRules
+                RulesList    = $mockRulesList
+                Rule1        = $mockRule1
+                Rule2        = $mockRule2
+                Rule3        = $mockRule3
+                Rule4        = $mockRule4
+                Rule5        = $mockRule5
+                Rule6        = $mockRule6
+            }
+        }
+
+        It 'Performs scan-only diagnostics by default with 0 modifications and 0 saves' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath
+            $res.Success | Should -BeTrue
+            $res.Method | Should -Be 'ScanOnly'
+            $res.RulesScanned | Should -Be 6
+            $res.TotalRules | Should -Be 6
+            $res.BrokenRules.Count | Should -Be 2
+            $res.DuplicateRules.Count | Should -Be 1
+            $res.EmptyRules.Count | Should -Be 1
+            $res.DisabledRules.Count | Should -Be 2
+            $res.RepairedRulesCount | Should -Be 0
+            $res.RemovedDuplicates | Should -Be 0
+            $res.RemovedEmptyCount | Should -Be 0
+
+            # Verify zero rule mutations and zero save calls
+            $mockEnv.Rules.SaveCalled | Should -BeFalse
+            $mockEnv.Rules.Count | Should -Be 6
+        }
+
+        It 'Auto-repairs broken MoveToFolder actions by recreating missing folder and rebinding' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath -AutoRepair
+            $res.Success | Should -BeTrue
+            $res.RepairedRulesCount | Should -BeGreaterOrEqual 1
+
+            # Rule 1 target folder was recreated and bound
+            $mockEnv.Rule1.Actions.MoveToFolder.Folder | Should -Not -BeNullOrEmpty
+            $mockEnv.Rule1.Actions.MoveToFolder.Enabled | Should -BeTrue
+            $mockEnv.Rules.SaveCalled | Should -BeTrue
+        }
+
+        It 'Deduplicates redundant rules in reverse-index order without shifting index corruption' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath -RemoveDuplicates
+            $res.Success | Should -BeTrue
+            $res.RemovedDuplicates | Should -Be 1
+            $res.RemovedDuplicatesCount | Should -Be 1
+
+            # Original Rule 2 exists, Duplicate Rule 3 removed
+            $remainingNames = @($mockEnv.RulesList | ForEach-Object { $_.Name })
+            $remainingNames | Should -Contain 'Copy Finance Invoices'
+            $remainingNames | Should -Not -Contain 'Copy Finance Invoices Duplicate'
+            $mockEnv.Rules.SaveCalled | Should -BeTrue
+        }
+
+        It 'Prunes empty zombie rules having zero active conditions and actions' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath -RemoveEmpty
+            $res.Success | Should -BeTrue
+            $res.RemovedEmptyCount | Should -Be 1
+
+            $remainingNames = @($mockEnv.RulesList | ForEach-Object { $_.Name })
+            $remainingNames | Should -Not -Contain 'Empty Zombie Rule'
+            $mockEnv.Rules.SaveCalled | Should -BeTrue
+        }
+
+        It 'Preserves disabled rules with active conditions and does not prune them' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath -RemoveEmpty
+            $res.DisabledRules | Should -Contain 'Disabled Critical Alert'
+
+            $remainingNames = @($mockEnv.RulesList | ForEach-Object { $_.Name })
+            $remainingNames | Should -Contain 'Disabled Critical Alert'
+        }
+
+        It 'Test-OutlookRule alias behaves identically to Repair-OutlookRule in scan and repair modes' -Skip:(-not $isOutlookAvailable) {
+            $mockEnvScan = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnvScan.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            # 1. Alias scan-only
+            $resScan = Test-OutlookRule -StorePath $mockEnvScan.Store.FilePath
+            $resScan.Success | Should -BeTrue
+            $resScan.Method | Should -Be 'ScanOnly'
+            $resScan.RulesScanned | Should -Be 6
+            $mockEnvScan.Rules.SaveCalled | Should -BeFalse
+
+            # 2. Alias auto-repair
+            $mockEnvRepair = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnvRepair.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $resRepair = Test-OutlookRule -StorePath $mockEnvRepair.Store.FilePath -AutoRepair
+            $resRepair.Success | Should -BeTrue
+            $resRepair.RepairedRulesCount | Should -BeGreaterOrEqual 1
+            $mockEnvRepair.Rules.SaveCalled | Should -BeTrue
+        }
+
+        It 'Supports -WhatIf execution without modifying rules or committing saves' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath -AutoRepair -RemoveDuplicates -RemoveEmpty -WhatIf
+            $res | Should -Not -BeNullOrEmpty
+            $res.Success | Should -BeTrue
+            $res.Method | Should -Be 'WhatIf'
+
+            $mockEnv.Rules.SaveCalled | Should -BeFalse
+            $mockEnv.Rules.Count | Should -Be 6
+        }
+
+        It 'Enforces silent save via Save($false) when mutations occur' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath -AutoRepair
+            $mockEnv.Rules.SaveCalled | Should -BeTrue
+            $mockEnv.Rules.LastSaveShowProgress | Should -BeFalse
+        }
+
+        It 'Calls Quit() when Outlook was NOT running prior to Repair-OutlookRule execution' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            $script:repairQuitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @() } -ModuleName 'Outlook'
+            Mock Get-Process { return @() }
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath
+            $script:repairQuitCallCount | Should -BeGreaterThan 0
+        }
+
+        It 'Skips calling Quit() when Outlook WAS running prior to Repair-OutlookRule execution' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            $script:repairQuitCallCount = 0
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 7890; ProcessName = 'OUTLOOK' }) } -ModuleName 'Outlook'
+            Mock Get-Process { return @([PSCustomObject]@{ Id = 7890; ProcessName = 'OUTLOOK' }) }
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath $mockEnv.Store.FilePath
+            $script:repairQuitCallCount | Should -Be 0
+        }
+
+        It 'Returns structured error object when target Outlook store is not found' -Skip:(-not $isOutlookAvailable) {
+            $mockEnv = New-MockRepairOutlookEnvironment
+            Mock Get-OutlookComApplication { return $mockEnv.App } -ModuleName 'Outlook'
+            Mock Get-OutlookSystemContext { return [PSCustomObject]@{ DefaultProfile = 'DiagnosticsProfile' } } -ModuleName 'Outlook'
+
+            $res = Repair-OutlookRule -StorePath 'C:\NonExistent\GhostStore.pst'
+            $res.Success | Should -BeFalse
+            $res.ErrorMessage | Should -Match 'store.*not found'
+            $mockEnv.Rules.SaveCalled | Should -BeFalse
+        }
+    }
 }

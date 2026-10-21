@@ -71,6 +71,7 @@ function Set-OutlookDefaultDataFile {
         # 5. Check Running Outlook Processes
         $outlookProcs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
         $isOutlookRunning = ($outlookProcs.Count -gt 0)
+        $outlookRunningBefore = $isOutlookRunning
 
         # 6. Check if store is already default via Outlook COM
         $comApp = $null
@@ -129,9 +130,25 @@ function Set-OutlookDefaultDataFile {
             Write-Verbose "COM default store check notice: $($_.Exception.Message)"
         }
         finally {
+            if ($null -ne $comApp -and -not $outlookRunningBefore) {
+                try { $comApp.Quit() } catch { $null = $_ }
+            }
+
             $objectsToRelease = @($store, $stores, $ns, $comApp)
             if (Get-Command -Name 'Remove-ToolkitComObject' -ErrorAction SilentlyContinue) {
                 Remove-ToolkitComObject -ComObjects $objectsToRelease
+            }
+            else {
+                foreach ($obj in $objectsToRelease) {
+                    if ($null -ne $obj -and [System.Runtime.InteropServices.Marshal]::IsComObject($obj)) {
+                        try {
+                            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($obj) | Out-Null
+                        } catch { $null = $_ }
+                    }
+                }
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                [System.GC]::Collect()
             }
         }
 

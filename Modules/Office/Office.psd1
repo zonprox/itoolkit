@@ -35,7 +35,11 @@
         'Public/Set-PowerPointHardwareAcceleration.ps1',
         'Public/Reset-PowerPointCache.ps1',
         'Public/Reset-PowerPointResiliency.ps1',
-        'Public/Uninstall-OfficeSuiteCleanly.ps1'
+        'Public/Uninstall-OfficeSuiteCleanly.ps1',
+        'Public/Set-OfficeHardwareAcceleration.ps1',
+        'Public/Invoke-WordQuickRepair.ps1',
+        'Public/Invoke-ExcelQuickRepair.ps1',
+        'Public/Invoke-PowerPointQuickRepair.ps1'
     )
 
     # Explicit Whitelist of Public Functions (Strictly hides Private helpers)
@@ -61,7 +65,11 @@
         'Set-PowerPointHardwareAcceleration',
         'Reset-PowerPointCache',
         'Reset-PowerPointResiliency',
-        'Uninstall-OfficeSuiteCleanly'
+        'Uninstall-OfficeSuiteCleanly',
+        'Set-OfficeHardwareAcceleration',
+        'Invoke-WordQuickRepair',
+        'Invoke-ExcelQuickRepair',
+        'Invoke-PowerPointQuickRepair'
     )
 
     CmdletsToExport        = @()

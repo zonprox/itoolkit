@@ -75,12 +75,14 @@ function Clear-OutlookStuckOutbox {
         }
 
         # 4. COM Outbox Clearing
+        $outlookRunningBefore = [bool](Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
         $comApp = $null
         $ns = $null
         $outbox = $null
         $clearedCount = 0
         $method = 'COM'
         $err = $null
+        $didLogon = $false
 
         try {
             if (Get-Command -Name 'Get-OutlookComApplication' -ErrorAction SilentlyContinue) {
@@ -103,6 +105,7 @@ function Clear-OutlookStuckOutbox {
                 if ($null -ne $ns) {
                     try {
                         $ns.Logon($targetProfile, $null, $false, $false)
+                        $didLogon = $true
                     } catch { $null = $_ }
 
                     # 4 = olFolderOutbox
@@ -140,12 +143,29 @@ function Clear-OutlookStuckOutbox {
             Write-Verbose "COM Outbox cleanup encountered error: $err"
         }
         finally {
-            if ($null -ne $comApp) {
+            if ($didLogon -and $null -ne $ns) {
+                try { $ns.Logoff() } catch { $null = $_ }
+            }
+
+            if ($null -ne $comApp -and -not $outlookRunningBefore) {
                 try { $comApp.Quit() } catch { $null = $_ }
             }
+
             $comObjs = @($outbox, $ns, $comApp)
             if (Get-Command -Name 'Remove-ToolkitComObject' -ErrorAction SilentlyContinue) {
                 Remove-ToolkitComObject -ComObjects $comObjs
+            }
+            else {
+                foreach ($obj in $comObjs) {
+                    if ($null -ne $obj -and [System.Runtime.InteropServices.Marshal]::IsComObject($obj)) {
+                        try {
+                            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($obj) | Out-Null
+                        } catch { $null = $_ }
+                    }
+                }
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                [System.GC]::Collect()
             }
         }
 

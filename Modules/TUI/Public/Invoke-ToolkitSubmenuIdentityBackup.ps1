@@ -301,37 +301,37 @@ function Invoke-ToolkitAccountContextMenu {
                     continue
                 }
 
-                $confirm = if ($NonInteractive) { 'y' } else { Read-Host "  Confirm permanent deletion of account '$userName' and user profile? [y/N]" }
-                if ($confirm -match '^(?i)y(es)?$') {
-                    if (Get-Command -Name 'Remove-LocalAccountItem' -ErrorAction SilentlyContinue) {
-                        try {
-                            Write-ToolkitStatus -Message "Permanently deleting user account '$userName'..." -Type 'INFO'
-                            $delParams = @{ Username = $userName }
-                            if (-not [string]::IsNullOrWhiteSpace($sid) -and $sid -ne 'Local Account') {
-                                $delParams['SID'] = $sid
-                            }
-                            $delRes = Remove-LocalAccountItem @delParams
-                            if ($delRes -and $delRes.Success) {
-                                Write-ToolkitStatus -Message "Account '$userName' and associated profile permanently deleted." -Type 'OK'
-                                Wait-UserAcknowledge
-                                $inContext = $false
-                                return
-                            } else {
-                                Write-ToolkitStatus -Message "Deletion routine processed for '$userName'." -Type 'INFO'
-                                Wait-UserAcknowledge
-                                $inContext = $false
-                                return
-                            }
-                        } catch {
-                            Write-ToolkitStatus -Message "Account deletion failed: $($_.Exception.Message)" -Type 'FAIL'
-                            Wait-UserAcknowledge
+                if (-not (Confirm-ToolkitAction -ActionDescription "permanent deletion of account '$userName' and user profile" -NonInteractive:$NonInteractive)) {
+                    Write-ToolkitStatus -Message "Permanent deletion cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                if (Get-Command -Name 'Remove-LocalAccountItem' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Permanently deleting user account '$userName'..." -Type 'INFO'
+                        $delParams = @{ Username = $userName }
+                        if (-not [string]::IsNullOrWhiteSpace($sid) -and $sid -ne 'Local Account') {
+                            $delParams['SID'] = $sid
                         }
-                    } else {
-                        Write-ToolkitStatus -Message "Remove-LocalAccountItem command unavailable." -Type 'WARN'
+                        $delRes = Remove-LocalAccountItem @delParams
+                        if ($delRes -and $delRes.Success) {
+                            Write-ToolkitStatus -Message "Account '$userName' and associated profile permanently deleted." -Type 'OK'
+                            Wait-UserAcknowledge
+                            $inContext = $false
+                            return
+                        } else {
+                            Write-ToolkitStatus -Message "Deletion routine processed for '$userName'." -Type 'INFO'
+                            Wait-UserAcknowledge
+                            $inContext = $false
+                            return
+                        }
+                    } catch {
+                        Write-ToolkitStatus -Message "Account deletion failed: $($_.Exception.Message)" -Type 'FAIL'
                         Wait-UserAcknowledge
                     }
                 } else {
-                    Write-ToolkitStatus -Message "Permanent deletion cancelled by user." -Type 'INFO'
+                    Write-ToolkitStatus -Message "Remove-LocalAccountItem command unavailable." -Type 'WARN'
                     Wait-UserAcknowledge
                 }
             }
