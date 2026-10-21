@@ -185,8 +185,8 @@ function Start-IToolkitMenu {
         }
 
         $mainNav = @(
-            @{ Key = '9'; Label = 'Refresh Screen' },
-            @{ Key = '0'; Label = 'Exit Console' }
+            @{ Key = '9'; Label = 'Refresh Screen'; Description = 'Clear telemetry cache and redraw console' },
+            @{ Key = '0'; Label = 'Exit Console'; Description = 'Exit IToolkit administration console' }
         )
         $mainDetails = @(
             @{ Key = '1'; Action = 'System Health & Maintenance'; Description = 'Unified Windows repair, SFC/DISM servicing, update reset, and component store cleanup.'; Prerequisite = 'Administrator rights [RECOMMENDED]' },

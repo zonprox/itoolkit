@@ -151,13 +151,13 @@ function Invoke-ToolkitApplicationContextMenu {
             -InfoLines $infoLines
 
         $contextActions = @(
-            @{ Key = '1'; Label = 'Silent Install' },
-            @{ Key = '2'; Label = 'Force Reinstall' },
-            @{ Key = '3'; Label = 'Verify Status' },
-            @{ Key = '4'; Label = 'Create Desktop Shortcut' }
+            @{ Key = '1'; Label = 'Silent Install'; Description = 'Deploy target application quietly without interactive wizard prompts' },
+            @{ Key = '2'; Label = 'Force Reinstall'; Description = 'Download fresh package payload and perform forced clean reinstallation' },
+            @{ Key = '3'; Label = 'Verify Status'; Description = 'Check executable existence, registry uninstall keys, and installed version' },
+            @{ Key = '4'; Label = 'Create Desktop Shortcut'; Description = 'Create or repair desktop shortcut pointing to canonical application executable' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Applications Table' }
+            @{ Key = '0'; Label = 'Back to Applications Table'; Description = 'Return to managed enterprise 64-bit application catalog' }
         )
         Show-ToolkitActionCatalog -Actions $contextActions -NavActions $navActions -Title "APPLICATION ACTIONS: $dispName"
 
@@ -197,11 +197,6 @@ function Invoke-ToolkitApplicationContextMenu {
                 Wait-UserAcknowledge
             }
             '2' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "force reinstallation of '$dispName'" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Force reinstallation cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 Write-ToolkitStatus -Message "Force reinstalling $dispName..." -Type 'INFO'
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
                     $res = Install-ToolkitApplication -AppName $appName -Force -CreateShortcut
@@ -396,12 +391,12 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
 
         Write-Host ""
         $installerActions = @(
-            @{ Key = '9'; Label = 'Update All Winget Apps' },
-            @{ Key = '10'; Label = 'Win11Debloat' },
-            @{ Key = '11'; Label = 'Browser Debloat' }
+            @{ Key = '9'; Label = 'Update All Winget Apps'; Description = 'Scan and upgrade all installed packages via Windows Package Manager' },
+            @{ Key = '10'; Label = 'Win11Debloat'; Description = 'Launch official Win11Debloat utility to remove telemetry and bloat' },
+            @{ Key = '11'; Label = 'Browser Debloat'; Description = 'Launch browser optimization tool to purge telemetry, sponsor tiles, and tracking' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Main Menu' }
+            @{ Key = '0'; Label = 'Back to Main Menu'; Description = 'Return to the primary IToolkit console' }
         )
         Show-ToolkitActionCatalog -Actions $installerActions -NavActions $navActions -Title 'DEPLOYMENT & OPTIMIZATION ACTIONS'
 

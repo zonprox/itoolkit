@@ -323,16 +323,16 @@ function Invoke-ToolkitDataFileContextMenu {
             )
 
         $contextActions = @(
-            @{ Key = '1'; Label = 'Compact Data File' },
-            @{ Key = '2'; Label = 'Expand PST Limit (100GB)' },
-            @{ Key = '3'; Label = 'Backup Data File' },
-            @{ Key = '4'; Label = 'Relocate Data File' },
-            @{ Key = '5'; Label = 'Set Default Delivery File' },
-            @{ Key = '6'; Label = 'Create New Default PST from This Store' },
-            @{ Key = '7'; Label = 'Permanently Delete Data File' }
+            @{ Key = '1'; Label = 'Compact Data File'; Description = 'Compact target PST or OST storage file to reclaim unused disk space' },
+            @{ Key = '2'; Label = 'Expand PST Limit'; Description = 'Configure registry thresholds to support up to 100GB data file capacity' },
+            @{ Key = '3'; Label = 'Backup Data File'; Description = 'Create timestamped backup copy with SHA-256 integrity validation' },
+            @{ Key = '4'; Label = 'Relocate Data File'; Description = 'Safely move data file to a new disk location or directory' },
+            @{ Key = '5'; Label = 'Set Default Delivery File'; Description = 'Assign this store as the primary mail delivery location for its profile' },
+            @{ Key = '6'; Label = 'Create New Default PST from This Store'; Description = 'Create clean PST store, set as default, and clone folder structure and rules' },
+            @{ Key = '7'; Label = 'Permanently Delete Data File'; Description = 'Remove data file from Outlook profile and permanently delete from disk' }
         )
         $contextNav = @(
-            @{ Key = '0'; Label = 'Return to Data Files' }
+            @{ Key = '0'; Label = 'Return to Data Files'; Description = 'Exit context menu and return to discovered data files list' }
         )
         Show-ToolkitActionCatalog -Actions $contextActions -NavActions $contextNav -Title "DATA FILE ACTIONS: $fileName"
 
@@ -398,7 +398,12 @@ function Invoke-ToolkitDataFileContextMenu {
                 Wait-UserAcknowledge
             }
             '4' {
-                $destPath = if ($NonInteractive) { Join-Path (Split-Path -Parent $filePath) ("Moved_" + $fileName) } else { Read-Host "  Enter Target Destination File Path" }
+                $parentDir = Split-Path -Parent $filePath
+                $defaultRelocatePath = if ([string]::IsNullOrWhiteSpace($parentDir)) { "Moved_$fileName" } else { [System.IO.Path]::Combine($parentDir, "Moved_$fileName") }
+                $destPath = if ($NonInteractive) { $defaultRelocatePath } else {
+                    $inputRelocate = Read-Host "  Enter Target Destination File Path (Default: $defaultRelocatePath)"
+                    if ([string]::IsNullOrWhiteSpace($inputRelocate)) { $defaultRelocatePath } else { $inputRelocate.Trim() }
+                }
                 if (-not [string]::IsNullOrWhiteSpace($destPath)) {
                     if (Get-Command -Name 'Move-OutlookDataFile' -ErrorAction SilentlyContinue) {
                         try {
@@ -438,284 +443,135 @@ function Invoke-ToolkitDataFileContextMenu {
             }
             '6' {
                 $script:inContextExit = $false
-                if ((Get-Command -Name 'Remove-OutlookDataFile' -ErrorAction SilentlyContinue).CommandType -eq 'Alias' -and (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue).CommandType -ne 'Alias') {
-                    # Legacy test route: Delete Data File
-                    if ([string]::IsNullOrWhiteSpace($filePath)) {
-                        Write-ToolkitStatus -Message "Invalid or empty data file path." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    if ($filePath -match '[\*\?]') {
-                        Write-ToolkitStatus -Message "Data file path cannot contain wildcard characters: '$filePath'." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    if ([System.IO.Directory]::Exists($filePath) -or ((Test-Path -LiteralPath $filePath -PathType Container) -and -not (Test-Path -LiteralPath $filePath -PathType Leaf))) {
-                        Write-ToolkitStatus -Message "Specified path is a directory, not an Outlook data file: '$filePath'." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    $outlookRunning = $false
-                    try {
-                        $procs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
-                        if ($procs.Count -gt 0) { $outlookRunning = $true }
-                    } catch { $null = $_ }
-
-                    if ($outlookRunning) {
-                        Write-ToolkitStatus -Message "Deletion blocked: Outlook is currently running. Please close Outlook first." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    if (Get-Command -Name 'Test-OutlookDataFileLock' -ErrorAction SilentlyContinue) {
-                        $lockTest = Test-OutlookDataFileLock -Path $filePath
-                        if ($null -ne $lockTest -and $lockTest.IsLocked) {
-                            Write-ToolkitStatus -Message "Deletion blocked: File '$fileName' is locked by an external process ($($lockTest.ErrorMessage))." -Type 'FAIL'
-                            Wait-UserAcknowledge
-                            continue
-                        }
-                    }
-
-                    $confirmAccepted = if ($NonInteractive) { $true } else { (Read-Host "  Confirm permanent deletion of '$fileName'? [y/N]") -match '^(?i)y(es)?$' }
-                    if ($confirmAccepted) {
-                        if (Get-Command -Name 'Remove-OutlookDataFile' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Permanently deleting '$fileName'..." -Type 'INFO'
-                                $delRes = Remove-OutlookDataFile -Path $filePath -ProfileName $profileName
-                                if ($delRes -and $delRes.Success) {
-                                    Write-ToolkitStatus -Message "Data file '$fileName' permanently deleted from disk and profile." -Type 'OK'
-                                    Wait-UserAcknowledge
-                                    $inContext = $false
-                                    return
-                                } else {
-                                    $err = if ($delRes -and $delRes.ErrorMessage) { $delRes.ErrorMessage } else { "Unknown deletion failure." }
-                                    Write-ToolkitStatus -Message "Failed to delete '$fileName': $err" -Type 'FAIL'
-                                    Wait-UserAcknowledge
-                                }
-                            } catch {
-                                Write-ToolkitStatus -Message "Deletion failed: $($_.Exception.Message)" -Type 'FAIL'
-                                Wait-UserAcknowledge
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Remove-OutlookDataFile command unavailable." -Type 'WARN'
-                            Wait-UserAcknowledge
-                        }
+                # Canonical Action 6: Create New Default PST from This Store
+                $docPath = [System.Environment]::GetFolderPath('MyDocuments')
+                if ([string]::IsNullOrWhiteSpace($docPath)) {
+                    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+                        $docPath = Join-Path $env:USERPROFILE 'Documents'
+                    } elseif (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+                        $docPath = Join-Path $env:HOME 'Documents'
                     } else {
-                        Write-ToolkitStatus -Message "Permanent deletion cancelled by user." -Type 'INFO'
+                        $docPath = [System.IO.Path]::GetTempPath()
+                    }
+                }
+                $defaultPstDir = Join-Path $docPath "Outlook Files"
+                $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+                $defaultPstName = "${profileName}_${timestamp}.pst"
+                $defaultPstPath = Join-Path $defaultPstDir $defaultPstName
+
+                $targetPst = if ($NonInteractive) { $defaultPstPath } else {
+                    Read-Host "  Enter Target PST Path (Default: $defaultPstPath)"
+                }
+                if ([string]::IsNullOrWhiteSpace($targetPst)) {
+                    $targetPst = $defaultPstPath
+                }
+                if (-not ($targetPst -match '[\\/]')) {
+                    $targetPst = Join-Path $defaultPstDir $targetPst
+                }
+                if ($targetPst -notmatch '(?i)\.pst$') {
+                    $targetPst = "$targetPst.pst"
+                }
+
+                if (Get-Command -Name 'Set-OutlookPstThreshold' -ErrorAction SilentlyContinue) {
+                    try {
+                        $null = Set-OutlookPstThreshold -MaxLargeFileSizeMB 102400 -WarnLargeFileSizeMB 97280
+                    } catch { $null = $_ }
+                }
+
+                if (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue) {
+                    try {
+                        Write-ToolkitStatus -Message "Creating new default PST and migrating rules/folders..." -Type 'INFO'
+                        $res = New-OutlookDataFile -Path $targetPst -ProfileName $profileName -SetAsDefault -CloneFolderHierarchy -MigrateRules -SourceStorePath $filePath
+                        if ($res -and $res.Success) {
+                            Write-ToolkitStatus -Message "New default PST created: '$targetPst' for profile '$profileName' with folders and rules preserved." -Type 'OK'
+                            Wait-UserAcknowledge
+                            $inContext = $false
+                            return
+                        } else {
+                            $errMsg = if ($res -and $res.ErrorMessage) { $res.ErrorMessage } else { "Failed to create new default PST." }
+                            Write-ToolkitStatus -Message "Failed: $errMsg" -Type 'FAIL'
+                            Wait-UserAcknowledge
+                        }
+                    } catch {
+                        Write-ToolkitStatus -Message "Error: $($_.Exception.Message)" -Type 'FAIL'
                         Wait-UserAcknowledge
                     }
                 } else {
-                    # Canonical Action 6: Create New Default PST from This Store
-                    if (-not (Confirm-ToolkitAction -ActionDescription "creating a new default PST for profile '$profileName' (preserving rules/folders)" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Creation of new default PST cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    $docPath = [System.Environment]::GetFolderPath('MyDocuments')
-                    if ([string]::IsNullOrWhiteSpace($docPath)) {
-                        if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-                            $docPath = Join-Path $env:USERPROFILE 'Documents'
-                        } elseif (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
-                            $docPath = Join-Path $env:HOME 'Documents'
-                        } else {
-                            $docPath = [System.IO.Path]::GetTempPath()
-                        }
-                    }
-                    $defaultPstDir = Join-Path $docPath "Outlook Files"
-                    $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-                    $defaultPstName = "${profileName}_${timestamp}.pst"
-                    $defaultPstPath = Join-Path $defaultPstDir $defaultPstName
-
-                    $targetPst = if ($NonInteractive) { $defaultPstPath } else {
-                        Read-Host "  Enter Target PST Path (Default: $defaultPstPath)"
-                    }
-                    if ([string]::IsNullOrWhiteSpace($targetPst)) {
-                        $targetPst = $defaultPstPath
-                    }
-                    if (-not ($targetPst -match '[\\/]')) {
-                        $targetPst = Join-Path $defaultPstDir $targetPst
-                    }
-                    if ($targetPst -notmatch '(?i)\.pst$') {
-                        $targetPst = "$targetPst.pst"
-                    }
-
-                    if (Get-Command -Name 'Set-OutlookPstThreshold' -ErrorAction SilentlyContinue) {
-                        try {
-                            $null = Set-OutlookPstThreshold -MaxLargeFileSizeMB 102400 -WarnLargeFileSizeMB 97280
-                        } catch { $null = $_ }
-                    }
-
-                    if (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue) {
-                        try {
-                            Write-ToolkitStatus -Message "Creating new default PST and migrating rules/folders..." -Type 'INFO'
-                            $res = New-OutlookDataFile -Path $targetPst -ProfileName $profileName -SetAsDefault -CloneFolderHierarchy -MigrateRules -SourceStorePath $filePath
-                            if ($res -and $res.Success) {
-                                Write-ToolkitStatus -Message "New default PST created: '$targetPst' for profile '$profileName' with folders and rules preserved." -Type 'OK'
-                                Wait-UserAcknowledge
-                                $inContext = $false
-                                return
-                            } else {
-                                $errMsg = if ($res -and $res.ErrorMessage) { $res.ErrorMessage } else { "Failed to create new default PST." }
-                                Write-ToolkitStatus -Message "Failed: $errMsg" -Type 'FAIL'
-                                Wait-UserAcknowledge
-                            }
-                        } catch {
-                            Write-ToolkitStatus -Message "Error: $($_.Exception.Message)" -Type 'FAIL'
-                            Wait-UserAcknowledge
-                        }
-                    } else {
-                        Write-ToolkitStatus -Message "New-OutlookDataFile command unavailable." -Type 'WARN'
-                        Wait-UserAcknowledge
-                    }
+                    Write-ToolkitStatus -Message "New-OutlookDataFile command unavailable." -Type 'WARN'
+                    Wait-UserAcknowledge
                 }
             }
             '7' {
-                if ((Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue).CommandType -eq 'Alias' -and (Get-Command -Name 'Remove-OutlookDataFile' -ErrorAction SilentlyContinue).CommandType -ne 'Alias') {
-                    # Legacy test route: Create New Default PST
-                    if (-not (Confirm-ToolkitAction -ActionDescription "creating a new default PST for profile '$profileName' (preserving rules/folders)" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Creation of new default PST cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    $docPath = [System.Environment]::GetFolderPath('MyDocuments')
-                    if ([string]::IsNullOrWhiteSpace($docPath)) {
-                        if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-                            $docPath = Join-Path $env:USERPROFILE 'Documents'
-                        } elseif (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
-                            $docPath = Join-Path $env:HOME 'Documents'
-                        } else {
-                            $docPath = [System.IO.Path]::GetTempPath()
-                        }
-                    }
-                    $defaultPstDir = Join-Path $docPath "Outlook Files"
-                    $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-                    $defaultPstName = "${profileName}_${timestamp}.pst"
-                    $defaultPstPath = Join-Path $defaultPstDir $defaultPstName
-
-                    $targetPst = if ($NonInteractive) { $defaultPstPath } else {
-                        Read-Host "  Enter Target PST Path (Default: $defaultPstPath)"
-                    }
-                    if ([string]::IsNullOrWhiteSpace($targetPst)) {
-                        $targetPst = $defaultPstPath
-                    }
-                    if (-not ($targetPst -match '[\\/]')) {
-                        $targetPst = Join-Path $defaultPstDir $targetPst
-                    }
-                    if ($targetPst -notmatch '(?i)\.pst$') {
-                        $targetPst = "$targetPst.pst"
-                    }
-
-                    if (Get-Command -Name 'Set-OutlookPstThreshold' -ErrorAction SilentlyContinue) {
-                        try {
-                            $null = Set-OutlookPstThreshold -MaxLargeFileSizeMB 102400 -WarnLargeFileSizeMB 97280
-                        } catch { $null = $_ }
-                    }
-
-                    if (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue) {
-                        try {
-                            Write-ToolkitStatus -Message "Creating new default PST and migrating rules/folders..." -Type 'INFO'
-                            $res = New-OutlookDataFile -Path $targetPst -ProfileName $profileName -SetAsDefault -CloneFolderHierarchy -MigrateRules -SourceStorePath $filePath
-                            if ($res -and $res.Success) {
-                                Write-ToolkitStatus -Message "New default PST created: '$targetPst' for profile '$profileName' with folders and rules preserved." -Type 'OK'
-                                Wait-UserAcknowledge
-                                $inContext = $false
-                                return
-                            } else {
-                                $errMsg = if ($res -and $res.ErrorMessage) { $res.ErrorMessage } else { "Failed to create new default PST." }
-                                Write-ToolkitStatus -Message "Failed: $errMsg" -Type 'FAIL'
-                                Wait-UserAcknowledge
-                            }
-                        } catch {
-                            Write-ToolkitStatus -Message "Error: $($_.Exception.Message)" -Type 'FAIL'
-                            Wait-UserAcknowledge
-                        }
-                    } else {
-                        Write-ToolkitStatus -Message "New-OutlookDataFile command unavailable." -Type 'WARN'
-                        Wait-UserAcknowledge
-                    }
-                } else {
-                    # Canonical Action 7: Permanently Delete Data File
-                    if ([string]::IsNullOrWhiteSpace($filePath)) {
-                        Write-ToolkitStatus -Message "Invalid or empty data file path." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    if ($filePath -match '[\*\?]') {
-                        Write-ToolkitStatus -Message "Data file path cannot contain wildcard characters: '$filePath'." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    if ([System.IO.Directory]::Exists($filePath) -or ((Test-Path -LiteralPath $filePath -PathType Container) -and -not (Test-Path -LiteralPath $filePath -PathType Leaf))) {
-                        Write-ToolkitStatus -Message "Specified path is a directory, not an Outlook data file: '$filePath'." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    $outlookRunning = $false
-                    try {
-                        $procs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
-                        if ($procs.Count -gt 0) { $outlookRunning = $true }
-                    } catch { $null = $_ }
-
-                    if ($outlookRunning) {
-                        Write-ToolkitStatus -Message "Deletion blocked: Outlook is currently running. Please close Outlook first." -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        continue
-                    }
-
-                    if (Get-Command -Name 'Test-OutlookDataFileLock' -ErrorAction SilentlyContinue) {
-                        $lockTest = Test-OutlookDataFileLock -Path $filePath
-                        if ($null -ne $lockTest -and $lockTest.IsLocked) {
-                            Write-ToolkitStatus -Message "Deletion blocked: File '$fileName' is locked by an external process ($($lockTest.ErrorMessage))." -Type 'FAIL'
-                            Wait-UserAcknowledge
-                            continue
-                        }
-                    }
-
-                    $confirmAccepted = if ($NonInteractive) { $true } else { (Read-Host "  Confirm permanent deletion of '$fileName'? [y/N]") -match '^(?i)y(es)?$' }
-                    if ($confirmAccepted) {
-                        if (Get-Command -Name 'Remove-OutlookDataFile' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Permanently deleting '$fileName'..." -Type 'INFO'
-                                $delRes = Remove-OutlookDataFile -Path $filePath -ProfileName $profileName
-                                if ($delRes -and $delRes.Success) {
-                                    Write-ToolkitStatus -Message "Data file '$fileName' permanently deleted from disk and profile." -Type 'OK'
-                                    Wait-UserAcknowledge
-                                    $inContext = $false
-                                    return
-                                } else {
-                                    $err = if ($delRes -and $delRes.ErrorMessage) { $delRes.ErrorMessage } else { "Unknown deletion failure." }
-                                    Write-ToolkitStatus -Message "Failed to delete '$fileName': $err" -Type 'FAIL'
-                                    Wait-UserAcknowledge
-                                }
-                            } catch {
-                                Write-ToolkitStatus -Message "Deletion failed: $($_.Exception.Message)" -Type 'FAIL'
-                                Wait-UserAcknowledge
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Remove-OutlookDataFile command unavailable." -Type 'WARN'
-                            Wait-UserAcknowledge
-                        }
-                    } else {
-                        Write-ToolkitStatus -Message "Permanent deletion cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                    }
-                }
-            }
-            '8' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "exporting rules for store '$fileName'" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Export of rules cancelled by user." -Type 'INFO'
+                # Canonical Action 7: Permanently Delete Data File
+                if ([string]::IsNullOrWhiteSpace($filePath)) {
+                    Write-ToolkitStatus -Message "Invalid or empty data file path." -Type 'FAIL'
                     Wait-UserAcknowledge
                     continue
                 }
 
+                if ($filePath -match '[\*\?]') {
+                    Write-ToolkitStatus -Message "Data file path cannot contain wildcard characters: '$filePath'." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                if ([System.IO.Directory]::Exists($filePath) -or ((Test-Path -LiteralPath $filePath -PathType Container) -and -not (Test-Path -LiteralPath $filePath -PathType Leaf))) {
+                    Write-ToolkitStatus -Message "Specified path is a directory, not an Outlook data file: '$filePath'." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                $outlookRunning = $false
+                try {
+                    $procs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
+                    if ($procs.Count -gt 0) { $outlookRunning = $true }
+                } catch { $null = $_ }
+
+                if ($outlookRunning) {
+                    Write-ToolkitStatus -Message "Deletion blocked: Outlook is currently running. Please close Outlook first." -Type 'FAIL'
+                    Wait-UserAcknowledge
+                    continue
+                }
+
+                if (Get-Command -Name 'Test-OutlookDataFileLock' -ErrorAction SilentlyContinue) {
+                    $lockTest = Test-OutlookDataFileLock -Path $filePath
+                    if ($null -ne $lockTest -and $lockTest.IsLocked) {
+                        Write-ToolkitStatus -Message "Deletion blocked: File '$fileName' is locked by an external process ($($lockTest.ErrorMessage))." -Type 'FAIL'
+                        Wait-UserAcknowledge
+                        continue
+                    }
+                }
+
+                $confirmAccepted = if ($NonInteractive) { $true } else { (Read-Host "  Confirm permanent deletion of '$fileName'? [y/N]") -match '^(?i)y(es)?$' }
+                if ($confirmAccepted) {
+                    if (Get-Command -Name 'Remove-OutlookDataFile' -ErrorAction SilentlyContinue) {
+                        try {
+                            Write-ToolkitStatus -Message "Permanently deleting '$fileName'..." -Type 'INFO'
+                            $delRes = Remove-OutlookDataFile -Path $filePath -ProfileName $profileName
+                            if ($delRes -and $delRes.Success) {
+                                Write-ToolkitStatus -Message "Data file '$fileName' permanently deleted from disk and profile." -Type 'OK'
+                                Wait-UserAcknowledge
+                                $inContext = $false
+                                return
+                            } else {
+                                $err = if ($delRes -and $delRes.ErrorMessage) { $delRes.ErrorMessage } else { "Unknown deletion failure." }
+                                Write-ToolkitStatus -Message "Failed to delete '$fileName': $err" -Type 'FAIL'
+                                Wait-UserAcknowledge
+                            }
+                        } catch {
+                            Write-ToolkitStatus -Message "Deletion failed: $($_.Exception.Message)" -Type 'FAIL'
+                            Wait-UserAcknowledge
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Remove-OutlookDataFile command unavailable." -Type 'WARN'
+                        Wait-UserAcknowledge
+                    }
+                } else {
+                    Write-ToolkitStatus -Message "Permanent deletion cancelled by user." -Type 'INFO'
+                    Wait-UserAcknowledge
+                }
+            }
+            '8' {
                 $docPath = [System.Environment]::GetFolderPath('MyDocuments')
                 if ([string]::IsNullOrWhiteSpace($docPath)) {
                     if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
@@ -766,8 +622,31 @@ function Invoke-ToolkitDataFileContextMenu {
                 Wait-UserAcknowledge
             }
             '9' {
-                $manifestPath = if ($NonInteractive) { '' } else {
-                    Read-Host "  Enter Path to Rule Manifest JSON"
+                $docPath = [System.Environment]::GetFolderPath('MyDocuments')
+                if ([string]::IsNullOrWhiteSpace($docPath)) {
+                    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+                        $docPath = Join-Path $env:USERPROFILE 'Documents'
+                    } elseif (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+                        $docPath = Join-Path $env:HOME 'Documents'
+                    } else {
+                        $docPath = [System.IO.Path]::GetTempPath()
+                    }
+                }
+                $defaultManifestDir = Join-Path $docPath "Outlook Files"
+                $latestManifest = $null
+                if (Test-Path -LiteralPath $defaultManifestDir) {
+                    $latestManifest = Get-ChildItem -Path $defaultManifestDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+                        Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1
+                }
+                $defaultPrompt = if ($latestManifest) { " (Default: $($latestManifest.FullName))" } else { "" }
+
+                $manifestPath = if ($NonInteractive) {
+                    if ($latestManifest) { $latestManifest.FullName } else { '' }
+                } else {
+                    Read-Host "  Enter Path to Rule Manifest JSON$defaultPrompt"
+                }
+                if ([string]::IsNullOrWhiteSpace($manifestPath) -and $latestManifest) {
+                    $manifestPath = $latestManifest.FullName
                 }
                 if ([string]::IsNullOrWhiteSpace($manifestPath)) {
                     Write-ToolkitStatus -Message "Manifest path is required for rule import." -Type 'WARN'
@@ -777,12 +656,6 @@ function Invoke-ToolkitDataFileContextMenu {
                 $manifestPath = $manifestPath.Trim().Trim('"').Trim("'")
                 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
                     Write-ToolkitStatus -Message "Manifest file does not exist: '$manifestPath'." -Type 'FAIL'
-                    Wait-UserAcknowledge
-                    continue
-                }
-
-                if (-not (Confirm-ToolkitAction -ActionDescription "importing rules from '$manifestPath' into store '$fileName'" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Import of rules cancelled by user." -Type 'INFO'
                     Wait-UserAcknowledge
                     continue
                 }
@@ -808,13 +681,6 @@ function Invoke-ToolkitDataFileContextMenu {
             '10' {
                 $autoRepair = if ($NonInteractive) { $false } else {
                     (Read-Host "  Enable Auto-Repair to fix broken rules & folders? [y/N]") -match '^(?i)y(es)?$'
-                }
-
-                $modeDesc = if ($autoRepair) { "diagnostics and auto-repair on store '$fileName'" } else { "rule diagnostics scan on store '$fileName'" }
-                if (-not (Confirm-ToolkitAction -ActionDescription $modeDesc -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Rule diagnostics cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    continue
                 }
 
                 $cmdName = if (Get-Command -Name 'Repair-OutlookRule' -ErrorAction SilentlyContinue) {
@@ -957,16 +823,16 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
 
         Write-Host ""
         $actions = @(
-            @{ Key = '10'; Label = 'Quick Mail & Cache Repair (Outbox + SRS + RoamCache + NavPane combo)' },
-            @{ Key = '11'; Label = 'Create New Default PST for Profile (auto-bundled 100GB + Folders + Rules)' },
-            @{ Key = '12'; Label = 'Export Outlook Rules (From Selected Profile)' },
-            @{ Key = '13'; Label = 'Import & Auto-Remap Outlook Rules (Into Profile)' },
-            @{ Key = '14'; Label = 'Smart Rule Diagnostics & Auto-Repair' },
-            @{ Key = '15'; Label = 'Test & Expand PST Size Thresholds (100GB)' },
-            @{ Key = '16'; Label = 'Switch Active Outlook Profile Filter' }
+            @{ Key = '10'; Label = 'Quick Mail & Cache Repair'; Description = 'Sequential Outbox clearing, SRS reset, RoamCache purge, and NavPane reset' },
+            @{ Key = '11'; Label = 'Create New Default PST for Profile'; Description = 'Create 100GB PST store, set as default, and migrate folder tree and rules' },
+            @{ Key = '12'; Label = 'Export Outlook Rules'; Description = 'Export profile rules, folder maps, and account definitions to JSON manifest' },
+            @{ Key = '13'; Label = 'Import & Auto-Remap Outlook Rules'; Description = 'Import JSON rule manifest with automatic folder creation and account remapping' },
+            @{ Key = '14'; Label = 'Smart Rule Diagnostics & Auto-Repair'; Description = 'Inspect rules for orphaned folder targets, duplicates, and auto-repair' },
+            @{ Key = '15'; Label = 'Test & Expand PST Size Thresholds'; Description = 'Validate current store limits and configure registry for 100GB capacity' },
+            @{ Key = '16'; Label = 'Switch Active Outlook Profile Filter'; Description = 'Filter discovered data files and target actions by a specific Outlook profile' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Office Hub' }
+            @{ Key = '0'; Label = 'Back to Office Hub'; Description = 'Return to the central Office & Productivity Suite menu' }
         )
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'OUTLOOK OPERATIONAL FIXES & COMMANDS'
 
@@ -978,7 +844,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
             return
         }
 
-        $categoryKeys = @('10', '11', '12', '13', '14', '15', '16', '1', '2', '3', '4', '5', '6', '7', '17', '18', '19', '20', '21')
+        $categoryKeys = @('10', '11', '12', '13', '14', '15', '16')
         $promptText = "  Select Item [1-$($items.Count)], Action [10-16], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex $items.Count -ValidHotkeys $categoryKeys -Prompt $promptText
 
@@ -997,13 +863,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
             $actionKey = "$($selection.Value)"
 
             switch ($actionKey) {
-                { $_ -in @('10', '1') } {
-                    if (-not (Confirm-ToolkitAction -ActionDescription "clearing stuck outbox messages in Outlook" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Quick Mail & Cache Repair cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
-
+                '10' {
                     # Pre-execution process guard: checks running OUTLOOK, warns/terminates via Stop-OfficeProcess
                     $procs = @(Get-Process -Name 'OUTLOOK' -ErrorAction SilentlyContinue)
                     if ($procs.Count -gt 0) {
@@ -1098,41 +958,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     Write-ToolkitStatus -Message "Quick Repair Complete: Outbox cleared ($clearedMsgs msg), SRS reset (Backup: $srsBackup), RoamCache purged ($purgedStreams streams, $preservedAuto autocomplete preserved), NavPane reset." -Type 'OK'
                     Wait-UserAcknowledge
                 }
-                { $_ -in @('11', '2', '17') } {
-                    if ($_ -eq '11' -and (Get-Command -Name 'Reset-OutlookSendReceiveSettings' -ErrorAction SilentlyContinue).CommandType -eq 'Alias' -and (Get-Command -Name 'New-OutlookDataFile' -ErrorAction SilentlyContinue).CommandType -ne 'Alias') {
-                        if (-not (Confirm-ToolkitAction -ActionDescription "resetting Outlook Send/Receive settings (.SRS)" -NonInteractive:$NonInteractive)) {
-                            Write-ToolkitStatus -Message "Reset SRS settings cancelled by user." -Type 'INFO'
-                            Wait-UserAcknowledge
-                            break
-                        }
-                        if (Get-Command -Name 'Reset-OutlookSendReceiveSettings' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Resetting Send/Receive settings (.srs)..." -Type 'INFO'
-                                $res = Reset-OutlookSendReceiveSettings -Backup
-                                if ($res -and $res.Status -eq 'Success') {
-                                    $bkMsg = if ($res.BackupFile) { " (Backup: $($res.BackupFile))" } else { "" }
-                                    Write-ToolkitStatus -Message "Send/Receive settings reset successfully$bkMsg." -Type 'OK'
-                                } elseif ($res -and $res.Status -eq 'Warning') {
-                                    Write-ToolkitStatus -Message "Send/Receive settings notice: $($res.ErrorMessage)" -Type 'WARN'
-                                } else {
-                                    Write-ToolkitStatus -Message "Send/Receive reset failed: $($res.ErrorMessage)" -Type 'FAIL'
-                                }
-                            } catch {
-                                Write-ToolkitStatus -Message "Failed to reset Send/Receive settings: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Reset-OutlookSendReceiveSettings command unavailable." -Type 'WARN'
-                        }
-                        Wait-UserAcknowledge
-                        break
-                    }
-
-                    if (-not (Confirm-ToolkitAction -ActionDescription "creating a new default PST with rule/folder preservation" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "New default PST creation cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
-
+                '11' {
                     # Discover available profiles
                     $discoveredProfiles = @()
                     $defaultProfile = 'Outlook'
@@ -1158,7 +984,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
 
                     $targetProfile = $defaultProfile
-                    if (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
+                    if (-not [string]::IsNullOrWhiteSpace($activeProfileFilter)) {
+                        $targetProfile = $activeProfileFilter
+                    } elseif ($discoveredProfiles.Count -le 1) {
+                        $targetProfile = if ($discoveredProfiles.Count -gt 0) { $discoveredProfiles[0] } else { $defaultProfile }
+                    } elseif (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
                         $selectedProfile = Select-ToolkitOutlookProfile -DefaultProfile $defaultProfile -Profiles $discoveredProfiles -NonInteractive:$NonInteractive -Prompt "  Select Target Outlook Profile"
                         if (-not [string]::IsNullOrWhiteSpace($selectedProfile)) {
                             $targetProfile = $selectedProfile.Trim()
@@ -1233,34 +1063,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
                     Wait-UserAcknowledge
                 }
-                { $_ -in @('12', '3', '18') } {
-                    if ($_ -eq '12' -and (Get-Command -Name 'Clear-OutlookRoamCache' -ErrorAction SilentlyContinue).CommandType -eq 'Alias' -and (Get-Command -Name 'Export-OutlookRule' -ErrorAction SilentlyContinue).CommandType -ne 'Alias') {
-                        if (-not (Confirm-ToolkitAction -ActionDescription "clearing Outlook RoamCache streams" -NonInteractive:$NonInteractive)) {
-                            Write-ToolkitStatus -Message "Clear RoamCache cancelled by user." -Type 'INFO'
-                            Wait-UserAcknowledge
-                            break
-                        }
-                        if (Get-Command -Name 'Clear-OutlookRoamCache' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Purging RoamCache stream cache (preserving AutoComplete)..." -Type 'INFO'
-                                $res = Clear-OutlookRoamCache -PreserveAutocomplete
-                                if ($res -and $res.Status -eq 'Success') {
-                                    Write-ToolkitStatus -Message "RoamCache cleared: $($res.PurgedCount) stream(s) purged, $($res.PreservedCount) AutoComplete file(s) preserved." -Type 'OK'
-                                } elseif ($res -and $res.Status -eq 'Warning') {
-                                    Write-ToolkitStatus -Message "RoamCache notice: $($res.ErrorMessage)" -Type 'WARN'
-                                } else {
-                                    Write-ToolkitStatus -Message "RoamCache purge failed: $($res.ErrorMessage)" -Type 'FAIL'
-                                }
-                            } catch {
-                                Write-ToolkitStatus -Message "Failed to purge RoamCache: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Clear-OutlookRoamCache command unavailable." -Type 'WARN'
-                        }
-                        Wait-UserAcknowledge
-                        break
-                    }
-
+                '12' {
                     # Discover available profiles
                     $discoveredProfiles = @()
                     $defaultProfile = 'Outlook'
@@ -1286,7 +1089,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
 
                     $targetProfile = $defaultProfile
-                    if (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
+                    if (-not [string]::IsNullOrWhiteSpace($activeProfileFilter)) {
+                        $targetProfile = $activeProfileFilter
+                    } elseif ($discoveredProfiles.Count -le 1) {
+                        $targetProfile = if ($discoveredProfiles.Count -gt 0) { $discoveredProfiles[0] } else { $defaultProfile }
+                    } elseif (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
                         $selectedProfile = Select-ToolkitOutlookProfile -DefaultProfile $defaultProfile -Profiles $discoveredProfiles -NonInteractive:$NonInteractive -Prompt "  Select Source Outlook Profile for Rule Export"
                         if (-not [string]::IsNullOrWhiteSpace($selectedProfile)) {
                             $targetProfile = $selectedProfile.Trim()
@@ -1334,12 +1141,6 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                         $targetExportPath = "$targetExportPath.json"
                     }
 
-                    if (-not (Confirm-ToolkitAction -ActionDescription "exporting Outlook rules for profile '$targetProfile'" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Export Outlook rules cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
-
                     if (Get-Command -Name 'Export-OutlookRule' -ErrorAction SilentlyContinue) {
                         try {
                             Write-ToolkitStatus -Message "Exporting Outlook rules from profile '$targetProfile'..." -Type 'INFO'
@@ -1362,34 +1163,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
                     Wait-UserAcknowledge
                 }
-                { $_ -in @('13', '4', '19') } {
-                    if ($_ -eq '13' -and (Get-Command -Name 'Reset-OutlookNavigationPane' -ErrorAction SilentlyContinue).CommandType -eq 'Alias' -and (Get-Command -Name 'Import-OutlookRule' -ErrorAction SilentlyContinue).CommandType -ne 'Alias') {
-                        if (-not (Confirm-ToolkitAction -ActionDescription "resetting Outlook navigation pane configuration" -NonInteractive:$NonInteractive)) {
-                            Write-ToolkitStatus -Message "Reset navigation pane cancelled by user." -Type 'INFO'
-                            Wait-UserAcknowledge
-                            break
-                        }
-                        if (Get-Command -Name 'Reset-OutlookNavigationPane' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Resetting Outlook navigation pane configuration (/resetnavpane)..." -Type 'INFO'
-                                $res = Reset-OutlookNavigationPane
-                                if ($res -and $res.Status -eq 'Success') {
-                                    Write-ToolkitStatus -Message "Navigation pane reset successfully across registry and XML profiles." -Type 'OK'
-                                } elseif ($res -and $res.Status -eq 'Warning') {
-                                    Write-ToolkitStatus -Message "Navigation pane notice: $($res.ErrorMessage)" -Type 'WARN'
-                                } else {
-                                    Write-ToolkitStatus -Message "Navigation pane reset failed: $($res.ErrorMessage)" -Type 'FAIL'
-                                }
-                            } catch {
-                                Write-ToolkitStatus -Message "Failed to reset navigation pane: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Reset-OutlookNavigationPane command unavailable." -Type 'WARN'
-                        }
-                        Wait-UserAcknowledge
-                        break
-                    }
-
+                '13' {
                     # Discover available profiles
                     $discoveredProfiles = @()
                     $defaultProfile = 'Outlook'
@@ -1415,7 +1189,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
 
                     $targetProfile = $defaultProfile
-                    if (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
+                    if (-not [string]::IsNullOrWhiteSpace($activeProfileFilter)) {
+                        $targetProfile = $activeProfileFilter
+                    } elseif ($discoveredProfiles.Count -le 1) {
+                        $targetProfile = if ($discoveredProfiles.Count -gt 0) { $discoveredProfiles[0] } else { $defaultProfile }
+                    } elseif (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
                         $selectedProfile = Select-ToolkitOutlookProfile -DefaultProfile $defaultProfile -Profiles $discoveredProfiles -NonInteractive:$NonInteractive -Prompt "  Select Destination Outlook Profile for Rule Import"
                         if (-not [string]::IsNullOrWhiteSpace($selectedProfile)) {
                             $targetProfile = $selectedProfile.Trim()
@@ -1444,18 +1222,23 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
                     $defaultManifestDir = Join-Path $docPath "Outlook Files"
 
+                    $recentManifest = $null
+                    if (Test-Path -LiteralPath $defaultManifestDir) {
+                        $recentManifest = Get-ChildItem -Path $defaultManifestDir -Filter "OutlookRules_*.json" -File -ErrorAction SilentlyContinue |
+                            Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1
+                        if (-not $recentManifest) {
+                            $recentManifest = Get-ChildItem -Path $defaultManifestDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+                                Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1
+                        }
+                    }
+                    $manifestPrompt = if ($recentManifest) { " (Default: $($recentManifest.FullName))" } else { "" }
+
                     $manifestPath = if ($NonInteractive) { '' } else {
-                        Read-Host "  Enter Path to Rule Manifest JSON"
+                        Read-Host "  Enter Path to Rule Manifest JSON$manifestPrompt"
                     }
 
-                    if ([string]::IsNullOrWhiteSpace($manifestPath)) {
-                        if (Test-Path -LiteralPath $defaultManifestDir) {
-                            $recentManifest = Get-ChildItem -Path $defaultManifestDir -Filter "OutlookRules_*.json" -File -ErrorAction SilentlyContinue |
-                                Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1
-                            if ($recentManifest) {
-                                $manifestPath = $recentManifest.FullName
-                            }
-                        }
+                    if ([string]::IsNullOrWhiteSpace($manifestPath) -and $recentManifest) {
+                        $manifestPath = $recentManifest.FullName
                     }
 
                     if ([string]::IsNullOrWhiteSpace($manifestPath)) {
@@ -1466,12 +1249,6 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
 
                     if (-not (Test-Path -LiteralPath $manifestPath)) {
                         Write-ToolkitStatus -Message "Rule manifest file not found: '$manifestPath'" -Type 'FAIL'
-                        Wait-UserAcknowledge
-                        break
-                    }
-
-                    if (-not (Confirm-ToolkitAction -ActionDescription "importing and remapping rules into profile '$targetProfile'" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Import Outlook rules cancelled by user." -Type 'INFO'
                         Wait-UserAcknowledge
                         break
                     }
@@ -1500,31 +1277,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
                     Wait-UserAcknowledge
                 }
-                { $_ -in @('14', '5', '20') } {
-                    if ($_ -eq '14' -and (Get-Command -Name 'Invoke-OutlookCompaction' -ErrorAction SilentlyContinue).CommandType -eq 'Alias' -and (Get-Command -Name 'Repair-OutlookRule' -ErrorAction SilentlyContinue).CommandType -ne 'Alias') {
-                        if (Get-Command -Name 'Invoke-OutlookPstCompaction' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Launching Outlook data file compaction routine..." -Type 'INFO'
-                                Invoke-OutlookPstCompaction
-                                Write-ToolkitStatus -Message "Outlook compaction routine invoked." -Type 'OK'
-                            } catch {
-                                Write-ToolkitStatus -Message "Compaction failed: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } elseif (Get-Command -Name 'Invoke-OutlookCompaction' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Launching Outlook data file compaction routine..." -Type 'INFO'
-                                Invoke-OutlookCompaction
-                                Write-ToolkitStatus -Message "Outlook compaction routine invoked." -Type 'OK'
-                            } catch {
-                                Write-ToolkitStatus -Message "Compaction failed: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Invoke-OutlookPstCompaction command unavailable." -Type 'WARN'
-                        }
-                        Wait-UserAcknowledge
-                        break
-                    }
-
+                '14' {
                     # Discover available profiles
                     $discoveredProfiles = @()
                     $defaultProfile = 'Outlook'
@@ -1550,7 +1303,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
 
                     $targetProfile = $defaultProfile
-                    if (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
+                    if (-not [string]::IsNullOrWhiteSpace($activeProfileFilter)) {
+                        $targetProfile = $activeProfileFilter
+                    } elseif ($discoveredProfiles.Count -le 1) {
+                        $targetProfile = if ($discoveredProfiles.Count -gt 0) { $discoveredProfiles[0] } else { $defaultProfile }
+                    } elseif (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
                         $selectedProfile = Select-ToolkitOutlookProfile -DefaultProfile $defaultProfile -Profiles $discoveredProfiles -NonInteractive:$NonInteractive -Prompt "  Select Outlook Profile for Diagnostics & Repair"
                         if (-not [string]::IsNullOrWhiteSpace($selectedProfile)) {
                             $targetProfile = $selectedProfile.Trim()
@@ -1573,18 +1330,6 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                         if (-not [string]::IsNullOrWhiteSpace($repairChoice) -and $repairChoice.Trim() -match '^(?i)y(?:es)?$') {
                             $autoRepair = $true
                         }
-                    }
-
-                    $actionDesc = if ($autoRepair) {
-                        "running smart rule diagnostics and auto-repair for profile '$targetProfile'"
-                    } else {
-                        "running smart rule diagnostics scan for profile '$targetProfile'"
-                    }
-
-                    if (-not (Confirm-ToolkitAction -ActionDescription $actionDesc -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Rule diagnostics cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
                     }
 
                     $cmdName = if (Get-Command -Name 'Repair-OutlookRule' -ErrorAction SilentlyContinue) {
@@ -1628,7 +1373,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
                     Wait-UserAcknowledge
                 }
-                { $_ -in @('15', '6') } {
+                '15' {
                     if (Get-Command -Name 'Test-OutlookDataFileSize' -ErrorAction SilentlyContinue) {
                         try {
                             $validPaths = @($items | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Path) })
@@ -1668,40 +1413,7 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                     }
                     Wait-UserAcknowledge
                 }
-                { $_ -in @('16', '7', '21') } {
-                    if ($_ -eq '16' -and (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue).CommandType -eq 'Alias' -and (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue).CommandType -ne 'Alias') {
-                        if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Outlook processes" -NonInteractive:$NonInteractive)) {
-                            Write-ToolkitStatus -Message "Terminate Outlook processes cancelled by user." -Type 'INFO'
-                            Wait-UserAcknowledge
-                            break
-                        }
-                        if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Terminating Outlook processes..." -Type 'INFO'
-                                $stopRes = Stop-OfficeProcess -ProcessNames @('OUTLOOK') -Force
-                                if ($stopRes -and $stopRes.Terminated) {
-                                    Write-ToolkitStatus -Message "Outlook processes terminated: $($stopRes.Terminated -join ', ')." -Type 'OK'
-                                } else {
-                                    Write-ToolkitStatus -Message "No active Outlook processes found." -Type 'INFO'
-                                }
-                            } catch {
-                                Write-ToolkitStatus -Message "Failed to terminate Outlook: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } elseif (Get-Command -Name 'Stop-ToolkitProcess' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Terminating Outlook processes..." -Type 'INFO'
-                                $null = Stop-ToolkitProcess -ProcessName 'OUTLOOK' -TimeoutSeconds 5 -Force
-                                Write-ToolkitStatus -Message "Outlook process termination requested." -Type 'OK'
-                            } catch {
-                                Write-ToolkitStatus -Message "Failed to terminate Outlook: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Stop-OfficeProcess command unavailable." -Type 'WARN'
-                        }
-                        Wait-UserAcknowledge
-                        break
-                    }
-
+                '16' {
                     # Discover available profiles
                     $discoveredProfiles = @()
                     $defaultProfile = 'Outlook'
@@ -1726,11 +1438,25 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
                         $discoveredProfiles = @($defaultProfile)
                     }
 
+                    if ($discoveredProfiles.Count -le 1) {
+                        $profName = if ($discoveredProfiles.Count -gt 0) { $discoveredProfiles[0] } else { $defaultProfile }
+                        Write-ToolkitStatus -Message "Only 1 Outlook profile found ('$profName'). Switching profile filter is not applicable." -Type 'INFO'
+                        Wait-UserAcknowledge
+                        break
+                    }
+
                     $targetProfile = $defaultProfile
                     if (Get-Command -Name 'Select-ToolkitOutlookProfile' -ErrorAction SilentlyContinue) {
-                        $selectedProfile = Select-ToolkitOutlookProfile -DefaultProfile $defaultProfile -Profiles $discoveredProfiles -NonInteractive:$NonInteractive -Prompt "  Select Outlook Profile to Filter Data Files"
-                        if (-not [string]::IsNullOrWhiteSpace($selectedProfile)) {
-                            $targetProfile = $selectedProfile.Trim()
+                        try {
+                            $selectedProfile = Select-ToolkitOutlookProfile -DefaultProfile $defaultProfile -Profiles $discoveredProfiles -NonInteractive:$NonInteractive -Prompt "  Select Outlook Profile to Filter Data Files"
+                            if (-not [string]::IsNullOrWhiteSpace($selectedProfile)) {
+                                $targetProfile = $selectedProfile.Trim()
+                            }
+                        } catch {
+                            if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
+                                Write-ToolkitLog -Message "Select-ToolkitOutlookProfile failed with exception: $($_.Exception.Message)" -Level ERROR -Component 'TUI' -NoConsole
+                            }
+                            Write-ToolkitStatus -Message "Profile selection error: $($_.Exception.Message)" -Type 'FAIL'
                         }
                     } else {
                         if (-not $NonInteractive) {

@@ -193,14 +193,14 @@ function Invoke-ToolkitSubmenuOfficeCommon {
             -InfoLines $infoLines
 
         $actions = @(
-            @{ Key = '1'; Label = 'Repair Click-to-Run Service & Cache' },
-            @{ Key = '2'; Label = 'Reset Office Identity & WAM Tokens' },
-            @{ Key = '3'; Label = 'Toggle Suite-Wide Hardware Acceleration' },
-            @{ Key = '4'; Label = 'Terminate All Office Processes' },
-            @{ Key = '5'; Label = 'Native Clean Uninstaller & Scrubber' }
+            @{ Key = '1'; Label = 'Repair Click-to-Run Service & Cache'; Description = 'Restart C2R service, verify licensing, and clear streaming cache' },
+            @{ Key = '2'; Label = 'Reset Office Identity & WAM Tokens'; Description = 'Clear corrupted Office identity cache, WAM broker tokens, and force re-auth' },
+            @{ Key = '3'; Label = 'Toggle Suite-Wide Hardware Acceleration'; Description = 'Toggle GPU hardware acceleration across Word, Excel, and PowerPoint registry keys' },
+            @{ Key = '4'; Label = 'Terminate All Office Processes'; Description = 'Safely terminate running instances of Word, Excel, PowerPoint, and Outlook' },
+            @{ Key = '5'; Label = 'Native Clean Uninstaller & Scrubber'; Description = 'Remove corrupted Office installations using Microsoft SaRA scrubber automation' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Office Hub' }
+            @{ Key = '0'; Label = 'Back to Office Hub'; Description = 'Return to the central Office & Productivity Suite menu' }
         )
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
@@ -248,11 +248,6 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 Wait-UserAcknowledge
             }
             '2' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Office identity cache and purging WAM tokens" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Reset Office Identity cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 if (Get-Command -Name 'Reset-OfficeIdentityCache' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Resetting Office Identity cache, OneAuth, and WAM broker plugin tokens..." -Type 'INFO'
@@ -272,37 +267,6 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 Wait-UserAcknowledge
             }
             '3' {
-                if ((Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
-                    (Get-Command -Name 'Set-OfficeHardwareAcceleration' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
-                    if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Office processes" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Terminate Office processes cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
-                    if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
-                        try {
-                            Write-ToolkitStatus -Message "Terminating all running Microsoft Office suite processes..." -Type 'INFO'
-                            $stopRes = Stop-OfficeProcess
-                            if ($stopRes -and $stopRes.Terminated -and $stopRes.Terminated.Count -gt 0) {
-                                Write-ToolkitStatus -Message "Terminated active Office processes: $($stopRes.Terminated -join ', ')" -Type 'OK'
-                            } else {
-                                Write-ToolkitStatus -Message "No active Microsoft Office processes were running." -Type 'OK'
-                            }
-                        } catch {
-                            Write-ToolkitStatus -Message "Stop-OfficeProcess failed: $($_.Exception.Message)" -Type 'FAIL'
-                        }
-                    } else {
-                        Write-ToolkitStatus -Message "Stop-OfficeProcess command unavailable." -Type 'WARN'
-                    }
-                    Wait-UserAcknowledge
-                    break
-                }
-
-                if (-not (Confirm-ToolkitAction -ActionDescription "toggling suite-wide Office hardware graphics acceleration" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Hardware acceleration toggle cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Checking suite-wide hardware acceleration status..." -Type 'INFO'
                     if (Get-Command -Name 'Set-OfficeHardwareAcceleration' -ErrorAction SilentlyContinue) {
@@ -333,38 +297,6 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 Wait-UserAcknowledge
             }
             '4' {
-                if ((Get-Command -Name 'Uninstall-OfficeSuiteCleanly' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
-                    (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
-                    $confirmed = if ($NonInteractive) { $true } else { (Read-Host "  Confirm deep clean uninstallation and scrub of Office suite? [y/N]") -match '^(?i)y(es)?$' }
-                    if ($confirmed) {
-                        if (Get-Command -Name 'Uninstall-OfficeSuiteCleanly' -ErrorAction SilentlyContinue) {
-                            try {
-                                Write-ToolkitStatus -Message "Initiating pure-PowerShell Office clean uninstallation and scrub..." -Type 'INFO'
-                                $scrubRes = Uninstall-OfficeSuiteCleanly -Force
-                                if ($scrubRes -and $scrubRes.Status -in @('Success', 'Simulated')) {
-                                    $phases = if ($scrubRes.PhasesCompleted) { $scrubRes.PhasesCompleted -join ', ' } else { 'All' }
-                                    Write-ToolkitStatus -Message "Office Suite scrub complete. Completed phases: $phases" -Type 'OK'
-                                } else {
-                                    Write-ToolkitStatus -Message "Office Suite scrub encountered warnings or errors." -Type 'WARN'
-                                }
-                            } catch {
-                                Write-ToolkitStatus -Message "Clean uninstallation failed: $($_.Exception.Message)" -Type 'FAIL'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Uninstall-OfficeSuiteCleanly command unavailable." -Type 'WARN'
-                        }
-                    } else {
-                        Write-ToolkitStatus -Message "Office clean uninstallation cancelled by user." -Type 'INFO'
-                    }
-                    Wait-UserAcknowledge
-                    break
-                }
-
-                if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Office processes" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Terminate Office processes cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Terminating all running Microsoft Office suite processes..." -Type 'INFO'

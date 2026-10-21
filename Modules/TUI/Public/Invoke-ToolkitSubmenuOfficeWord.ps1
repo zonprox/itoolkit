@@ -140,25 +140,15 @@ function Invoke-ToolkitSubmenuOfficeWord {
             -ClearScreen:$clear `
             -InfoLines $wordInfo
 
-        $wordItems = @(
-            [PSCustomObject]@{ Component = 'Normal Template'; Status = '[READY]'; Subsystem = 'Normal.dotm'; Details = 'Global style & formatting base template' },
-            [PSCustomObject]@{ Component = 'Startup Add-ins'; Status = '[READY]'; Subsystem = 'Word\STARTUP'; Details = 'Third-party auto-load templates & WLLs' },
-            [PSCustomObject]@{ Component = 'Registry Settings'; Status = '[READY]'; Subsystem = 'Data & Options'; Details = 'HKCU 16.0\Word data structures & options' },
-            [PSCustomObject]@{ Component = 'Document Locks'; Status = '[READY]'; Subsystem = '~$*.docx / *.asd'; Details = 'Orphaned owner lock files & corrupt auto-recovery' },
-            [PSCustomObject]@{ Component = 'Quick App Repair'; Status = '[READY]'; Subsystem = 'Composite Pipeline'; Details = 'One-click process termination, template, add-in, lock & registry repair' }
-        )
-        Show-ToolkitItemTable -Items $wordItems -Columns @('Component', 'Status', 'Subsystem', 'Details') -Headers @('SUBSYSTEM', 'STATUS', 'TARGET', 'PURPOSE') -Title 'Microsoft Word Architectural Subsystems' -NoIndex
-
-        Write-Host ""
         $actions = @(
-            @{ Key = '1'; Label = 'Reset Normal.dotm Template' },
-            @{ Key = '2'; Label = 'Isolate Word Startup Add-ins' },
-            @{ Key = '3'; Label = 'Reset Word Registry Data & Options' },
-            @{ Key = '4'; Label = 'Clear Orphaned Lock / ASD Files' },
-            @{ Key = '5'; Label = 'Quick Word Repair (One-Click Combo)' }
+            @{ Key = '1'; Label = 'Reset Normal.dotm Template'; Description = 'Backup and regenerate corrupted global formatting base template' },
+            @{ Key = '2'; Label = 'Isolate Word Startup Add-ins'; Description = 'Disable auto-loading templates and third-party WLL libraries in STARTUP' },
+            @{ Key = '3'; Label = 'Reset Word Registry Data & Options'; Description = 'Rebuild default Word Data and Options registry subkeys' },
+            @{ Key = '4'; Label = 'Clear Orphaned Lock / ASD Files'; Description = 'Purge stale ~$*.docx owner locks and corrupt auto-recovery documents' },
+            @{ Key = '5'; Label = 'Quick Word Repair'; Description = 'Sequential process termination, template reset, add-in isolation, and lock purge' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Office Hub' }
+            @{ Key = '0'; Label = 'Back to Office Hub'; Description = 'Return to the central Office & Productivity Suite menu' }
         )
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'WORD REPAIR ACTIONS'
 
@@ -182,11 +172,6 @@ function Invoke-ToolkitSubmenuOfficeWord {
 
         switch ($actionKey) {
             '1' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft Word default template (Normal.dotm)" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Word template reset cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Initiating Normal.dotm template recovery..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WordTemplate' -ErrorAction SilentlyContinue) {
@@ -207,11 +192,6 @@ function Invoke-ToolkitSubmenuOfficeWord {
                 Wait-UserAcknowledge
             }
             '2' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "isolating and disabling all Microsoft Word startup add-ins" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Word startup add-in reset cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Scanning and isolating rogue Word startup add-ins..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WordStartupAddin' -ErrorAction SilentlyContinue) {
@@ -230,11 +210,6 @@ function Invoke-ToolkitSubmenuOfficeWord {
                 Wait-UserAcknowledge
             }
             '3' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft Word registry settings and data keys" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Word registry reset cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Exporting backup and resetting Word Data & Options registry keys..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WordRegistryData' -ErrorAction SilentlyContinue) {
@@ -272,11 +247,6 @@ function Invoke-ToolkitSubmenuOfficeWord {
                 Wait-UserAcknowledge
             }
             '5' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "terminating Word processes and executing Quick Word Repair" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Quick Word Repair cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Executing Quick Word Repair sequence..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WordQuickRepair' -ErrorAction SilentlyContinue) {

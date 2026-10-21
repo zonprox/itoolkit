@@ -2,13 +2,13 @@
 .SYNOPSIS
     Root automated test runner for the IToolkit suite.
 .DESCRIPTION
-    Executes automated Pester test suites across All, Unit, StaticAnalysis, Adversarial,
+    Executes automated Pester test suites across All, Unit, StaticAnalysis, E2E,
     and targeted module test suites (Network, Printers, TUI, AppInstaller).
     Cleanly reports summary metrics (Total, Passed, Failed, Skipped).
     Returns exit code 0 when all tests pass, exit code 1 if any test fails.
     Compatible with PowerShell Core 7+ and Windows PowerShell 5.1.
 .PARAMETER Suite
-    Target test suite: 'All', 'Unit', 'StaticAnalysis', 'Adversarial', 'Network', 'Printers', 'TUI', 'AppInstaller'. Default is 'All'.
+    Target test suite: 'All', 'Unit', 'StaticAnalysis', 'E2E', 'Network', 'Printers', 'TUI', 'AppInstaller'. Default is 'All'.
 .PARAMETER Detailed
     Switch to output detailed test case results.
 .PARAMETER PassThru
@@ -22,7 +22,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('All', 'Unit', 'StaticAnalysis', 'Adversarial', 'Network', 'Printers', 'TUI', 'AppInstaller')]
+    [ValidateSet('All', 'Unit', 'StaticAnalysis', 'E2E', 'Network', 'Printers', 'TUI', 'AppInstaller')]
     [string]$Suite = 'All',
 
     [switch]$Detailed,
@@ -51,7 +51,7 @@ switch ($Suite) {
     'All' {
         $testPaths.Add((Join-Path $TestsDir 'StaticAnalysis'))
         $testPaths.Add((Join-Path $TestsDir 'Unit'))
-        $testPaths.Add((Join-Path $TestsDir 'Adversarial'))
+        $testPaths.Add((Join-Path $TestsDir 'E2E'))
     }
     'Unit' {
         $testPaths.Add((Join-Path $TestsDir 'Unit'))
@@ -59,8 +59,8 @@ switch ($Suite) {
     'StaticAnalysis' {
         $testPaths.Add((Join-Path $TestsDir 'StaticAnalysis'))
     }
-    'Adversarial' {
-        $testPaths.Add((Join-Path $TestsDir 'Adversarial'))
+    'E2E' {
+        $testPaths.Add((Join-Path $TestsDir 'E2E'))
     }
     'Network' {
         $testPaths.Add((Join-Path $TestsDir 'Unit/Network.Tests.ps1'))

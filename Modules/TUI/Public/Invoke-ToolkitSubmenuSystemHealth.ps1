@@ -145,28 +145,16 @@ function Invoke-ToolkitSubmenuSystemHealth {
             Write-ToolkitStatus -Message "ELEVATION WARNING: Administrative privileges required. Run as Administrator for system repairs." -Type 'WARN'
         }
 
-        $healthItems = @(
-            [PSCustomObject]@{ Subsystem = 'System File Checker (SFC)'; Status = '[READY]'; Method = 'sfc /scannow'; Details = 'Verify protected system files' },
-            [PSCustomObject]@{ Subsystem = 'DISM Component Store'; Status = '[READY]'; Method = 'DISM /RestoreHealth'; Details = 'Repair component store corruption' },
-            [PSCustomObject]@{ Subsystem = 'Windows Update Services'; Status = '[READY]'; Method = 'Reset-WindowsUpdate'; Details = 'Reset update components and cache' },
-            [PSCustomObject]@{ Subsystem = 'WMI Repository'; Status = '[READY]'; Method = 'Repair-WmiRepository'; Details = 'Verify and salvage WMI repository' },
-            [PSCustomObject]@{ Subsystem = 'Component Store (WinSxS)'; Status = '[READY]'; Method = 'StartComponentCleanup'; Details = 'Clean superseded system packages' },
-            [PSCustomObject]@{ Subsystem = 'System Logs & Dumps'; Status = '[READY]'; Method = 'Clear-WindowsSystemLogs'; Details = 'Purge WER dumps, memory dumps, logs' },
-            [PSCustomObject]@{ Subsystem = 'Temporary Files & Caches'; Status = '[READY]'; Method = 'Clear-WindowsTempCache'; Details = 'Purge temp caches older than 24h' }
-        )
-        Show-ToolkitItemTable -Items $healthItems -Columns @('Subsystem', 'Status', 'Method', 'Details') -Headers @('SUBSYSTEM', 'STATUS', 'METHOD', 'DETAILS') -Title 'System Health & Maintenance Subsystems' -NoIndex
-
-        Write-Host ""
         $healthActions = @(
-            @{ Key = '1'; Label = 'Automated DISM + SFC Repair' },
-            @{ Key = '2'; Label = 'SFC Integrity Scan' },
-            @{ Key = '3'; Label = 'DISM RestoreHealth' },
-            @{ Key = '4'; Label = 'Reset Windows Update' },
-            @{ Key = '5'; Label = 'Repair WMI Repository' },
-            @{ Key = '6'; Label = 'Unified Storage Cleanup' }
+            @{ Key = '1'; Label = 'Automated DISM + SFC Repair'; Description = 'Sequential component store recovery and protected system file verification' },
+            @{ Key = '2'; Label = 'SFC Integrity Scan'; Description = 'Verify protected Windows system files using sfc /scannow' },
+            @{ Key = '3'; Label = 'DISM RestoreHealth'; Description = 'Repair component store corruption via DISM online image servicing' },
+            @{ Key = '4'; Label = 'Reset Windows Update'; Description = 'Reset update components, stop services, and purge download cache' },
+            @{ Key = '5'; Label = 'Repair WMI Repository'; Description = 'Verify consistency and salvage corrupted WMI repository' },
+            @{ Key = '6'; Label = 'Unified Storage Cleanup'; Description = 'Purge temporary caches, memory dumps, and superseded WinSxS packages' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Main Menu' }
+            @{ Key = '0'; Label = 'Back to Main Menu'; Description = 'Return to the primary IToolkit console' }
         )
         Show-ToolkitActionCatalog -Actions $healthActions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
@@ -252,11 +240,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '4' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Windows Update services and component cache" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Reset Windows Update cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Resetting Windows Update components..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-WindowsUpdateComponents' -ErrorAction SilentlyContinue) {
@@ -274,11 +257,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '5' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "verifying and salvaging WMI repository" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Repair WMI repository cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Repairing WMI repository..." -Type 'INFO'
                     if (Get-Command -Name 'Repair-WmiRepository' -ErrorAction SilentlyContinue) {
@@ -296,11 +274,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
                 Wait-UserAcknowledge
             }
             '6' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "initiating unified storage cleanup" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Unified storage cleanup cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Executing unified storage cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
@@ -337,11 +310,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
             }
             '8' {
                 # Legacy alias: Quick Disk Cleanup -> Invoke-WindowsCleanup
-                if (-not (Confirm-ToolkitAction -ActionDescription "initiating deep disk and component store cleanup" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Deep disk cleanup cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Executing master system disk cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
@@ -360,11 +328,6 @@ function Invoke-ToolkitSubmenuSystemHealth {
             }
             '9' {
                 # Legacy alias: Clear Temp & System Logs -> Invoke-WindowsCleanup
-                if (-not (Confirm-ToolkitAction -ActionDescription "clearing Windows temporary caches and system event logs" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Clear temp caches and logs cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Executing master system disk cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {

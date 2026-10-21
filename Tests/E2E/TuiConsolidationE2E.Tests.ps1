@@ -613,10 +613,10 @@ Describe 'E2E Tier 2: Boundary & Corner Cases' {
         }
     }
 
-    Context '2.4 User Cancellation Safety' {
-        It 'Cancelling confirmation prompt in Outlook quick repair results in zero state mutations' {
+    Context '2.4 Zero-Confirmation Low-Friction Execution' {
+        It 'Outlook quick repair executes directly with zero confirmation prompts' {
             $script:mutationExecuted = $false
-            Mock Confirm-ToolkitAction { return $false }
+            Mock Confirm-ToolkitAction { throw "Confirm-ToolkitAction should not be called" }
             Mock Clear-OutlookStuckOutbox { $script:mutationExecuted = $true }
             Mock Reset-OutlookSendReceiveSettings { $script:mutationExecuted = $true }
             Mock Show-ToolkitHeader { }
@@ -633,12 +633,13 @@ Describe 'E2E Tier 2: Boundary & Corner Cases' {
             }
 
             { Invoke-ToolkitSubmenuOfficeOutlook } | Should -Not -Throw
-            $script:mutationExecuted | Should -BeFalse
+            $script:mutationExecuted | Should -BeTrue
+            Assert-MockCalled Confirm-ToolkitAction -Times 0
         }
 
-        It 'Cancelling confirmation prompt in Word template reset leaves existing template intact' {
+        It 'Word template reset executes directly with zero confirmation prompts' {
             $script:templateMutated = $false
-            Mock Confirm-ToolkitAction { return $false }
+            Mock Confirm-ToolkitAction { throw "Confirm-ToolkitAction should not be called" }
             Mock Reset-WordTemplate { $script:templateMutated = $true }
             Mock Show-ToolkitHeader { }
             Mock Show-ToolkitItemTable { }
@@ -654,7 +655,8 @@ Describe 'E2E Tier 2: Boundary & Corner Cases' {
             }
 
             { Invoke-ToolkitSubmenuOfficeWord } | Should -Not -Throw
-            $script:templateMutated | Should -BeFalse
+            $script:templateMutated | Should -BeTrue
+            Assert-MockCalled Confirm-ToolkitAction -Times 0
         }
     }
 

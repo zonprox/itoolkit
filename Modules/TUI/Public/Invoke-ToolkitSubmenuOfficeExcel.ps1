@@ -153,25 +153,15 @@ function Invoke-ToolkitSubmenuOfficeExcel {
             -ClearScreen:$clear `
             -InfoLines $excelInfo
 
-        $excelItems = @(
-            [PSCustomObject]@{ Component = 'XLSTART Folder'; Status = '[READY]'; Subsystem = 'Excel\XLSTART'; Details = 'Auto-load workbooks, rogue add-ins & Personal.xlsb' },
-            [PSCustomObject]@{ Component = 'UI & Toolbar Cache'; Status = '[READY]'; Subsystem = 'Excel16.xlb, QAT'; Details = 'Workspace toolbar layout & ribbon customizations' },
-            [PSCustomObject]@{ Component = 'DDE & Calculations'; Status = '[READY]'; Subsystem = 'IgnoreRemoteRequests'; Details = 'DDE message routing & formula calculation mode' },
-            [PSCustomObject]@{ Component = 'GDI Handle Monitor'; Status = '[READY]'; Subsystem = 'GetGuiResources'; Details = 'Desktop heap exhaustion & GDI object leakage audit' },
-            [PSCustomObject]@{ Component = 'Quick App Repair'; Status = '[READY]'; Subsystem = 'Composite Pipeline'; Details = 'One-click process termination, XLSTART, UI cache, DDE & resiliency' }
-        )
-        Show-ToolkitItemTable -Items $excelItems -Columns @('Component', 'Status', 'Subsystem', 'Details') -Headers @('SUBSYSTEM', 'STATUS', 'TARGET', 'PURPOSE') -Title 'Microsoft Excel Architectural Subsystems' -NoIndex
-
-        Write-Host ""
         $actions = @(
-            @{ Key = '1'; Label = 'Clear XLSTART Startup Add-ins' },
-            @{ Key = '2'; Label = 'Reset UI / Ribbon / QAT Cache' },
-            @{ Key = '3'; Label = 'Reset DDE & Formula Freeze Settings' },
-            @{ Key = '4'; Label = 'Audit GDI Leakers' },
-            @{ Key = '5'; Label = 'Quick Excel Repair (One-Click Combo)' }
+            @{ Key = '1'; Label = 'Clear XLSTART Startup Add-ins'; Description = 'Isolate auto-loading workbooks, rogue XLA/XLAM add-ins, and Personal.xlsb' },
+            @{ Key = '2'; Label = 'Reset UI / Ribbon / QAT Cache'; Description = 'Restore default workspace toolbar layout, ribbon bars, and Excel16.xlb cache' },
+            @{ Key = '3'; Label = 'Reset DDE & Formula Freeze Settings'; Description = 'Clear IgnoreRemoteRequests flag and restore automatic calculation mode' },
+            @{ Key = '4'; Label = 'Audit GDI Leakers'; Description = 'Monitor running processes for desktop heap exhaustion and GDI handle leakage' },
+            @{ Key = '5'; Label = 'Quick Excel Repair'; Description = 'Sequential process termination, XLSTART isolation, UI cache reset, and DDE fix' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Office Hub' }
+            @{ Key = '0'; Label = 'Back to Office Hub'; Description = 'Return to the central Office & Productivity Suite menu' }
         )
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'EXCEL REPAIR ACTIONS'
 
@@ -195,40 +185,6 @@ function Invoke-ToolkitSubmenuOfficeExcel {
 
         switch ($actionKey) {
             '1' {
-                if ((Get-Command -Name 'Set-ExcelHardwareAcceleration' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
-                    (Get-Command -Name 'Clear-ExcelStartupFolder' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
-                    try {
-                        Write-ToolkitStatus -Message "Checking hardware acceleration status..." -Type 'INFO'
-                        if (Get-Command -Name 'Set-ExcelHardwareAcceleration' -ErrorAction SilentlyContinue) {
-                            $curDisabled = $false
-                            try {
-                                $val = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Office\16.0\Common\Graphics' -Name 'DisableHardwareAcceleration' -ErrorAction SilentlyContinue
-                                if ($val -eq 1) { $curDisabled = $true }
-                            } catch { $null = $_ }
-
-                            $targetDisable = -not $curDisabled
-                            $res = Set-ExcelHardwareAcceleration -Disable $targetDisable
-                            if ($res -and $res.Status -eq 'Success') {
-                                $stateDesc = if ($res.Disabled) { "DISABLED (Software Rendering)" } else { "ENABLED (Hardware Rendering)" }
-                                Write-ToolkitStatus -Message "Excel hardware graphics acceleration set to: $stateDesc." -Type 'OK'
-                            } else {
-                                Write-ToolkitStatus -Message "Hardware acceleration update processed." -Type 'INFO'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Set-ExcelHardwareAcceleration command unavailable." -Type 'WARN'
-                        }
-                    } catch {
-                        Write-ToolkitStatus -Message "Hardware acceleration toggle failed: $($_.Exception.Message)" -Type 'FAIL'
-                    }
-                    Wait-UserAcknowledge
-                    break
-                }
-
-                if (-not (Confirm-ToolkitAction -ActionDescription "clearing Excel XLSTART startup folder and add-ins" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Excel XLSTART cleanup cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Scanning and isolating rogue XLSTART files..." -Type 'INFO'
                     if (Get-Command -Name 'Clear-ExcelStartupFolder' -ErrorAction SilentlyContinue) {
@@ -249,39 +205,6 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '2' {
-                if ((Get-Command -Name 'Clear-ExcelStartupFolder' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
-                    (Get-Command -Name 'Reset-ExcelUiCache' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
-                    if (-not (Confirm-ToolkitAction -ActionDescription "clearing Excel XLSTART startup folder and add-ins" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Excel XLSTART cleanup cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
-                    try {
-                        Write-ToolkitStatus -Message "Scanning and isolating rogue XLSTART files..." -Type 'INFO'
-                        if (Get-Command -Name 'Clear-ExcelStartupFolder' -ErrorAction SilentlyContinue) {
-                            $res = Clear-ExcelStartupFolder -Force
-                            if ($res -and $res.Status -eq 'Success') {
-                                $rmCount = @($res.RemovedFiles).Count
-                                $bkMsg = if ($res.PersonalBackupPath) { " (Personal.xlsb backed up to '$($res.PersonalBackupPath)')" } else { "" }
-                                Write-ToolkitStatus -Message "XLSTART folder cleaned: $rmCount rogue file(s) isolated$bkMsg." -Type 'OK'
-                            } else {
-                                Write-ToolkitStatus -Message "XLSTART folder is already clean." -Type 'INFO'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Clear-ExcelStartupFolder command unavailable." -Type 'WARN'
-                        }
-                    } catch {
-                        Write-ToolkitStatus -Message "XLSTART cleanup failed: $($_.Exception.Message)" -Type 'FAIL'
-                    }
-                    Wait-UserAcknowledge
-                    break
-                }
-
-                if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft Excel UI toolbar and ribbon cache" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Excel UI cache reset cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Resetting Excel UI workspace, ribbon, and QAT cache..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-ExcelUiCache' -ErrorAction SilentlyContinue) {
@@ -301,33 +224,6 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '3' {
-                if ((Get-Command -Name 'Reset-ExcelUiCache' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
-                    (Get-Command -Name 'Reset-ExcelDdeSettings' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
-                    if (-not (Confirm-ToolkitAction -ActionDescription "resetting Microsoft Excel UI toolbar and ribbon cache" -NonInteractive:$NonInteractive)) {
-                        Write-ToolkitStatus -Message "Excel UI cache reset cancelled by user." -Type 'INFO'
-                        Wait-UserAcknowledge
-                        break
-                    }
-                    try {
-                        Write-ToolkitStatus -Message "Resetting Excel UI workspace, ribbon, and QAT cache..." -Type 'INFO'
-                        if (Get-Command -Name 'Reset-ExcelUiCache' -ErrorAction SilentlyContinue) {
-                            $res = Reset-ExcelUiCache
-                            if ($res -and $res.Status -eq 'Success') {
-                                $qCount = @($res.QuarantinedFiles).Count
-                                Write-ToolkitStatus -Message "Excel UI cache reset: $qCount file(s) quarantined, WebServiceCache purged ($($res.WebServiceCachePurged))." -Type 'OK'
-                            } else {
-                                Write-ToolkitStatus -Message "Excel UI cache reset completed." -Type 'INFO'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Reset-ExcelUiCache command unavailable." -Type 'WARN'
-                        }
-                    } catch {
-                        Write-ToolkitStatus -Message "UI cache reset failed: $($_.Exception.Message)" -Type 'FAIL'
-                    }
-                    Wait-UserAcknowledge
-                    break
-                }
-
                 try {
                     Write-ToolkitStatus -Message "Resetting Excel DDE and calculation mode settings..." -Type 'INFO'
                     if (Get-Command -Name 'Reset-ExcelDdeSettings' -ErrorAction SilentlyContinue) {
@@ -346,27 +242,6 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '4' {
-                if ((Get-Command -Name 'Reset-ExcelDdeSettings' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
-                    (Get-Command -Name 'Get-ExcelGdiHandleUsage' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
-                    try {
-                        Write-ToolkitStatus -Message "Resetting Excel DDE and calculation mode settings..." -Type 'INFO'
-                        if (Get-Command -Name 'Reset-ExcelDdeSettings' -ErrorAction SilentlyContinue) {
-                            $res = Reset-ExcelDdeSettings
-                            if ($res -and $res.Status -eq 'Success') {
-                                Write-ToolkitStatus -Message "DDE remote requests enabled (0), calculation mode restored to Automatic (1)." -Type 'OK'
-                            } else {
-                                Write-ToolkitStatus -Message "DDE settings processed." -Type 'INFO'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Reset-ExcelDdeSettings command unavailable." -Type 'WARN'
-                        }
-                    } catch {
-                        Write-ToolkitStatus -Message "DDE settings reset failed: $($_.Exception.Message)" -Type 'FAIL'
-                    }
-                    Wait-UserAcknowledge
-                    break
-                }
-
                 try {
                     Write-ToolkitStatus -Message "Auditing active Excel processes for GDI handle consumption..." -Type 'INFO'
                     $gdiCmd = if (Get-Command -Name 'Get-ProcessGdiHandleCount' -ErrorAction SilentlyContinue) {
@@ -406,53 +281,6 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '5' {
-                if ((Get-Command -Name 'Get-ExcelGdiHandleUsage' -ErrorAction SilentlyContinue).Definition -like 'PesterMock_*' -and
-                    (Get-Command -Name 'Invoke-ExcelQuickRepair' -ErrorAction SilentlyContinue).Definition -notlike 'PesterMock_*') {
-                    try {
-                        Write-ToolkitStatus -Message "Auditing active Excel processes for GDI handle consumption..." -Type 'INFO'
-                        $gdiCmd = if (Get-Command -Name 'Get-ProcessGdiHandleCount' -ErrorAction SilentlyContinue) {
-                            'Get-ProcessGdiHandleCount'
-                        } elseif (Get-Command -Name 'Get-ExcelGdiHandleUsage' -ErrorAction SilentlyContinue) {
-                            'Get-ExcelGdiHandleUsage'
-                        } else {
-                            $null
-                        }
-
-                        if ($null -ne $gdiCmd) {
-                            $usage = @(& $gdiCmd -WarningThreshold 5000)
-                            if ($usage.Count -gt 0) {
-                                Show-ToolkitItemTable -Items $usage -Columns @('PID', 'ProcessName', 'GdiHandles', 'UserHandles', 'MemoryMB', 'IsLeaking') -Headers @('PID', 'PROCESS', 'GDI HANDLES', 'USER HANDLES', 'RAM (MB)', 'LEAK FLAG') -Title 'EXCEL GDI & USER OBJECT TELEMETRY' -NoIndex
-                                $leaking = @($usage | Where-Object { $_.IsLeaking -eq $true })
-                                if ($leaking.Count -gt 0) {
-                                    Write-ToolkitStatus -Message "WARNING: $($leaking.Count) Excel process instance(s) exceed safe GDI threshold (>5000)." -Type 'WARN'
-                                    if (Get-Command -Name 'Stop-ExcelGdiLeakers' -ErrorAction SilentlyContinue) {
-                                        $confirmed = if ($NonInteractive) { $true } else { (Read-Host "  Terminate leaking Excel process instance(s) now? [y/N]") -match '^(?i)y(es)?$' }
-                                        if ($confirmed) {
-                                            $termRes = Stop-ExcelGdiLeakers -Threshold 5000 -Force
-                                            Write-ToolkitStatus -Message "Terminated $($termRes.Count) leaking Excel process(es)." -Type 'OK'
-                                        }
-                                    }
-                                } else {
-                                    Write-ToolkitStatus -Message "GDI audit complete. All active Excel processes are within safe handle limits." -Type 'OK'
-                                }
-                            } else {
-                                Write-ToolkitStatus -Message "No active Excel processes detected to audit." -Type 'INFO'
-                            }
-                        } else {
-                            Write-ToolkitStatus -Message "Get-ExcelGdiHandleUsage / Get-ProcessGdiHandleCount command unavailable." -Type 'WARN'
-                        }
-                    } catch {
-                        Write-ToolkitStatus -Message "GDI handle audit failed: $($_.Exception.Message)" -Type 'FAIL'
-                    }
-                    Wait-UserAcknowledge
-                    break
-                }
-
-                if (-not (Confirm-ToolkitAction -ActionDescription "terminating Excel processes and executing Quick Excel Repair" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Quick Excel Repair cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Executing Quick Excel Repair sequence..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-ExcelQuickRepair' -ErrorAction SilentlyContinue) {
@@ -479,11 +307,6 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 Wait-UserAcknowledge
             }
             '6' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "terminating all running Microsoft Excel processes" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Terminate Excel processes cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 try {
                     Write-ToolkitStatus -Message "Terminating active Excel (EXCEL) processes..." -Type 'INFO'
                     if (Get-Command -Name 'Stop-OfficeProcess' -ErrorAction SilentlyContinue) {

@@ -41,7 +41,10 @@ function Show-ToolkitMenuOption {
         [int]$Width = 0,
 
         [Parameter(Mandatory = $false)]
-        [string]$Category
+        [string]$Category,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Description
     )
 
     if ($Width -le 0) {
@@ -70,6 +73,11 @@ function Show-ToolkitMenuOption {
 
     Write-Host "$Label" -ForegroundColor White -NoNewline
 
+    # Optional description rendered in muted DarkGray
+    if (-not [string]::IsNullOrWhiteSpace($Description)) {
+        Write-Host " - $Description" -ForegroundColor DarkGray -NoNewline
+    }
+
     # Render optional status indicator
     if (-not [string]::IsNullOrWhiteSpace($Status)) {
         $normStatus = $Status.ToUpperInvariant()
@@ -96,6 +104,9 @@ function Show-ToolkitMenuOption {
         $currentLength = 7 + $Label.Length
         if (-not [string]::IsNullOrWhiteSpace($Category)) {
             $currentLength += $Category.Length + 3
+        }
+        if (-not [string]::IsNullOrWhiteSpace($Description)) {
+            $currentLength += 3 + $Description.Length
         }
         $targetCol = $Width - 10
         $padSpaces = 2

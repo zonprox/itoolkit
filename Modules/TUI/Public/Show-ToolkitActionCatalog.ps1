@@ -73,22 +73,27 @@ function Show-ToolkitActionCatalog {
         return
     }
 
-    # Helper: Normalize action item to Key and Label
+    # Helper: Normalize action item to Key, Label, and Description
     function Get-ActionEntry {
         param($Item)
         $k = ''
         $l = ''
+        $d = ''
         if ($Item -is [System.Collections.IDictionary]) {
             $k = "$($Item['Key'])"
             $l = "$($Item['Label'])"
             if ([string]::IsNullOrWhiteSpace($l) -and $Item.ContainsKey('Title')) {
                 $l = "$($Item['Title'])"
             }
+            if ($Item.ContainsKey('Description')) {
+                $d = "$($Item['Description'])"
+            }
         }
         elseif ($Item -is [PSCustomObject] -or $Item.PSObject) {
             if ($Item.Key) { $k = "$($Item.Key)" }
             if ($Item.Label) { $l = "$($Item.Label)" }
             elseif ($Item.Title) { $l = "$($Item.Title)" }
+            if ($Item.Description) { $d = "$($Item.Description)" }
         }
         elseif ($Item -is [string]) {
             if ($Item -match '^\s*\[?([^\]]+)\]?\s*[:\-\s]\s*(.*)$') {
@@ -99,7 +104,7 @@ function Show-ToolkitActionCatalog {
                 $l = $Item.Trim()
             }
         }
-        return [PSCustomObject]@{ Key = $k; Label = $l }
+        return [PSCustomObject]@{ Key = $k; Label = $l; Description = $d }
     }
 
     $normalizedActions = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -110,7 +115,7 @@ function Show-ToolkitActionCatalog {
         }
     }
 
-    # Format helper: Render a single action cell with aligned key bracket
+    # Format helper: Render a single action cell with aligned key bracket and optional description
     function Render-ActionCell {
         param(
             [PSCustomObject]$Action,
@@ -138,14 +143,49 @@ function Show-ToolkitActionCatalog {
         if ($labelAvail -lt 5) { $labelAvail = 5 }
 
         $lbl = $Action.Label
-        if ($lbl.Length -gt $labelAvail) {
-            $lbl = $lbl.Substring(0, [math]::Max(0, $labelAvail - 3)) + '...'
+        $desc = $Action.Description
+        $printedLen = 0
+
+        if (-not [string]::IsNullOrWhiteSpace($desc)) {
+            $sep = " - "
+            $totalLen = $lbl.Length + $sep.Length + $desc.Length
+            if ($totalLen -le $labelAvail) {
+                Write-Host "$lbl" -ForegroundColor White -NoNewline
+                Write-Host "$sep" -ForegroundColor DarkGray -NoNewline
+                Write-Host "$desc" -ForegroundColor DarkGray -NoNewline
+                $printedLen = $totalLen
+            }
+            elseif ($lbl.Length + 6 -lt $labelAvail) {
+                $availDesc = $labelAvail - $lbl.Length - $sep.Length
+                $truncDesc = if ($availDesc -gt 3) { $desc.Substring(0, $availDesc - 3) + '...' } else { '' }
+                Write-Host "$lbl" -ForegroundColor White -NoNewline
+                if ($truncDesc.Length -gt 0) {
+                    Write-Host "$sep" -ForegroundColor DarkGray -NoNewline
+                    Write-Host "$truncDesc" -ForegroundColor DarkGray -NoNewline
+                    $printedLen = $lbl.Length + $sep.Length + $truncDesc.Length
+                }
+                else {
+                    $printedLen = $lbl.Length
+                }
+            }
+            else {
+                if ($lbl.Length -gt $labelAvail) {
+                    $lbl = $lbl.Substring(0, [math]::Max(0, $labelAvail - 3)) + '...'
+                }
+                Write-Host "$lbl" -ForegroundColor White -NoNewline
+                $printedLen = $lbl.Length
+            }
+        }
+        else {
+            if ($lbl.Length -gt $labelAvail) {
+                $lbl = $lbl.Substring(0, [math]::Max(0, $labelAvail - 3)) + '...'
+            }
+            Write-Host "$lbl" -ForegroundColor White -NoNewline
+            $printedLen = $lbl.Length
         }
 
-        Write-Host "$lbl" -ForegroundColor White -NoNewline
-
         if (-not $IsLastColumn) {
-            $currentLen = $prefixLen + $lbl.Length
+            $currentLen = $prefixLen + $printedLen
             $cellPad = $TargetWidth - $currentLen
             if ($cellPad -gt 0) {
                 Write-Host (' ' * $cellPad) -NoNewline

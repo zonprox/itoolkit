@@ -36,9 +36,6 @@ try {
 if (-not (Get-Command -Name 'Write-ToolkitMenuDivider' -ErrorAction SilentlyContinue)) {
     function global:Write-ToolkitMenuDivider { param([string]$Character = '=', [int]$Width = 80) $Character * $Width }
 }
-if (-not (Get-Command -Name 'Get-OutlookComApplication' -ErrorAction SilentlyContinue)) {
-    function global:Get-OutlookComApplication { return $null }
-}
 
 # ------------------------------------------------------------------------------
 # Mock COM Infrastructure Factory for Outlook E2E Verification
@@ -512,7 +509,6 @@ Describe 'E2E Tier 1: Core Export Engine & Manifest Portability (R1)' {
             $jsonFile = Join-Path $tempDir 'ExportedRules.json'
 
             try {
-                Mock Get-OutlookComApplication { return $env.App }
                 Mock Get-OutlookComApplication { return $env.App } -ModuleName 'Outlook'
                 Mock Get-Process { return @() }
                 Mock Get-Process { return @() } -ModuleName 'Outlook'
@@ -699,7 +695,6 @@ Describe 'E2E Tier 2: Intelligent Import & Parameter/Hierarchy Remapping (R2)' {
                 }
                 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $jsonFile
 
-                Mock Get-OutlookComApplication { return $env.App }
                 Mock Get-OutlookComApplication { return $env.App } -ModuleName 'Outlook'
                 Mock Get-Process { return @() }
                 Mock Get-Process { return @() } -ModuleName 'Outlook'
@@ -884,7 +879,6 @@ Describe 'E2E Tier 3: Diagnostics, Auto-Repair & COM Lifecycle Hardening (R3)' {
 
         It 'Executes non-mutating diagnostics scan by default' -Skip:(-not $hasRepair) {
             $env = New-OutlookE2EMockEnvironment
-            Mock Get-OutlookComApplication { return $env.App }
             Mock Get-OutlookComApplication { return $env.App } -ModuleName 'Outlook'
             Mock Get-Process { return @() }
             Mock Get-Process { return @() } -ModuleName 'Outlook'
@@ -898,7 +892,6 @@ Describe 'E2E Tier 3: Diagnostics, Auto-Repair & COM Lifecycle Hardening (R3)' {
         It 'Performs auto-repair and commits silently with -AutoRepair' -Skip:(-not $hasRepair) {
             $env = New-OutlookE2EMockEnvironment
             $env.Rule1.Actions.MoveToFolder.Folder = $null
-            Mock Get-OutlookComApplication { return $env.App }
             Mock Get-OutlookComApplication { return $env.App } -ModuleName 'Outlook'
             Mock Get-Process { return @() }
             Mock Get-Process { return @() } -ModuleName 'Outlook'
@@ -1051,5 +1044,11 @@ Describe 'E2E Tier 4: Enterprise Round-Trip Scenarios & TUI Operations (R4)' {
 
             { Invoke-ToolkitDataFileContextMenu -DataFile $mockDataFile -NonInteractive } | Should -Not -Throw
         }
+    }
+
+    AfterAll {
+        Remove-Item -Path 'Function:global:Write-ToolkitMenuDivider' -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path 'Function:global:Get-OutlookComApplication' -Force -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'folderFactory' -Scope Global -Force -ErrorAction SilentlyContinue
     }
 }

@@ -155,14 +155,14 @@ function Invoke-ToolkitAccountContextMenu {
             )
 
         $contextActions = @(
-            @{ Key = '1'; Label = 'Toggle State (Enable/Disable)' },
-            @{ Key = '2'; Label = 'Unlock Account' },
-            @{ Key = '3'; Label = 'Reset Password' },
-            @{ Key = '4'; Label = 'Inspect Account Details' },
-            @{ Key = '5'; Label = 'Permanently Delete User Account' }
+            @{ Key = '1'; Label = 'Toggle Account State'; Description = 'Invert enabled status between active and disabled for target user account' },
+            @{ Key = '2'; Label = 'Unlock Account'; Description = 'Clear lockout status on target account without modifying credentials' },
+            @{ Key = '3'; Label = 'Reset Password'; Description = 'Set a new secure password for target account via secure credential prompt' },
+            @{ Key = '4'; Label = 'Inspect Account Details'; Description = 'Display group memberships, SID, password age, and logon telemetry' },
+            @{ Key = '5'; Label = 'Permanently Delete User Account'; Description = 'Permanently remove local user account and profile metadata from system' }
         )
         $contextNav = @(
-            @{ Key = '0'; Label = 'Back to Accounts List' }
+            @{ Key = '0'; Label = 'Back to Accounts List'; Description = 'Return to managed accounts and identity artifacts table' }
         )
         Show-ToolkitActionCatalog -Actions $contextActions -NavActions $contextNav -Title "ACCOUNT ACTIONS: $userName"
 
@@ -182,11 +182,6 @@ function Invoke-ToolkitAccountContextMenu {
 
         switch ("$($choice.Value)") {
             '1' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "changing account state for '$userName'" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Account state change cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 $targetState = -not $isEnabled
                 if (Get-Command -Name 'Set-LocalAccountState' -ErrorAction SilentlyContinue) {
                     try {
@@ -446,18 +441,18 @@ function Invoke-ToolkitSubmenuIdentityBackup {
 
         Write-Host ""
         $actions = @(
-            @{ Key = '10'; Label = 'Create Local Account' },
-            @{ Key = '11'; Label = 'Enable Built-in Administrator' },
-            @{ Key = '12'; Label = 'Reset Admin Password' },
-            @{ Key = '13'; Label = 'Query Domain User' },
-            @{ Key = '14'; Label = 'Unlock Domain User' },
-            @{ Key = '15'; Label = 'New Profile Backup' },
-            @{ Key = '16'; Label = 'Verify Backup Manifest' },
-            @{ Key = '17'; Label = 'Export Browser Bookmarks' },
-            @{ Key = '18'; Label = 'Export Personal Certificates' }
+            @{ Key = '10'; Label = 'Create Local Account'; Description = 'Provision a new standard or administrative local user account' },
+            @{ Key = '11'; Label = 'Enable Built-in Administrator'; Description = 'Activate built-in RID-500 Administrator account and unhide from logon' },
+            @{ Key = '12'; Label = 'Reset Admin Password'; Description = 'Assign a new secure password to the built-in Administrator account' },
+            @{ Key = '13'; Label = 'Query Domain User'; Description = 'Lookup user status, lockout state, and group memberships via Active Directory' },
+            @{ Key = '14'; Label = 'Unlock Domain User'; Description = 'Unlock locked Active Directory domain account via domain controller query' },
+            @{ Key = '15'; Label = 'New Profile Backup'; Description = 'Archive user profile folders, desktop items, and app data with manifest' },
+            @{ Key = '16'; Label = 'Verify Backup Manifest'; Description = 'Validate integrity of existing backup archive against stored SHA-256 hashes' },
+            @{ Key = '17'; Label = 'Export Browser Bookmarks'; Description = 'Export Chrome, Edge, and Firefox bookmarks into structured backups' },
+            @{ Key = '18'; Label = 'Export Personal Certificates'; Description = 'Export user certificates and private keys from Windows certificate store' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Main Menu' }
+            @{ Key = '0'; Label = 'Back to Main Menu'; Description = 'Return to the primary IToolkit console' }
         )
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
@@ -567,7 +562,8 @@ function Invoke-ToolkitSubmenuIdentityBackup {
                     Wait-UserAcknowledge
                 }
                 { $_ -in @('16', '7') } {
-                    $bRoot = Read-Host "  Enter Backup Root Path to Verify"
+                    $bRoot = Read-Host "  Enter Backup Root Path to Verify (Default: C:\Backups\ProfileBackup)"
+                    if ([string]::IsNullOrWhiteSpace($bRoot)) { $bRoot = 'C:\Backups\ProfileBackup' }
                     if (-not [string]::IsNullOrWhiteSpace($bRoot) -and (Get-Command -Name 'Test-BackupIntegrityManifest' -ErrorAction SilentlyContinue)) {
                         try {
                             $vRes = Test-BackupIntegrityManifest -BackupRoot $bRoot
@@ -592,7 +588,8 @@ function Invoke-ToolkitSubmenuIdentityBackup {
                     Wait-UserAcknowledge
                 }
                 { $_ -in @('18', '9') } {
-                    $dest = Read-Host "  Enter Certificate Export Path"
+                    $dest = Read-Host "  Enter Certificate Export Path (Default: C:\Backups\Certificates)"
+                    if ([string]::IsNullOrWhiteSpace($dest)) { $dest = 'C:\Backups\Certificates' }
                     if (-not [string]::IsNullOrWhiteSpace($dest) -and (Get-Command -Name 'Export-ToolkitCertificates' -ErrorAction SilentlyContinue)) {
                         try {
                             Export-ToolkitCertificates -DestinationPath $dest

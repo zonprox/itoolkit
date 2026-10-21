@@ -128,13 +128,13 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
             -InfoLines $infoLines
 
         $contextActions = @(
-            @{ Key = '1'; Label = 'Restart Adapter' },
-            @{ Key = '2'; Label = 'Flush DNS & Renew DHCP' },
-            @{ Key = '3'; Label = 'Test Connectivity & Latency' },
-            @{ Key = '4'; Label = 'Purge Spooler Queue' }
+            @{ Key = '1'; Label = 'Restart Adapter'; Description = 'Disable and re-enable target network interface to reinitialize link state' },
+            @{ Key = '2'; Label = 'Flush DNS & Renew DHCP'; Description = 'Clear DNS resolver cache and request new DHCP lease configuration' },
+            @{ Key = '3'; Label = 'Test Connectivity & Latency'; Description = 'Measure ICMP response time and verify gateway DNS reachability' },
+            @{ Key = '4'; Label = 'Purge Spooler Queue'; Description = 'Stop spooler service, remove stuck print jobs, and restart spooler' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Devices Table' }
+            @{ Key = '0'; Label = 'Back to Devices Table'; Description = 'Return to discovered network and peripheral devices table' }
         )
         Show-ToolkitActionCatalog -Actions $contextActions -NavActions $navActions -Title "DEVICE ACTIONS: $deviceName"
 
@@ -157,11 +157,6 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
 
         switch ("$($selection.Value)") {
             '1' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "restarting network adapter '$deviceName'" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Restart network adapter cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 if (Get-Command -Name 'Restart-ToolkitNetworkAdapter' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Restarting network adapter '$deviceName'..." -Type 'INFO'
@@ -223,11 +218,6 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
                 Wait-UserAcknowledge
             }
             '4' {
-                if (-not (Confirm-ToolkitAction -ActionDescription "purging print spooler queue for '$deviceName'" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Purge print spooler queue cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
                     try {
                         Write-ToolkitStatus -Message "Purging print spooler queue and restarting service..." -Type 'INFO'
@@ -342,18 +332,18 @@ function Invoke-ToolkitSubmenuConnectivity {
 
         Write-Host ""
         $actions = @(
-            @{ Key = '10'; Label = 'Apply All Fixes' },
-            @{ Key = '11'; Label = 'Reset Stack & DNS' },
-            @{ Key = '12'; Label = 'Restart Spooler' },
-            @{ Key = '13'; Label = 'Fix Point & Print' },
-            @{ Key = '14'; Label = 'Remediate SMB' },
-            @{ Key = '15'; Label = 'Server Remediation' },
-            @{ Key = '16'; Label = 'Client Remediation' },
-            @{ Key = '17'; Label = 'Restart All Adapters' },
-            @{ Key = '18'; Label = 'Restore Registry' }
+            @{ Key = '10'; Label = 'Apply All Fixes'; Description = 'Sequential automated network and printer stack remediation pipeline' },
+            @{ Key = '11'; Label = 'Reset Stack & DNS'; Description = 'Reset Winsock catalog, TCP/IP stack, flush DNS, and reinitialize interfaces' },
+            @{ Key = '12'; Label = 'Restart Spooler'; Description = 'Terminate hung spooler processes, purge print queue, and restart service' },
+            @{ Key = '13'; Label = 'Fix Point & Print'; Description = 'Configure Point & Print restrictions to resolve RPC driver installation errors' },
+            @{ Key = '14'; Label = 'Remediate SMB'; Description = 'Apply standard SMBv1/v2/v3 configuration and harden file-sharing protocols' },
+            @{ Key = '15'; Label = 'Server Remediation'; Description = 'Apply host-level print and file sharing server hardening configurations' },
+            @{ Key = '16'; Label = 'Client Remediation'; Description = 'Configure workstation client network discovery and printer connection policies' },
+            @{ Key = '17'; Label = 'Restart All Adapters'; Description = 'Cycle all physical and virtual network adapters sequentially' },
+            @{ Key = '18'; Label = 'Restore Registry'; Description = 'Restore network and spooler registry subkeys from automated backup' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Main Menu' }
+            @{ Key = '0'; Label = 'Back to Main Menu'; Description = 'Return to the primary IToolkit console' }
         )
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'ACTIONS & COMMANDS'
 
@@ -418,11 +408,6 @@ function Invoke-ToolkitSubmenuConnectivity {
                 Wait-UserAcknowledge
             }
             { $_ -in @('12', '3') } {
-                if (-not (Confirm-ToolkitAction -ActionDescription "purging print spooler service and print job queues" -NonInteractive:$NonInteractive)) {
-                    Write-ToolkitStatus -Message "Purge print spooler cancelled by user." -Type 'INFO'
-                    Wait-UserAcknowledge
-                    break
-                }
                 if (Get-Command -Name 'Reset-PrintSpoolerQueue' -ErrorAction SilentlyContinue) {
                     try {
                         Reset-PrintSpoolerQueue
@@ -494,10 +479,16 @@ function Invoke-ToolkitSubmenuConnectivity {
                 Wait-UserAcknowledge
             }
             { $_ -in @('18', '9') } {
-                $regPath = if ($NonInteractive) {
-                    Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath 'Registry_Backup.reg'
+                $defaultRegPath = if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) {
+                    Join-Path $env:TEMP 'Registry_Backup.reg'
                 } else {
-                    Read-Host "  Enter Registry Backup Path"
+                    Join-Path ([System.IO.Path]::GetTempPath()) 'Registry_Backup.reg'
+                }
+                $regPath = if ($NonInteractive) {
+                    $defaultRegPath
+                } else {
+                    $inputReg = Read-Host "  Enter Registry Backup Path (Default: $defaultRegPath)"
+                    if ([string]::IsNullOrWhiteSpace($inputReg)) { $defaultRegPath } else { $inputReg.Trim() }
                 }
                 if (-not [string]::IsNullOrWhiteSpace($regPath) -and (Get-Command -Name 'Restore-RegistryKeyBackup' -ErrorAction SilentlyContinue)) {
                     try {

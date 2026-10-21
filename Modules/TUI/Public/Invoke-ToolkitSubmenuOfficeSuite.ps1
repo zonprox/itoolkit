@@ -492,26 +492,15 @@ function Invoke-ToolkitSubmenuOfficeSuite {
             -ClearScreen:$clear `
             -InfoLines $officeInfo
 
-        # Informational overview table with -NoIndex to avoid hotkey collisions
-        $domains = @(
-            [PSCustomObject]@{ Domain = 'Office Suite Common';   Status = '[READY]'; Scope = 'C2R Repair, WAM Identity, Global Cache, Pure Scrubber' },
-            [PSCustomObject]@{ Domain = 'Microsoft Word';        Status = '[READY]'; Scope = 'Normal.dotm, Startup Add-ins, Registry Data, Lock Files' },
-            [PSCustomObject]@{ Domain = 'Microsoft Excel';       Status = '[READY]'; Scope = 'Hardware Acceleration, XLSTART, UI Cache, DDE, GDI Audit' },
-            [PSCustomObject]@{ Domain = 'Microsoft PowerPoint';  Status = '[READY]'; Scope = 'Hardware Acceleration, Font & Slide Cache, Resiliency' },
-            [PSCustomObject]@{ Domain = 'Microsoft Outlook';     Status = '[READY]'; Scope = 'PST/OST Data Files, Compaction, SRS Reset, Stuck Outbox' }
-        )
-        Show-ToolkitItemTable -Items $domains -Columns @('Domain', 'Status', 'Scope') -Headers @('OFFICE DOMAIN', 'STATUS', 'MANAGEMENT SCOPE') -Title 'Productivity Architecture & Application Domains' -NoIndex
-
-        Write-Host ""
         $actions = @(
-            @{ Key = '1'; Label = 'Office Suite & General Maintenance' },
-            @{ Key = '2'; Label = 'Microsoft Word Repairs' },
-            @{ Key = '3'; Label = 'Microsoft Excel Repairs' },
-            @{ Key = '4'; Label = 'Microsoft PowerPoint Repairs' },
-            @{ Key = '5'; Label = 'Microsoft Outlook & Data Files' }
+            @{ Key = '1'; Label = 'Office Suite & General Maintenance'; Description = 'Suite-wide C2R service repair, WAM tokens, hardware acceleration, and scrubber' },
+            @{ Key = '2'; Label = 'Microsoft Word Repairs'; Description = 'Normal.dotm template recovery, STARTUP add-in isolation, and lock cleanup' },
+            @{ Key = '3'; Label = 'Microsoft Excel Repairs'; Description = 'XLSTART isolation, UI toolbar cache reset, DDE freeze, and GDI audit' },
+            @{ Key = '4'; Label = 'Microsoft PowerPoint Repairs'; Description = 'Font/slide preview cache reset, and COM add-in resiliency unblocking' },
+            @{ Key = '5'; Label = 'Microsoft Outlook & Data Files'; Description = 'PST/OST management, quick mail repair, rules migration, and profile selector' }
         )
         $navActions = @(
-            @{ Key = '0'; Label = 'Back to Main Menu' }
+            @{ Key = '0'; Label = 'Back to Main Menu'; Description = 'Return to the primary IToolkit console' }
         )
         Show-ToolkitActionCatalog -Actions $actions -NavActions $navActions -Title 'PRODUCTIVITY SUITE DOMAINS'
 
