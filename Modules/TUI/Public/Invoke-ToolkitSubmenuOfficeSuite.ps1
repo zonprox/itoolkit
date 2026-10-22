@@ -513,7 +513,7 @@ function Invoke-ToolkitSubmenuOfficeSuite {
         }
 
         $validKeys = @('1', '2', '3', '4', '5', '0')
-        $promptText = "  Select Office domain [1-5, 0]"
+        $promptText = "  Select Office Module [1-5], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {

@@ -732,6 +732,47 @@ function Show-ToolkitHeader {
         Write-Host "  $Subtitle" -ForegroundColor DarkCyan
     }
 
+    function Write-ToolkitHeaderChunk {
+        param([string]$ChunkText)
+        if ([string]::IsNullOrEmpty($ChunkText)) {
+            Write-Host ""
+            return
+        }
+        if ($ChunkText -match '\[[^\]]+\]') {
+            $tokens = [regex]::Split($ChunkText, '(\[[^\]]+\])')
+            foreach ($token in $tokens) {
+                if ([string]::IsNullOrEmpty($token)) { continue }
+                if ($token -match '^\[.+\]$') {
+                    $bColor = [System.ConsoleColor]::Cyan
+                    if ($token -match '(?i)\[(Elevated|YES|Safe|Clean|Online|Running|Expanded|READY|ENABLED|ACTIVE|INSTALLED|OK|UP|UNLOCKED|CONNECTED)') {
+                        $bColor = [System.ConsoleColor]::Green
+                    }
+                    elseif ($token -match '(?i)\[(Offline|FAIL|FAILED|ERROR|LOCKED|BLOCKED|UNSUPPORTED|CRITICAL)') {
+                        $bColor = [System.ConsoleColor]::Red
+                    }
+                    elseif ($token -match '(?i)\[(Non-Elevated|NO|Default|Stopped|Stuck|Low|WARN|WARNING|STANDBY|MISSING|DISABLED|LIMITED)') {
+                        $bColor = [System.ConsoleColor]::Yellow
+                    }
+                    Write-Host $token -ForegroundColor $bColor -NoNewline
+                }
+                else {
+                    Write-Host $token -ForegroundColor White -NoNewline
+                }
+            }
+            Write-Host ""
+        }
+        else {
+            $valColor = [System.ConsoleColor]::White
+            if ($ChunkText -match '(?i)\b(Clean|Online|Running|Expanded)\b') {
+                $valColor = [System.ConsoleColor]::Green
+            }
+            elseif ($ChunkText -match '(?i)\b(Stopped|Stuck|Offline|Low)\b') {
+                $valColor = [System.ConsoleColor]::Yellow
+            }
+            Write-Host "$ChunkText" -ForegroundColor $valColor
+        }
+    }
+
     if ($null -ne $InfoLines -and $InfoLines.Count -gt 0) {
         Write-Host $subBorderLine -ForegroundColor DarkGray
         foreach ($line in $InfoLines) {
@@ -745,15 +786,7 @@ function Show-ToolkitHeader {
 
                 if ($valPart.Length -le $maxValLen) {
                     Write-Host "  $keyPart " -ForegroundColor DarkCyan -NoNewline
-
-                    $valColor = [System.ConsoleColor]::White
-                    if ($valPart -match '(?i)\[Elevated|\[YES\]|\[Safe|Clean|Online|Running|Expanded') {
-                        $valColor = [System.ConsoleColor]::Green
-                    }
-                    elseif ($valPart -match '(?i)\[Non-Elevated|\[NO\]|\[Default|Stopped|Stuck|Offline|Low') {
-                        $valColor = [System.ConsoleColor]::Yellow
-                    }
-                    Write-Host "$valPart" -ForegroundColor $valColor
+                    Write-ToolkitHeaderChunk -ChunkText $valPart
                 }
                 else {
                     # Smart wrapping: prioritize splitting on ' | ', then on whitespace
@@ -841,21 +874,13 @@ function Show-ToolkitHeader {
 
                     for ($cIdx = 0; $cIdx -lt $chunks.Count; $cIdx++) {
                         $chunk = $chunks[$cIdx]
-                        $chunkColor = [System.ConsoleColor]::White
-                        if ($chunk -match '(?i)\[Elevated|\[YES\]|\[Safe|Clean|Online|Running|Expanded') {
-                            $chunkColor = [System.ConsoleColor]::Green
-                        }
-                        elseif ($chunk -match '(?i)\[Non-Elevated|\[NO\]|\[Default|Stopped|Stuck|Offline|Low') {
-                            $chunkColor = [System.ConsoleColor]::Yellow
-                        }
-
                         if ($cIdx -eq 0) {
                             Write-Host "  $keyPart " -ForegroundColor DarkCyan -NoNewline
-                            Write-Host "$chunk" -ForegroundColor $chunkColor
+                            Write-ToolkitHeaderChunk -ChunkText $chunk
                         }
                         else {
                             Write-Host "  $indent " -NoNewline
-                            Write-Host "$chunk" -ForegroundColor $chunkColor
+                            Write-ToolkitHeaderChunk -ChunkText $chunk
                         }
                     }
                 }

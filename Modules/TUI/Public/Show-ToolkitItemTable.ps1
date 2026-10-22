@@ -114,25 +114,21 @@ function Show-ToolkitItemTable {
         param([string]$Text)
         if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
         $t = $Text.Trim()
-        # Green: [ENABLED], [RUNNING], [ACTIVE], [READY], [OK], unbracketed equivalents
-        if ($t -match '^(?i)\[?(ENABLED|RUNNING|ACTIVE|READY|OK)\]?$') {
+        # Green: [ENABLED], [RUNNING], [ACTIVE], [READY], [OK], [INSTALLED], [CLEAN], [ONLINE], [SAFE], [UNLOCKED], [UP], [CONNECTED]
+        if ($t -match '^(?i)\[?(ENABLED|RUNNING|ACTIVE|READY|OK|INSTALLED|CLEAN|ONLINE|SAFE|UNLOCKED|UP|CONNECTED)\]?$') {
             return [System.ConsoleColor]::Green
         }
-        # Red: [LOCKED], [FAIL], [ERROR], FAILED
-        if ($t -match '^(?i)\[?(LOCKED|FAIL|ERROR|FAILED)\]?$') {
+        # Red: [LOCKED], [FAIL], [ERROR], [FAILED], [OFFLINE], [BLOCKED], [UNSUPPORTED], [CRITICAL]
+        if ($t -match '^(?i)\[?(LOCKED|FAIL|ERROR|FAILED|OFFLINE|BLOCKED|UNSUPPORTED|CRITICAL)\]?$') {
             return [System.ConsoleColor]::Red
         }
-        # Yellow: [WARN], [WARNING]
-        if ($t -match '^(?i)\[?(WARN|WARNING)\]?$') {
+        # Yellow: [WARN], [WARNING], [STOPPED], [STANDBY], [MISSING], [DEFAULT], [DEGRADED], [LOW]
+        if ($t -match '^(?i)\[?(WARN|WARNING|STOPPED|STANDBY|MISSING|DEFAULT|DEGRADED|LOW)\]?$') {
             return [System.ConsoleColor]::Yellow
         }
-        # DarkGray: [DISABLED]
-        if ($t -match '^(?i)\[?DISABLED\]?$') {
+        # DarkGray: [DISABLED], [UNKNOWN], [N/A], [NONE]
+        if ($t -match '^(?i)\[?(DISABLED|UNKNOWN|N/A|NONE)\]?$') {
             return [System.ConsoleColor]::DarkGray
-        }
-        # Yellow: [STOPPED]
-        if ($t -match '^(?i)\[?STOPPED\]?$') {
-            return [System.ConsoleColor]::Yellow
         }
         return $null
     }
@@ -167,7 +163,7 @@ function Show-ToolkitItemTable {
     $borderOverhead = 3 * $totalCols + 1
 
     $maxIdxStr = "[$($Items.Count)]"
-    $idxColWidth = if ($NoIndex) { 0 } else { [math]::Max(5, $maxIdxStr.Length + 2) }
+    $idxColWidth = if ($NoIndex) { 0 } else { [math]::Max(3, $maxIdxStr.Length) }
 
     $availContent = $tableWidth - $borderOverhead
     $availUserWidth = if ($NoIndex) { $availContent } else { $availContent - $idxColWidth }
@@ -192,45 +188,33 @@ function Show-ToolkitItemTable {
     }
 
     $colWidths = [System.Collections.Generic.List[int]]::new()
+    for ($c = 0; $c -lt $Columns.Count; $c++) {
+        $colWidths.Add($desiredWidths[$c])
+    }
+
     if ($totalDesired -le $availUserWidth) {
-        for ($c = 0; $c -lt $Columns.Count; $c++) {
-            $colWidths.Add($desiredWidths[$c])
-        }
         $extra = $availUserWidth - $totalDesired
         if ($extra -gt 0) {
             $colWidths[$Columns.Count - 1] += $extra
         }
     }
     else {
-        $allocatedSum = 0
-        for ($c = 0; $c -lt $Columns.Count; $c++) {
-            $ratio = $desiredWidths[$c] / [double]$totalDesired
-            $wAlloc = [int][math]::Floor($availUserWidth * $ratio)
-            if ($wAlloc -lt 4) { $wAlloc = 4 }
-            $colWidths.Add($wAlloc)
-            $allocatedSum += $wAlloc
-        }
-        $diff = $availUserWidth - $allocatedSum
-        if ($diff -gt 0) {
-            $colWidths[$Columns.Count - 1] += $diff
-        }
-        elseif ($diff -lt 0) {
-            while ($diff -lt 0) {
-                $maxW = 0
-                $maxIdx = 0
-                for ($k = 0; $k -lt $colWidths.Count; $k++) {
-                    if ($colWidths[$k] -gt $maxW) {
-                        $maxW = $colWidths[$k]
-                        $maxIdx = $k
-                    }
+        $excess = $totalDesired - $availUserWidth
+        while ($excess -gt 0) {
+            $maxW = 0
+            $maxIdx = -1
+            for ($k = 0; $k -lt $colWidths.Count; $k++) {
+                if ($colWidths[$k] -gt $maxW) {
+                    $maxW = $colWidths[$k]
+                    $maxIdx = $k
                 }
-                if ($colWidths[$maxIdx] -gt 4) {
-                    $colWidths[$maxIdx]--
-                    $diff++
-                }
-                else {
-                    break
-                }
+            }
+            if ($maxIdx -ge 0 -and $colWidths[$maxIdx] -gt 4) {
+                $colWidths[$maxIdx]--
+                $excess--
+            }
+            else {
+                break
             }
         }
     }
@@ -306,7 +290,7 @@ function Show-ToolkitItemTable {
             }
             $cellPad = ' ' * ($cWidth - $displayCell.Length)
 
-            $badgeColor = Get-ToolkitBadgeColor -Text $displayCell
+            $badgeColor = Get-ToolkitBadgeColor -Text $cellRaw
             if ($null -ne $badgeColor) {
                 Write-Host $displayCell -ForegroundColor $badgeColor -NoNewline
             }

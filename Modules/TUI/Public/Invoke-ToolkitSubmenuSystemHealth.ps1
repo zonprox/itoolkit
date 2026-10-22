@@ -167,7 +167,7 @@ function Invoke-ToolkitSubmenuSystemHealth {
         }
 
         $validKeys = @('1', '2', '3', '4', '5', '6', '0')
-        $promptText = "  Select action [1-6, 0]"
+        $promptText = "  Select Action [1-6], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
@@ -278,10 +278,20 @@ function Invoke-ToolkitSubmenuSystemHealth {
                     Write-ToolkitStatus -Message "Executing unified storage cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
                         $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
-                        if ($cleanRes -and $cleanRes.Success) {
-                            Write-ToolkitStatus -Message "Unified storage cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
+                        $reclaimedBytes = if ($cleanRes -and $null -ne $cleanRes.ReclaimedBytes) { [int64]$cleanRes.ReclaimedBytes } else { [int64]0 }
+                        $reclaimedStr = if ($cleanRes -and -not [string]::IsNullOrWhiteSpace($cleanRes.FormattedSize)) {
+                            $cleanRes.FormattedSize
+                        } elseif (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) {
+                            Format-ByteSize -Bytes $reclaimedBytes
                         } else {
-                            Write-ToolkitStatus -Message "Unified storage cleanup completed with warnings." -Type 'WARN'
+                            "$([math]::Round($reclaimedBytes / 1MB, 2)) MB"
+                        }
+                        $itemsCleaned = if ($cleanRes -and $null -ne $cleanRes.TotalItemsCleaned) { [int]$cleanRes.TotalItemsCleaned } elseif ($cleanRes -and $null -ne $cleanRes.ItemCount) { [int]$cleanRes.ItemCount } else { 0 }
+                        $itemsSuffix = if ($itemsCleaned -gt 0) { " ($itemsCleaned item(s) removed)" } else { "" }
+                        if ($cleanRes -and $cleanRes.Success) {
+                            Write-ToolkitStatus -Message "Unified storage cleanup completed. Reclaimed: $reclaimedStr$itemsSuffix." -Type 'OK'
+                        } else {
+                            Write-ToolkitStatus -Message "Unified storage cleanup completed with warnings. Reclaimed: $reclaimedStr$itemsSuffix." -Type 'WARN'
                         }
                     }
                 }
@@ -296,10 +306,12 @@ function Invoke-ToolkitSubmenuSystemHealth {
                     Write-ToolkitStatus -Message "Executing storage cleanup for Component Store..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
                         $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
+                        $reclaimedBytes = if ($cleanRes -and $null -ne $cleanRes.ReclaimedBytes) { [int64]$cleanRes.ReclaimedBytes } else { [int64]0 }
+                        $reclaimedStr = if (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) { Format-ByteSize -Bytes $reclaimedBytes } else { "$([math]::Round($reclaimedBytes / 1MB, 2)) MB" }
                         if ($cleanRes -and $cleanRes.Success) {
-                            Write-ToolkitStatus -Message "Storage cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
+                            Write-ToolkitStatus -Message "Storage cleanup completed. Reclaimed: $reclaimedStr." -Type 'OK'
                         } else {
-                            Write-ToolkitStatus -Message "Storage cleanup completed with warnings." -Type 'WARN'
+                            Write-ToolkitStatus -Message "Storage cleanup completed with warnings. Reclaimed: $reclaimedStr." -Type 'WARN'
                         }
                     }
                 }
@@ -314,10 +326,12 @@ function Invoke-ToolkitSubmenuSystemHealth {
                     Write-ToolkitStatus -Message "Executing master system disk cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
                         $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
+                        $reclaimedBytes = if ($cleanRes -and $null -ne $cleanRes.ReclaimedBytes) { [int64]$cleanRes.ReclaimedBytes } else { [int64]0 }
+                        $reclaimedStr = if (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) { Format-ByteSize -Bytes $reclaimedBytes } else { "$([math]::Round($reclaimedBytes / 1MB, 2)) MB" }
                         if ($cleanRes -and $cleanRes.Success) {
-                            Write-ToolkitStatus -Message "System disk cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
+                            Write-ToolkitStatus -Message "System disk cleanup completed. Reclaimed: $reclaimedStr." -Type 'OK'
                         } else {
-                            Write-ToolkitStatus -Message "System disk cleanup completed with warnings." -Type 'WARN'
+                            Write-ToolkitStatus -Message "System disk cleanup completed with warnings. Reclaimed: $reclaimedStr." -Type 'WARN'
                         }
                     }
                 }
@@ -332,10 +346,12 @@ function Invoke-ToolkitSubmenuSystemHealth {
                     Write-ToolkitStatus -Message "Executing master system disk cleanup..." -Type 'INFO'
                     if (Get-Command -Name 'Invoke-WindowsCleanup' -ErrorAction SilentlyContinue) {
                         $cleanRes = Invoke-WindowsCleanup -Category @('All') -All
+                        $reclaimedBytes = if ($cleanRes -and $null -ne $cleanRes.ReclaimedBytes) { [int64]$cleanRes.ReclaimedBytes } else { [int64]0 }
+                        $reclaimedStr = if (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) { Format-ByteSize -Bytes $reclaimedBytes } else { "$([math]::Round($reclaimedBytes / 1MB, 2)) MB" }
                         if ($cleanRes -and $cleanRes.Success) {
-                            Write-ToolkitStatus -Message "System disk cleanup completed. Reclaimed: $($cleanRes.ReclaimedBytes) bytes." -Type 'OK'
+                            Write-ToolkitStatus -Message "System disk cleanup completed. Reclaimed: $reclaimedStr." -Type 'OK'
                         } else {
-                            Write-ToolkitStatus -Message "System disk cleanup completed with warnings." -Type 'WARN'
+                            Write-ToolkitStatus -Message "System disk cleanup completed with warnings. Reclaimed: $reclaimedStr." -Type 'WARN'
                         }
                     }
                     if (Get-Command -Name 'Clear-WindowsTempCache' -ErrorAction SilentlyContinue) {

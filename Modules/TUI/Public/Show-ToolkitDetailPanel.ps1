@@ -101,16 +101,19 @@ function Show-ToolkitDetailPanel {
 
             if ($token -match '^\[.+\]$') {
                 $badgeText = $token
-                if ($badgeText -match '(?i)\[(READY|SAFE|PASS|YES|OK|ONLINE|CLEAN)') {
+                if ($badgeText -match '(?i)\[(READY|SAFE|PASS|YES|OK|ONLINE|CLEAN|ENABLED|RUNNING|ACTIVE|INSTALLED|UNLOCKED|UP|CONNECTED|ELEVATED)') {
                     Write-Host $badgeText -ForegroundColor Green -NoNewline
                 }
-                elseif ($badgeText -match '(?i)\[(BLOCKED|FAIL|ERROR|NO|OFFLINE)') {
+                elseif ($badgeText -match '(?i)\[(BLOCKED|FAIL|FAILED|ERROR|NO|OFFLINE|LOCKED|UNSUPPORTED|CRITICAL)') {
                     Write-Host $badgeText -ForegroundColor Red -NoNewline
                 }
-                elseif ($badgeText -match '(?i)\[(WARN|WARNING|LIMITED|DEFAULT)') {
+                elseif ($badgeText -match '(?i)\[(WARN|WARNING|LIMITED|DEFAULT|STOPPED|STANDBY|MISSING|NON-ELEVATED|LOW)') {
                     Write-Host $badgeText -ForegroundColor Yellow -NoNewline
                 }
-                elseif ($badgeText -match '(?i)\[(INFO|ADMIN|ELEVATED)') {
+                elseif ($badgeText -match '(?i)\[(DISABLED|UNKNOWN|N/A|NONE)') {
+                    Write-Host $badgeText -ForegroundColor DarkGray -NoNewline
+                }
+                elseif ($badgeText -match '(?i)\[(INFO|ADMIN)') {
                     Write-Host $badgeText -ForegroundColor Cyan -NoNewline
                 }
                 else {

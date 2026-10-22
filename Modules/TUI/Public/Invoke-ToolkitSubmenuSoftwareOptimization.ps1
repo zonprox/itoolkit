@@ -169,7 +169,7 @@ function Invoke-ToolkitApplicationContextMenu {
             return
         }
 
-        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4') -Prompt "  Select action for '$dispName' [1-4, 0]"
+        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4') -Prompt "  Select Action for '$dispName' [1-4], or [0] Back"
         if ($null -eq $choice -or $choice.Type -eq 'Exit' -or $choice.Value -eq '0') {
             $inContext = $false
             return
@@ -187,10 +187,11 @@ function Invoke-ToolkitApplicationContextMenu {
                         $installParams['SetDefault'] = $true
                     }
                     $res = Install-ToolkitApplication @installParams
-                    $res | Format-Table -AutoSize
+                    $firstRes = @($res)[0]
+                    $methodNote = if ($firstRes -and $firstRes.Method) { " via $($firstRes.Method)" } else { "" }
                     $SelectedApp.Installed = $true
                     $SelectedApp.Status    = '[INSTALLED]'
-                    Write-ToolkitStatus -Message "$dispName deployment completed." -Type 'OK'
+                    Write-ToolkitStatus -Message "$dispName deployment completed$methodNote." -Type 'OK'
                 } else {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
@@ -200,10 +201,11 @@ function Invoke-ToolkitApplicationContextMenu {
                 Write-ToolkitStatus -Message "Force reinstalling $dispName..." -Type 'INFO'
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
                     $res = Install-ToolkitApplication -AppName $appName -Force -CreateShortcut
-                    $res | Format-Table -AutoSize
+                    $firstRes = @($res)[0]
+                    $methodNote = if ($firstRes -and $firstRes.Method) { " via $($firstRes.Method)" } else { "" }
                     $SelectedApp.Installed = $true
                     $SelectedApp.Status    = '[INSTALLED]'
-                    Write-ToolkitStatus -Message "$dispName force reinstallation completed." -Type 'OK'
+                    Write-ToolkitStatus -Message "$dispName force reinstallation completed$methodNote." -Type 'OK'
                 } else {
                     Write-ToolkitStatus -Message "Install-ToolkitApplication command not available." -Type 'WARN'
                 }
@@ -218,9 +220,10 @@ function Invoke-ToolkitApplicationContextMenu {
                         $SelectedApp.Status         = if ($chk.Installed) { '[INSTALLED]' } else { '[MISSING]' }
                         $SelectedApp.Version        = if ($chk.Version) { $chk.Version } else { 'N/A' }
                         $SelectedApp.ExecutablePath = $chk.ExecutablePath
-                        $chk | Format-List *
-                        $st = if ($chk.Installed) { "INSTALLED (v$($chk.Version))" } else { "MISSING" }
-                        Write-ToolkitStatus -Message "Application status: $st" -Type 'OK'
+                        $exeNote = if ($chk.ExecutablePath) { " | Path: $($chk.ExecutablePath)" } else { "" }
+                        $st = if ($chk.Installed) { "INSTALLED (v$($SelectedApp.Version))$exeNote" } else { "MISSING (Not detected on system)" }
+                        $stType = if ($chk.Installed) { 'OK' } else { 'WARN' }
+                        Write-ToolkitStatus -Message "$dispName status: $st" -Type $stType
                     }
                 } else {
                     Write-ToolkitStatus -Message "Get-ToolkitInstalledApplication command not available." -Type 'WARN'
@@ -409,7 +412,7 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
         }
 
         $categoryHotkeys = @('9', '10', '11')
-        $promptText = "  Select Item [1-$($appsList.Count)], Action [9-11], or [0] Back"
+        $promptText = "  Select Application [1-$($appsList.Count)], Action [9-11], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex $appsList.Count -ValidHotkeys $categoryHotkeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
@@ -442,13 +445,37 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
                 }
                 '10' {
                     if (Get-Command -Name 'Invoke-Win11Debloat' -ErrorAction SilentlyContinue) {
-                        Invoke-Win11Debloat | Format-List
+                        try {
+                            Write-ToolkitStatus -Message "Launching Win11Debloat optimization utility..." -Type 'INFO'
+                            $debRes = Invoke-Win11Debloat
+                            if ($debRes -and ($debRes.Launched -or $debRes.Success)) {
+                                Write-ToolkitStatus -Message "Win11Debloat session completed." -Type 'OK'
+                            } else {
+                                Write-ToolkitStatus -Message "Win11Debloat execution processed." -Type 'INFO'
+                            }
+                        } catch {
+                            Write-ToolkitStatus -Message "Win11Debloat failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Invoke-Win11Debloat command not available." -Type 'WARN'
                     }
                     Wait-UserAcknowledge
                 }
                 '11' {
                     if (Get-Command -Name 'Invoke-BrowserDebloat' -ErrorAction SilentlyContinue) {
-                        Invoke-BrowserDebloat | Format-List
+                        try {
+                            Write-ToolkitStatus -Message "Launching Browser Debloat optimization utility..." -Type 'INFO'
+                            $bDebRes = Invoke-BrowserDebloat
+                            if ($bDebRes -and ($bDebRes.Launched -or $bDebRes.Success)) {
+                                Write-ToolkitStatus -Message "Browser Debloat session completed." -Type 'OK'
+                            } else {
+                                Write-ToolkitStatus -Message "Browser Debloat execution processed." -Type 'INFO'
+                            }
+                        } catch {
+                            Write-ToolkitStatus -Message "Browser Debloat failed: $($_.Exception.Message)" -Type 'FAIL'
+                        }
+                    } else {
+                        Write-ToolkitStatus -Message "Invoke-BrowserDebloat command not available." -Type 'WARN'
                     }
                     Wait-UserAcknowledge
                 }

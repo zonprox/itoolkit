@@ -36,6 +36,7 @@ function Read-ToolkitItemSelection {
     if ([string]::IsNullOrWhiteSpace($Prompt)) {
         $Prompt = "  Select item [1-$MaxIndex] or action"
     }
+    $cleanPrompt = $Prompt.TrimEnd(':', ' ')
 
     # Safeguard loop: maximum 5 attempts to prevent hanging in headless sessions
     $maxAttempts = 5
@@ -44,7 +45,7 @@ function Read-ToolkitItemSelection {
     while ($attempt -lt $maxAttempts) {
         $attempt++
 
-        $rawInput = Read-Host -Prompt $Prompt
+        $rawInput = Read-Host -Prompt $cleanPrompt
 
         # Handle EOF or null input immediately
         if ($null -eq $rawInput) {
@@ -109,7 +110,7 @@ function Read-ToolkitItemSelection {
             }
             $options.Add('0')
             $hint = $options -join ', '
-            Write-Host "  Invalid selection '$trimmed'. Valid options: $hint" -ForegroundColor Yellow
+            Write-Host "  [!] Invalid selection '$trimmed'. Valid options: $hint" -ForegroundColor Yellow
         }
     }
 

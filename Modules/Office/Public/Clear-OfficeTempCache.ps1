@@ -129,14 +129,21 @@ function Clear-OfficeTempCache {
             }
         }
 
+        $freedFormatted = if (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) {
+            Format-ByteSize -Bytes ([int64]$bytesFreed)
+        } else {
+            "$([math]::Round($bytesFreed / 1KB, 2)) KB"
+        }
+
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-            Write-ToolkitLog -Message "Office cache cleanup completed: Cleaned $cleanedCount files, freed $bytesFreed bytes." -Level 'INFO' -Component 'Clear-OfficeTempCache'
+            Write-ToolkitLog -Message "Office cache cleanup completed: Cleaned $cleanedCount files, freed $freedFormatted." -Level 'INFO' -Component 'Clear-OfficeTempCache'
         }
 
         return [PSCustomObject]@{
             Status            = 'Success'
             CleanedFilesCount = $cleanedCount
             BytesFreed        = $bytesFreed
+            FormattedSize     = $freedFormatted
         }
     }
 }

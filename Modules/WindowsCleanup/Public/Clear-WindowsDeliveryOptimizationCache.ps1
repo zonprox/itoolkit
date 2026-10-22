@@ -68,11 +68,12 @@ function Clear-WindowsDeliveryOptimizationCache {
                 }
             }
 
-            Write-Verbose "Simulation mode (-WhatIf): Projected $projectedBytes bytes across $projectedItems files."
+            Write-Verbose "Simulation mode (-WhatIf): Projected $(Format-ByteSize -Bytes $projectedBytes) across $projectedItems files."
             return [PSCustomObject]@{
                 Target         = 'DeliveryOptimization'
                 Path           = $allPathsDisplay
                 ReclaimedBytes = $projectedBytes
+                FormattedSize  = Format-ByteSize -Bytes ([int64]$projectedBytes)
                 ItemCount      = $projectedItems
                 SkippedCount   = 0
                 Status         = 'Simulated - WhatIf'
@@ -151,6 +152,7 @@ function Clear-WindowsDeliveryOptimizationCache {
             Target         = 'DeliveryOptimization'
             Path           = $allPathsDisplay
             ReclaimedBytes = [int64]$reclaimedBytes
+            FormattedSize  = Format-ByteSize -Bytes ([int64]$reclaimedBytes)
             ItemCount      = [int]$itemCount
             SkippedCount   = [int]$skippedCount
             Status         = $statusMsg

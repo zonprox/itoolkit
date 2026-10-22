@@ -56,3 +56,35 @@ function Get-ToolkitLayoutWidth {
 if (Get-Command -Name 'Get-ToolkitLayoutWidth' -CommandType Function -ErrorAction SilentlyContinue) {
     Set-Item -Path 'function:global:Get-ToolkitLayoutWidth' -Value (Get-Command -Name 'Get-ToolkitLayoutWidth').ScriptBlock
 }
+
+if (-not (Get-Command -Name 'Format-ByteSize' -CommandType Function -ErrorAction SilentlyContinue)) {
+    $cleanupFormatter = Join-Path -Path $PSScriptRoot -ChildPath '../../WindowsCleanup/Private/Format-ByteSize.ps1'
+    if (Test-Path -LiteralPath $cleanupFormatter) {
+        . $cleanupFormatter
+    }
+    else {
+        function Format-ByteSize {
+            [CmdletBinding()]
+            [OutputType([string])]
+            param(
+                [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
+                [int64]$Bytes
+            )
+            process {
+                if ($Bytes -le 0) { return "0 B" }
+                $units = @('B', 'KB', 'MB', 'GB', 'TB', 'PB')
+                $order = 0
+                $len = [double]$Bytes
+                while ($len -ge 1024.0 -and $order -lt ($units.Count - 1)) {
+                    $order++
+                    $len = $len / 1024.0
+                }
+                if ($order -eq 0) { return "{0:N0} {1}" -f $len, $units[$order] }
+                return "{0:N2} {1}" -f $len, $units[$order]
+            }
+        }
+    }
+}
+if (Get-Command -Name 'Format-ByteSize' -CommandType Function -ErrorAction SilentlyContinue) {
+    Set-Item -Path 'function:global:Format-ByteSize' -Value (Get-Command -Name 'Format-ByteSize').ScriptBlock
+}

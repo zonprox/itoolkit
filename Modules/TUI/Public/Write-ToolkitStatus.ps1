@@ -71,7 +71,13 @@ function Write-ToolkitStatus {
                    ($env:ITOOLKIT_TUI_MODE -eq '1')
 
     if ($isTuiActive) {
-        $consolePrefix = '  '
+        switch ($normType) {
+            'OK'   { $consolePrefix = '  [+] ' }
+            'WARN' { $consolePrefix = '  [!] ' }
+            'FAIL' { $consolePrefix = '  [x] ' }
+            'INFO' { $consolePrefix = '  [*] ' }
+            default { $consolePrefix = '  [*] ' }
+        }
     }
 
     if (-not $NoConsole) {

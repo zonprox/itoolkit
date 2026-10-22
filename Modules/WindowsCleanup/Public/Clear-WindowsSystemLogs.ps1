@@ -154,11 +154,12 @@ function Clear-WindowsSystemLogs {
                 $projectedBytes += $f.Length
             }
 
-            Write-Verbose "Simulation mode (-WhatIf): Projected $projectedBytes bytes across $projectedItems files."
+            Write-Verbose "Simulation mode (-WhatIf): Projected $(Format-ByteSize -Bytes $projectedBytes) across $projectedItems files."
             return [PSCustomObject]@{
                 Target         = 'SystemLogs'
                 Path           = $summaryTargetDesc
                 ReclaimedBytes = $projectedBytes
+                FormattedSize  = Format-ByteSize -Bytes ([int64]$projectedBytes)
                 ItemCount      = $projectedItems
                 SkippedCount   = 0
                 Status         = 'Simulated - WhatIf'
@@ -211,6 +212,7 @@ function Clear-WindowsSystemLogs {
             Target         = 'SystemLogs'
             Path           = $summaryTargetDesc
             ReclaimedBytes = [int64]$reclaimedBytes
+            FormattedSize  = Format-ByteSize -Bytes ([int64]$reclaimedBytes)
             ItemCount      = [int]$itemCount
             SkippedCount   = [int]$skippedCount
             Status         = $statusMsg

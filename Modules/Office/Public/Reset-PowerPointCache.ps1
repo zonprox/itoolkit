@@ -72,14 +72,21 @@ function Reset-PowerPointCache {
             }
         }
 
+        $freedFormatted = if (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) {
+            Format-ByteSize -Bytes ([int64]$bytesFreed)
+        } else {
+            "$([math]::Round($bytesFreed / 1KB, 2)) KB"
+        }
+
         if (Get-Command -Name 'Write-ToolkitLog' -ErrorAction SilentlyContinue) {
-            Write-ToolkitLog -Message "PowerPoint cache reset completed: $cleanedCount file(s) removed, $bytesFreed bytes freed." -Level 'INFO' -Component 'Reset-PowerPointCache'
+            Write-ToolkitLog -Message "PowerPoint cache reset completed: $cleanedCount file(s) removed, $freedFormatted freed." -Level 'INFO' -Component 'Reset-PowerPointCache'
         }
 
         return [PSCustomObject]@{
             Status            = 'Success'
             CleanedFilesCount = $cleanedCount
             BytesFreed        = $bytesFreed
+            FormattedSize     = $freedFormatted
             CachePath         = $cacheDir
         }
     }

@@ -174,7 +174,7 @@ function Invoke-ToolkitAccountContextMenu {
             return
         }
 
-        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5') -Prompt "  Select action for '$userName' [1-5, 0]"
+        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5') -Prompt "  Select Action for '$userName' [1-5], or [0] Back"
         if ($null -eq $choice -or $choice.Type -eq 'Exit' -or $choice.Value -eq '0') {
             $inContext = $false
             return
@@ -465,7 +465,7 @@ function Invoke-ToolkitSubmenuIdentityBackup {
         }
 
         $categoryKeys = @('10', '11', '12', '13', '14', '15', '16', '17', '18')
-        $promptText = "  Select Item [1-$($items.Count)], Action [10-18], or [0] Back"
+        $promptText = "  Select Account [1-$($items.Count)], Action [10-18], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex $items.Count -ValidHotkeys $categoryKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {

@@ -48,11 +48,12 @@ function Clear-WindowsUpdateCache {
         # 2. WhatIf Space Analysis
         if (-not $PSCmdlet.ShouldProcess($Path, "Purge Windows Update download cache")) {
             $metrics = Get-DirectorySizeMetrics -Path $Path
-            Write-Verbose "Simulation mode (-WhatIf): Projected $($metrics.TotalBytes) bytes across $($metrics.FileCount) files."
+            Write-Verbose "Simulation mode (-WhatIf): Projected $(Format-ByteSize -Bytes ([int64]$metrics.TotalBytes)) across $($metrics.FileCount) files."
             return [PSCustomObject]@{
                 Target            = 'WindowsUpdateCache'
                 Path              = $Path
                 ReclaimedBytes    = [int64]$metrics.TotalBytes
+                FormattedSize     = Format-ByteSize -Bytes ([int64]$metrics.TotalBytes)
                 ItemCount         = [int]$metrics.FileCount
                 SkippedCount      = 0
                 Status            = 'Simulated - WhatIf'
@@ -167,6 +168,7 @@ function Clear-WindowsUpdateCache {
             Target            = 'WindowsUpdateCache'
             Path              = $Path
             ReclaimedBytes    = [int64]$reclaimedBytes
+            FormattedSize     = Format-ByteSize -Bytes ([int64]$reclaimedBytes)
             ItemCount         = [int]$itemCount
             SkippedCount      = [int]$skippedCount
             Status            = $statusMsg

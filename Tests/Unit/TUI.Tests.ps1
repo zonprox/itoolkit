@@ -865,6 +865,28 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
             $script:cleanCalled | Should -BeTrue
         }
+
+        It 'Invoke-ToolkitSubmenuSystemHealth formats reclaimed bytes as human-readable size (KB/MB/GB/TB) instead of raw bytes' -Skip:(-not $isTUIAvailable) {
+            $script:capturedStatusMsgs = [System.Collections.Generic.List[string]]::new()
+            Mock Write-ToolkitStatus {
+                param($Message, $Type)
+                $script:capturedStatusMsgs.Add($Message)
+            }
+            Mock Invoke-WindowsCleanup {
+                return [PSCustomObject]@{ Success = $true; ReclaimedBytes = 996182616; TotalItemsCleaned = 42 }
+            }
+            Mock Wait-UserAcknowledge { }
+            $script:shStep = 0
+            Mock Read-ToolkitItemSelection {
+                $script:shStep++
+                if ($script:shStep -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '6' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            { Invoke-ToolkitSubmenuSystemHealth } | Should -Not -Throw
+            $allMsgs = $script:capturedStatusMsgs -join "`n"
+            $allMsgs | Should -Match '950\.03 MB'
+            $allMsgs | Should -Not -Match '996182616 bytes'
+        }
     }
 
     Context 'Pillar 2: Main Office Hub Dispatcher & Navigation Workflow' {

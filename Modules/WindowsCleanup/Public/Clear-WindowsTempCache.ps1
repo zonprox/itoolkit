@@ -97,11 +97,12 @@ function Clear-WindowsTempCache {
                 $projectedSkipped += $metrics.SkippedCount
             }
 
-            Write-Verbose "Simulation mode (-WhatIf): Projected $projectedBytes bytes across $projectedItems files ($projectedSkipped files preserved <$AgeHours h)."
+            Write-Verbose "Simulation mode (-WhatIf): Projected $(Format-ByteSize -Bytes $projectedBytes) across $projectedItems files ($projectedSkipped files preserved <$AgeHours h)."
             return [PSCustomObject]@{
                 Target         = 'TemporaryFiles'
                 Path           = $dirsDisplay
                 ReclaimedBytes = $projectedBytes
+                FormattedSize  = Format-ByteSize -Bytes ([int64]$projectedBytes)
                 ItemCount      = $projectedItems
                 SkippedCount   = $projectedSkipped
                 Status         = 'Simulated - WhatIf'
@@ -222,6 +223,7 @@ function Clear-WindowsTempCache {
             Target         = 'TemporaryFiles'
             Path           = $dirsDisplay
             ReclaimedBytes = [int64]$reclaimedBytes
+            FormattedSize  = Format-ByteSize -Bytes ([int64]$reclaimedBytes)
             ItemCount      = [int]$itemCount
             SkippedCount   = [int]$skippedCount
             Status         = $statusMsg

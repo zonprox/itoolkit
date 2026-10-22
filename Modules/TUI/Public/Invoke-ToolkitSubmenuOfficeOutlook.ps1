@@ -182,12 +182,16 @@ function Get-OutlookDataFileInventory {
 
                 $sizeStr = if ($f.Size) {
                     [string]$f.Size
+                } elseif ($f.SizeBytes -and $f.SizeBytes -gt 0) {
+                    if (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) {
+                        Format-ByteSize -Bytes ([int64]$f.SizeBytes)
+                    } else {
+                        "$([Math]::Round([double]$f.SizeBytes / 1MB, 2)) MB"
+                    }
                 } elseif ($f.SizeGB -and $f.SizeGB -gt 0) {
                     "$([Math]::Round([double]$f.SizeGB, 2)) GB"
-                } elseif ($f.SizeBytes -and $f.SizeBytes -gt 0) {
-                    "$([Math]::Round([double]$f.SizeBytes / 1MB, 2)) MB"
                 } else {
-                    "0.00 MB"
+                    "0 B"
                 }
 
                 $statusStr = if ($f.Status) {
@@ -344,7 +348,7 @@ function Invoke-ToolkitDataFileContextMenu {
             return
         }
 
-        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10') -Prompt "  Select action for '$fileName' [1-7, 0]"
+        $choice = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10') -Prompt "  Select Action for '$fileName' [1-7], or [0] Back"
         if ($null -eq $choice -or $choice.Type -eq 'Exit' -or $choice.Value -eq '0') {
             $inContext = $false
             return
@@ -845,7 +849,11 @@ function Invoke-ToolkitSubmenuOfficeOutlook {
         }
 
         $categoryKeys = @('10', '11', '12', '13', '14', '15', '16')
-        $promptText = "  Select Item [1-$($items.Count)], Action [10-16], or [0] Back"
+        $promptText = if ($items.Count -gt 0) {
+            "  Select Data File [1-$($items.Count)], Action [10-16], or [0] Back"
+        } else {
+            "  Select Action [10-16], or [0] Back"
+        }
         $selection = Read-ToolkitItemSelection -MaxIndex $items.Count -ValidHotkeys $categoryKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {

@@ -147,7 +147,7 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
         }
 
         $contextHotkeys = @('1', '2', '3', '4')
-        $promptText = "  Select action for '$deviceName' [1-4, 0]: "
+        $promptText = "  Select Action for '$deviceName' [1-4], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $contextHotkeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {

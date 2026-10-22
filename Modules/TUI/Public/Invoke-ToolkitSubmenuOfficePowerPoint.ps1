@@ -169,7 +169,7 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
         }
 
         $validKeys = @('1', '2', '3', '0')
-        $promptText = "  Select PowerPoint repair action [1-3, 0]"
+        $promptText = "  Select Action [1-3], or [0] Back"
         $selection = Read-ToolkitItemSelection -MaxIndex 0 -ValidHotkeys $validKeys -Prompt $promptText
 
         if ($null -eq $selection -or $selection.Type -eq 'Exit' -or $selection.Value -eq '0') {
@@ -185,7 +185,15 @@ function Invoke-ToolkitSubmenuOfficePowerPoint {
                     if (Get-Command -Name 'Reset-PowerPointCache' -ErrorAction SilentlyContinue) {
                         $res = Reset-PowerPointCache -Force
                         if ($res -and $res.Status -eq 'Success') {
-                            Write-ToolkitStatus -Message "Purged $($res.CleanedFilesCount) cached file(s) ($([math]::Round($res.BytesFreed / 1KB, 1)) KB freed)." -Type 'OK'
+                            $cleanedFiles = if ($null -ne $res.CleanedFilesCount) { [int]$res.CleanedFilesCount } else { 0 }
+                            $freedStr = if (-not [string]::IsNullOrWhiteSpace($res.FormattedSize)) {
+                                $res.FormattedSize
+                            } elseif (Get-Command -Name 'Format-ByteSize' -ErrorAction SilentlyContinue) {
+                                Format-ByteSize -Bytes ([int64]($res.BytesFreed -as [int64]))
+                            } else {
+                                "$([math]::Round($res.BytesFreed / 1KB, 1)) KB"
+                            }
+                            Write-ToolkitStatus -Message "Purged $cleanedFiles cached file(s) ($freedStr freed)." -Type 'OK'
                         } else {
                             Write-ToolkitStatus -Message "PowerPoint cache is already clean." -Type 'INFO'
                         }

@@ -187,6 +187,7 @@ function Invoke-WindowsCleanup {
             Path                = 'All Selected Subsystems'
             ReclaimedBytes      = $totalReclaimed
             TotalReclaimedBytes = $totalReclaimed
+            FormattedSize       = Format-ByteSize -Bytes ([int64]$totalReclaimed)
             ItemCount           = $totalItems
             TotalItemsCleaned   = $totalItems
             SkippedCount        = $totalSkipped

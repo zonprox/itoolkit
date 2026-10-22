@@ -92,7 +92,7 @@ function Read-ToolkitMenuChoice {
             return $matchedKey
         }
 
-        Write-Host "  Invalid selection '$trimmed'. Valid options: $($ValidKeys -join ', ')" -ForegroundColor Yellow
+        Write-Host "  [!] Invalid selection '$trimmed'. Valid options: $($ValidKeys -join ', ')" -ForegroundColor Yellow
     }
 
     # Fallback to avoid infinite loop
