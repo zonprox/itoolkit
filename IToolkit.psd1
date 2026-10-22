@@ -244,7 +244,10 @@
         'Invoke-ToolkitSubmenuOutlook',
         'Get-PrintersContextInfoLines',
         'Invoke-ToolkitSubmenuPrinters',
-        'Select-ToolkitOutlookProfile'
+        'Select-ToolkitOutlookProfile',
+        'Enter-ToolkitConsoleView',
+        'Exit-ToolkitConsoleView',
+        'Invoke-ToolkitConsoleAction'
     )
 
     CmdletsToExport        = @()

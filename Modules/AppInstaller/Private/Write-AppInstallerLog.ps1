@@ -77,6 +77,10 @@ function Write-AppInstallerLog {
                            ($null -ne $global:ToolkitSuppressConsoleLog -and $global:ToolkitSuppressConsoleLog) -or
                            ($env:ITOOLKIT_TUI_MODE -eq '1')
 
+            if ($null -ne $global:ToolkitConsoleViewActive -and $global:ToolkitConsoleViewActive) {
+                $isTuiActive = $false
+            }
+
             if (-not $isTuiActive -and $normalizedLevel -ne 'DEBUG') {
                 $prefix = switch ($normalizedLevel) {
                     'INFO'    { '[INFO]   ' }

@@ -85,6 +85,10 @@ function Write-ToolkitLog {
                        ($null -ne $global:ToolkitSuppressConsoleLog -and $global:ToolkitSuppressConsoleLog) -or
                        ($env:ITOOLKIT_TUI_MODE -eq '1')
 
+        if ($null -ne $global:ToolkitConsoleViewActive -and $global:ToolkitConsoleViewActive) {
+            $isTuiActive = $false
+        }
+
         if (-not $NoConsole -and -not $isTuiActive -and $normalizedLevel -ne 'DEBUG') {
             $foregroundColor = [System.ConsoleColor]::White
             $consolePrefix = '[INFO]   '

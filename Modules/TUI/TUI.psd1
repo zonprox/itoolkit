@@ -35,7 +35,10 @@
         'Public/Invoke-ToolkitSubmenuConnectivity.ps1',
         'Public/Invoke-ToolkitSubmenuIdentityBackup.ps1',
         'Public/Invoke-ToolkitSubmenuSoftwareOptimization.ps1',
-        'Public/Select-ToolkitOutlookProfile.ps1'
+        'Public/Select-ToolkitOutlookProfile.ps1',
+        'Public/Enter-ToolkitConsoleView.ps1',
+        'Public/Exit-ToolkitConsoleView.ps1',
+        'Public/Invoke-ToolkitConsoleAction.ps1'
     )
 
     # Explicit Whitelist of Public Functions
@@ -90,7 +93,10 @@
         'Invoke-ToolkitSubmenuOutlook',
         'Get-PrintersContextInfoLines',
         'Invoke-ToolkitSubmenuPrinters',
-        'Select-ToolkitOutlookProfile'
+        'Select-ToolkitOutlookProfile',
+        'Enter-ToolkitConsoleView',
+        'Exit-ToolkitConsoleView',
+        'Invoke-ToolkitConsoleAction'
     )
 
     CmdletsToExport        = @()

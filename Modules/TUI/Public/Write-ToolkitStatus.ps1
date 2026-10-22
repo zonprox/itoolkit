@@ -70,6 +70,10 @@ function Write-ToolkitStatus {
                    ($null -ne $global:ToolkitSuppressConsoleLog -and $global:ToolkitSuppressConsoleLog) -or
                    ($env:ITOOLKIT_TUI_MODE -eq '1')
 
+    if ($null -ne $global:ToolkitConsoleViewActive -and $global:ToolkitConsoleViewActive) {
+        $isTuiActive = $false
+    }
+
     if ($isTuiActive) {
         switch ($normType) {
             'OK'   { $consolePrefix = '  [+] ' }

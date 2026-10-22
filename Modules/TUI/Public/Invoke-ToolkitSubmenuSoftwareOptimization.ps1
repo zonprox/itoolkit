@@ -10,6 +10,14 @@ if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinu
         . $confirmScript
     }
 }
+if (-not (Get-Command -Name 'Enter-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $enterConsole = Join-Path $PSScriptRoot 'Enter-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $enterConsole) { . $enterConsole }
+}
+if (-not (Get-Command -Name 'Exit-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $exitConsole = Join-Path $PSScriptRoot 'Exit-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $exitConsole) { . $exitConsole }
+}
 
 if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
     $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
@@ -175,7 +183,9 @@ function Invoke-ToolkitApplicationContextMenu {
             return
         }
 
-        switch ("$($choice.Value)") {
+        Enter-ToolkitConsoleView -ActionTitle "App Action: $dispName" -NonInteractive:$NonInteractive
+        try {
+            switch ("$($choice.Value)") {
             '1' {
                 Write-ToolkitStatus -Message "Installing $dispName silently..." -Type 'INFO'
                 if (Get-Command -Name 'Install-ToolkitApplication' -ErrorAction SilentlyContinue) {
@@ -261,6 +271,17 @@ function Invoke-ToolkitApplicationContextMenu {
                 $inContext = $false
                 return
             }
+            }
+        }
+        catch {
+            $errDetail = if ($_.Exception -and -not [string]::IsNullOrWhiteSpace($_.Exception.Message)) { $_.Exception.Message } else { "$_" }
+            if (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue) {
+                Write-ToolkitStatus -Message "Action execution failed: $errDetail" -Type 'FAIL'
+            }
+            Wait-UserAcknowledge
+        }
+        finally {
+            Exit-ToolkitConsoleView
         }
     }
 }
@@ -428,7 +449,15 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
             }
         }
         elseif ($selection.Type -eq 'Hotkey') {
-            switch ("$($selection.Value)") {
+            $actionKey = "$($selection.Value)"
+            if ($actionKey -eq '0') {
+                $inSubmenu = $false
+                return
+            }
+
+            Enter-ToolkitConsoleView -ActionTitle "Software Action: $actionKey" -NonInteractive:$NonInteractive
+            try {
+                switch ($actionKey) {
                 '9' {
                     if (Get-Command -Name 'Update-WingetPackage' -ErrorAction SilentlyContinue) {
                         Write-ToolkitStatus -Message "Initiating automated upgrade for all installed winget packages..." -Type 'INFO'
@@ -483,6 +512,17 @@ function Invoke-ToolkitSubmenuSoftwareOptimization {
                     $inSubmenu = $false
                     return
                 }
+                }
+            }
+            catch {
+                $errDetail = if ($_.Exception -and -not [string]::IsNullOrWhiteSpace($_.Exception.Message)) { $_.Exception.Message } else { "$_" }
+                if (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue) {
+                    Write-ToolkitStatus -Message "Action execution failed: $errDetail" -Type 'FAIL'
+                }
+                Wait-UserAcknowledge
+            }
+            finally {
+                Exit-ToolkitConsoleView
             }
         }
     }

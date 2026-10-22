@@ -41,6 +41,14 @@ if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinu
         . $confirmScript
     }
 }
+if (-not (Get-Command -Name 'Enter-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $enterConsole = Join-Path $PSScriptRoot 'Enter-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $enterConsole) { . $enterConsole }
+}
+if (-not (Get-Command -Name 'Exit-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $exitConsole = Join-Path $PSScriptRoot 'Exit-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $exitConsole) { . $exitConsole }
+}
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path -LiteralPath $headerScript) { . $headerScript }
@@ -221,7 +229,9 @@ function Invoke-ToolkitSubmenuOfficeCommon {
         }
 
         $actionKey = "$($selection.Value)"
-        switch ($actionKey) {
+        Enter-ToolkitConsoleView -ActionTitle "Office Suite & General Maintenance" -NonInteractive:$NonInteractive
+        try {
+            switch ($actionKey) {
             '1' {
                 if (Get-Command -Name 'Repair-OfficeClickToRunService' -ErrorAction SilentlyContinue) {
                     try {
@@ -342,6 +352,17 @@ function Invoke-ToolkitSubmenuOfficeCommon {
                 return
             }
         }
+    }
+    catch {
+        $errDetail = if ($_.Exception -and -not [string]::IsNullOrWhiteSpace($_.Exception.Message)) { $_.Exception.Message } else { "$_" }
+        if (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue) {
+            Write-ToolkitStatus -Message "Action execution failed: $errDetail" -Type 'FAIL'
+        }
+        Wait-UserAcknowledge
+    }
+    finally {
+        Exit-ToolkitConsoleView
+    }
     }
 }
 finally {

@@ -10,6 +10,14 @@ if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinu
         . $confirmScript
     }
 }
+if (-not (Get-Command -Name 'Enter-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $enterConsole = Join-Path $PSScriptRoot 'Enter-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $enterConsole) { . $enterConsole }
+}
+if (-not (Get-Command -Name 'Exit-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $exitConsole = Join-Path $PSScriptRoot 'Exit-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $exitConsole) { . $exitConsole }
+}
 
 if (-not (Get-Command -Name 'Enter-ToolkitTuiMode' -ErrorAction SilentlyContinue)) {
     $coreTui = Join-Path $PSScriptRoot '../../Core/Public/Enter-ToolkitTuiMode.ps1'
@@ -155,7 +163,9 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
             return
         }
 
-        switch ("$($selection.Value)") {
+        Enter-ToolkitConsoleView -ActionTitle "Network Device: $deviceName" -NonInteractive:$NonInteractive
+        try {
+            switch ("$($selection.Value)") {
             '1' {
                 if (Get-Command -Name 'Restart-ToolkitNetworkAdapter' -ErrorAction SilentlyContinue) {
                     try {
@@ -233,6 +243,17 @@ function Invoke-ToolkitNetworkDeviceContextMenu {
                 $inContext = $false
                 return
             }
+            }
+        }
+        catch {
+            $errDetail = if ($_.Exception -and -not [string]::IsNullOrWhiteSpace($_.Exception.Message)) { $_.Exception.Message } else { "$_" }
+            if (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue) {
+                Write-ToolkitStatus -Message "Action execution failed: $errDetail" -Type 'FAIL'
+            }
+            Wait-UserAcknowledge
+        }
+        finally {
+            Exit-ToolkitConsoleView
         }
     }
 }
@@ -373,8 +394,11 @@ function Invoke-ToolkitSubmenuConnectivity {
         }
 
         $actionKey = "$($selection.Value)"
+        if ($actionKey -eq '0') { return }
 
-        switch ($actionKey) {
+        Enter-ToolkitConsoleView -ActionTitle "Network Action: $actionKey" -NonInteractive:$NonInteractive
+        try {
+            switch ($actionKey) {
             { $_ -in @('10', '1') } {
                 if (-not (Confirm-ToolkitAction -ActionDescription "applying comprehensive network remediation fixes" -NonInteractive:$NonInteractive)) {
                     Write-ToolkitStatus -Message "Network remediation cancelled by user." -Type 'INFO'
@@ -501,6 +525,17 @@ function Invoke-ToolkitSubmenuConnectivity {
                 Wait-UserAcknowledge
             }
             '0' { return }
+            }
+        }
+        catch {
+            $errDetail = if ($_.Exception -and -not [string]::IsNullOrWhiteSpace($_.Exception.Message)) { $_.Exception.Message } else { "$_" }
+            if (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue) {
+                Write-ToolkitStatus -Message "Action execution failed: $errDetail" -Type 'FAIL'
+            }
+            Wait-UserAcknowledge
+        }
+        finally {
+            Exit-ToolkitConsoleView
         }
     }
 }

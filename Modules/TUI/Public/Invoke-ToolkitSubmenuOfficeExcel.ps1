@@ -37,6 +37,14 @@ if (-not (Get-Command -Name 'Confirm-ToolkitAction' -ErrorAction SilentlyContinu
     $confirmScript = Join-Path $PSScriptRoot '../Private/Confirm-ToolkitAction.ps1'
     if (Test-Path $confirmScript) { . $confirmScript }
 }
+if (-not (Get-Command -Name 'Enter-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $enterConsole = Join-Path $PSScriptRoot 'Enter-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $enterConsole) { . $enterConsole }
+}
+if (-not (Get-Command -Name 'Exit-ToolkitConsoleView' -ErrorAction SilentlyContinue)) {
+    $exitConsole = Join-Path $PSScriptRoot 'Exit-ToolkitConsoleView.ps1'
+    if (Test-Path -LiteralPath $exitConsole) { . $exitConsole }
+}
 if (-not (Get-Command -Name 'Show-ToolkitHeader' -ErrorAction SilentlyContinue)) {
     $headerScript = Join-Path $PSScriptRoot 'Show-ToolkitHeader.ps1'
     if (Test-Path $headerScript) { . $headerScript }
@@ -182,8 +190,9 @@ function Invoke-ToolkitSubmenuOfficeExcel {
         }
 
         $actionKey = "$($selection.Value)"
-
-        switch ($actionKey) {
+        Enter-ToolkitConsoleView -ActionTitle "Microsoft Excel Repairs" -NonInteractive:$NonInteractive
+        try {
+            switch ($actionKey) {
             '1' {
                 try {
                     Write-ToolkitStatus -Message "Scanning and isolating rogue XLSTART files..." -Type 'INFO'
@@ -329,6 +338,17 @@ function Invoke-ToolkitSubmenuOfficeExcel {
                 return
             }
         }
+    }
+    catch {
+        $errDetail = if ($_.Exception -and -not [string]::IsNullOrWhiteSpace($_.Exception.Message)) { $_.Exception.Message } else { "$_" }
+        if (Get-Command -Name 'Write-ToolkitStatus' -ErrorAction SilentlyContinue) {
+            Write-ToolkitStatus -Message "Action execution failed: $errDetail" -Type 'FAIL'
+        }
+        Wait-UserAcknowledge
+    }
+    finally {
+        Exit-ToolkitConsoleView
+    }
     }
 }
 finally {

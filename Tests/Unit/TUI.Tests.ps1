@@ -3626,4 +3626,384 @@ Describe 'Unit: Interactive Console TUI Menu Module' {
             }
         }
     }
+
+    Context 'Milestone 4: Live Console View & Post-Execution Pause' {
+        BeforeEach {
+            $global:ToolkitConsoleViewActive = $false
+            $global:ToolkitConsoleSavedDepth = $null
+            $global:ToolkitSuppressConsoleLog = $false
+            $global:ToolkitTuiActive = $false
+            $global:ToolkitTUIMode = $false
+            $global:ToolkitTuiDepth = 0
+            Remove-Item env:ITOOLKIT_TUI_MODE -ErrorAction SilentlyContinue
+        }
+
+        It 'Enter-ToolkitConsoleView transitions TUI to live console mode and emits banner' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 2
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            $captured = & { Enter-ToolkitConsoleView -ActionTitle 'Test Live Diagnostics' -NonInteractive } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+
+            $global:ToolkitConsoleViewActive | Should -BeTrue
+            $global:ToolkitSuppressConsoleLog | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeFalse
+            $global:ToolkitTUIMode | Should -BeFalse
+            $global:ToolkitTuiDepth | Should -Be 0
+            $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+
+            ($lines -join "`n") | Should -Match 'ITOOLKIT EXECUTION CONSOLE :: LIVE OUTPUT'
+            ($lines -join "`n") | Should -Match 'Test Live Diagnostics'
+        }
+
+        It 'Exit-ToolkitConsoleView restores TUI session suppression flags and depth' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 2
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            Enter-ToolkitConsoleView -ActionTitle 'Running Task' -NonInteractive
+            $global:ToolkitConsoleViewActive | Should -BeTrue
+
+            Exit-ToolkitConsoleView
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
+            $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitTUIMode | Should -BeTrue
+            $global:ToolkitTuiDepth | Should -Be 2
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+        }
+
+        It 'Wait-UserAcknowledge displays English prompt and calls Exit-ToolkitConsoleView in interactive mode' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitConsoleViewActive = $true
+            $global:ToolkitConsoleSavedDepth = 1
+
+            $script:readHostCalled = $false
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+
+            $captured = & { Wait-UserAcknowledge } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+
+            ($lines -join "`n") | Should -Match 'Press \[Enter\] to return to TUI\.\.\.'
+            $script:readHostCalled | Should -BeTrue
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+        }
+
+        It 'Wait-UserAcknowledge bypasses interactive pause when NonInteractive switch is supplied' -Skip:(-not $isTUIAvailable) {
+            $script:readHostCalled = $false
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+
+            Wait-UserAcknowledge -NonInteractive
+            $script:readHostCalled | Should -BeFalse
+        }
+
+        It 'Wait-UserAcknowledge inherits NonInteractive from caller scope without explicit parameter' -Skip:(-not $isTUIAvailable) {
+            $script:readHostCalled = $false
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+
+            & {
+                [switch]$NonInteractive = $true
+                Wait-UserAcknowledge
+            }
+            $script:readHostCalled | Should -BeFalse
+        }
+
+        It 'Invoke-ToolkitConsoleAction wraps execution in live console view and restores TUI upon completion' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+
+            $script:executed = $false
+            $actionBlock = {
+                $script:executed = $true
+                $global:ToolkitConsoleViewActive | Should -BeTrue
+                $global:ToolkitSuppressConsoleLog | Should -BeFalse
+            }
+
+            Invoke-ToolkitConsoleAction -Action $actionBlock -ActionTitle 'Unit Test Action' -NonInteractive
+            $script:executed | Should -BeTrue
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitSuppressConsoleLog | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitConsoleAction interactively prompts user to press Enter before restoring TUI' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+
+            $script:readHostCalled = $false
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+
+            $captured = & {
+                Invoke-ToolkitConsoleAction -Action {
+                    Write-Host "Action executed successfully"
+                } -ActionTitle 'Interactive Action'
+            } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+
+            $script:readHostCalled | Should -BeTrue
+            ($lines -join "`n") | Should -Match 'Press \[Enter\] to return to TUI\.\.\.'
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+        }
+
+        It 'Invoke-ToolkitConsoleAction displays FAIL status and pauses when action throws' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+
+            $script:readHostCalled = $false
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+
+            $captured = & {
+                try {
+                    Invoke-ToolkitConsoleAction -Action {
+                        throw "Simulated critical failure"
+                    } -ActionTitle 'Failing Action'
+                }
+                catch {
+                    Write-Host "Caught expected: $($_.Exception.Message)"
+                }
+            } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+
+            $script:readHostCalled | Should -BeTrue
+            ($lines -join "`n") | Should -Match 'Action execution failed: Simulated critical failure'
+            ($lines -join "`n") | Should -Match 'Press \[Enter\] to return to TUI\.\.\.'
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+        }
+
+        It 'Exit-ToolkitConsoleView does not leak TUI mode when called from non-TUI environment' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $false
+            $global:ToolkitTUIMode = $false
+            $global:ToolkitSuppressConsoleLog = $false
+            $global:ToolkitTuiDepth = 0
+            Remove-Item env:ITOOLKIT_TUI_MODE -ErrorAction SilentlyContinue
+
+            Enter-ToolkitConsoleView -ActionTitle 'Standalone Task' -NonInteractive
+            $global:ToolkitConsoleViewActive | Should -BeTrue
+
+            Exit-ToolkitConsoleView
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeFalse
+            $global:ToolkitTuiDepth | Should -Be 0
+            $env:ITOOLKIT_TUI_MODE | Should -BeNullOrEmpty
+        }
+
+        It 'Write-ToolkitLog unsuppresses console output when ToolkitConsoleViewActive is true' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitConsoleViewActive = $true
+
+            $captured = & { Write-ToolkitLog -Message "Real-time process status update" -Level INFO -Component 'LiveEngine' } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+
+            $lines | Should -Match '\[INFO\]\s+Real-time process status update'
+        }
+
+        It 'Write-ToolkitStatus outputs standard CLI prefix instead of compact TUI prefix when ToolkitConsoleViewActive is true' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitConsoleViewActive = $true
+
+            $captured = & { Write-ToolkitStatus -Message "Task finished successfully" -Type 'OK' } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+
+            ($lines -join "`n") | Should -Match '\[OK\]\s+Task finished successfully'
+            ($lines -join "`n") | Should -Not -Match '\s+\[\+\]\s+Task finished successfully'
+        }
+
+        It 'Exit-ToolkitConsoleView is idempotent and preserves TUI state when called multiple times in succession' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            Enter-ToolkitConsoleView -ActionTitle 'Idempotency Test' -NonInteractive
+            $global:ToolkitConsoleViewActive | Should -BeTrue
+
+            # First exit restores TUI mode
+            Exit-ToolkitConsoleView
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitTuiDepth | Should -Be 1
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+
+            # Second exit should be a safe no-op
+            Exit-ToolkitConsoleView
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitTuiDepth | Should -Be 1
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+        }
+
+        It 'Wait-UserAcknowledge called in active TUI session without Enter-ToolkitConsoleView does not destroy TUI state' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            Wait-UserAcknowledge -NonInteractive
+
+            $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitTuiDepth | Should -Be 1
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+        }
+
+        It 'Enter-ToolkitConsoleView and Exit-ToolkitConsoleView support nested action execution without state corruption' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            # Outer action enters console view
+            Enter-ToolkitConsoleView -ActionTitle 'Outer Task' -NonInteractive
+            $global:ToolkitConsoleViewActive | Should -BeTrue
+            $global:ToolkitConsoleViewDepth | Should -Be 1
+
+            # Inner action enters console view
+            Enter-ToolkitConsoleView -ActionTitle 'Inner Task' -NonInteractive
+            $global:ToolkitConsoleViewActive | Should -BeTrue
+            $global:ToolkitConsoleViewDepth | Should -Be 2
+
+            # Inner action exits
+            Exit-ToolkitConsoleView
+            $global:ToolkitConsoleViewActive | Should -BeTrue
+            $global:ToolkitConsoleViewDepth | Should -Be 1
+            $global:ToolkitTuiActive | Should -BeFalse
+
+            # Outer action exits
+            Exit-ToolkitConsoleView
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitConsoleViewDepth | Should -Be 0
+            $global:ToolkitTuiActive | Should -BeTrue
+            $global:ToolkitTuiDepth | Should -Be 1
+            $env:ITOOLKIT_TUI_MODE | Should -Be '1'
+        }
+
+        It 'Enter-ToolkitConsoleView respects env:ITOOLKIT_NON_INTERACTIVE without explicit parameter' -Skip:(-not $isTUIAvailable) {
+            $env:ITOOLKIT_NON_INTERACTIVE = '1'
+            try {
+                Enter-ToolkitConsoleView -ActionTitle 'Env NonInteractive'
+                $global:ToolkitConsoleNonInteractive | Should -BeTrue
+                Exit-ToolkitConsoleView
+            }
+            finally {
+                Remove-Item env:ITOOLKIT_NON_INTERACTIVE -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Nested non-interactive action preserves outer interactive session and post-execution pause' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            # Outer interactive console action enters
+            Enter-ToolkitConsoleView -ActionTitle 'Outer Interactive'
+            $global:ToolkitConsoleNonInteractive | Should -BeFalse
+
+            # Inner non-interactive task enters
+            Enter-ToolkitConsoleView -ActionTitle 'Inner NonInteractive' -NonInteractive
+            $global:ToolkitConsoleNonInteractive | Should -BeTrue
+
+            # Inner action exits
+            Exit-ToolkitConsoleView
+            $global:ToolkitConsoleNonInteractive | Should -BeFalse
+
+            # Outer action prompts user
+            $script:readHostCalled = $false
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+            Wait-UserAcknowledge
+            $script:readHostCalled | Should -BeTrue
+
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+        }
+
+        It 'Nested action within non-interactive console view inherits non-interactive mode' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            # Outer automated harness enters non-interactively
+            Enter-ToolkitConsoleView -ActionTitle 'Outer Automated' -NonInteractive
+            $global:ToolkitConsoleNonInteractive | Should -BeTrue
+
+            # Inner action enters without explicit NonInteractive switch
+            Enter-ToolkitConsoleView -ActionTitle 'Inner Inherited'
+            $global:ToolkitConsoleNonInteractive | Should -BeTrue
+
+            $script:readHostCalled = $false
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+            Wait-UserAcknowledge
+            $script:readHostCalled | Should -BeFalse
+
+            Wait-UserAcknowledge
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+        }
+
+        It 'Submenu catches unhandled action exceptions, displays FAIL status, and pauses before restoring TUI' -Skip:(-not $isTUIAvailable) {
+            $global:ToolkitTuiActive = $true
+            $global:ToolkitTUIMode = $true
+            $global:ToolkitSuppressConsoleLog = $true
+            $global:ToolkitTuiDepth = 1
+            $env:ITOOLKIT_TUI_MODE = '1'
+
+            # Mock Install-ToolkitApplication to throw in SoftwareOptimization context menu
+            Mock -ModuleName TUI Install-ToolkitApplication { throw "Mock installer network failure" }
+            Mock Install-ToolkitApplication { throw "Mock installer network failure" }
+            $script:readHostCalled = $false
+            Mock -ModuleName TUI Read-Host { $script:readHostCalled = $true; return '' }
+            Mock Read-Host { $script:readHostCalled = $true; return '' }
+
+            $appItem = [PSCustomObject]@{
+                AppName     = 'Chrome'
+                Name        = 'Chrome'
+                DisplayName = 'Google Chrome'
+                Installed   = $false
+                Status      = '[MISSING]'
+            }
+
+            $callCount = 0
+            Mock -ModuleName TUI Read-ToolkitItemSelection {
+                $script:callCount++
+                if ($script:callCount -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+            Mock Read-ToolkitItemSelection {
+                $script:callCount++
+                if ($script:callCount -eq 1) { return [PSCustomObject]@{ Type = 'Hotkey'; Value = '1' } }
+                return [PSCustomObject]@{ Type = 'Exit'; Value = '0' }
+            }
+
+            $captured = & {
+                Invoke-ToolkitApplicationContextMenu -SelectedApp $appItem
+            } 6>&1
+            $lines = if ($null -ne $captured) { @($captured | ForEach-Object { "$_" -split '\r?\n' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+
+            $script:readHostCalled | Should -BeTrue
+            ($lines -join "`n") | Should -Match 'Action execution failed: Mock installer network failure'
+            $global:ToolkitConsoleViewActive | Should -BeFalse
+            $global:ToolkitTuiActive | Should -BeTrue
+        }
+    }
 }
