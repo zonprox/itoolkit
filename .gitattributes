@@ -1,12 +1,12 @@
 # Auto detect text files and perform line normalization
 * text=auto
 
-# PowerShell scripts & Windows batch files
-*.ps1 text eol=crlf
-*.psm1 text eol=crlf
-*.psd1 text eol=crlf
-*.bat text eol=crlf
-*.cmd text eol=crlf
+# C# & .NET WPF Source and Project Files
+*.cs text eol=lf
+*.xaml text eol=lf
+*.csproj text eol=lf
+*.sln text eol=lf
+*.manifest text eol=lf
 
 # Shell scripts
 *.sh text eol=lf

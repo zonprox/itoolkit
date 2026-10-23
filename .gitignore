@@ -34,29 +34,30 @@ Logs/*.log
 RegistryBackup_*.reg
 *.reg.bak
 !Logs/.gitkeep
+!Backups/Registry/.gitkeep
 
 # --- Packaging, Distribution & Build Output -----------------------------------
 *.zip
 iToolKit.zip
-IToolkit.zip
 dist/
 out/
 artifacts/
+publish/
 
-# --- Test & Pester Execution Artifacts -----------------------------------------
+# --- .NET Build & Test Execution Artifacts ------------------------------------
+[Bb]in/
+[Oo]bj/
 TestResults/
 TestResults.xml
-Pester*.xml
 coverage/
 *.lcov
-
-# --- PowerShell Temporary & CLI Artifacts --------------------------------------
-*.ps1~
-*.psm1~
-*.psd1~
-*.clixml
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
 
 # --- IDE & Editor Settings ----------------------------------------------------
+.vs/
 .idea/
 .vscode/*
 !.vscode/settings.json
@@ -73,8 +74,3 @@ coverage/
 ._*
 Thumbs.db
 [Dd]esktop.ini
-
-# --- .NET Build Outputs ---
-[Bb]in/
-[Oo]bj/
-
