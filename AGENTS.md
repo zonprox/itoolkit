@@ -19,7 +19,7 @@ Before writing any new code or modifying existing code, stop at the first rung t
 
 1. **YAGNI (You Ain't Gonna Need It)**: Does this task or feature need to exist at all? If speculative, skip it and say so in one line.
 2. **Existing Codebase**: Does a helper, utility, pattern, or function already exist in this project? Look before you write; reuse existing code instead of re-implementing it.
-3. **Standard Library**: Does the standard runtime / standard library (e.g. .NET / PowerShell built-ins) already do this? Use it.
+3. **Standard Library**: Does the standard runtime / standard library (e.g. .NET BCL / runtime built-ins) already do this? Use it.
 4. **Native Platform Features**: Can native OS, CLI, or filesystem capabilities solve it directly? Use them.
 5. **Existing Dependencies**: Can an already-installed dependency or tool handle it? Never add new dependencies for what a few existing lines can do.
 6. **One-Liner**: Can this be expressed cleanly in a single line? Make it one line.
@@ -83,7 +83,7 @@ Never simplify away or cut corners on:
 4. **Security & Privilege Integrity**: Enforce least privilege, SecureString/credential safety, and elevation checks.
 5. **Runnable Verification**: Every non-trivial logic change leaves behind **one runnable check** (an assert self-check or unit test). Trivial one-liners need no test; YAGNI applies to tests too.
 6. **Explicit User Requests**: If the user insists on a full implementation after being presented with simpler options, build it without arguing.
-7. **Strictly English Artifacts**: Maintain 100% English across all scripts, TUI outputs, console logs, documentation, comments, and commit logs.
+7. **Strictly English Artifacts**: Maintain 100% English across all source code, UI text, console logs, documentation, comments, and commit logs.
 
 ---
 
@@ -104,16 +104,14 @@ Never simplify away or cut corners on:
 
 ## 6. Language & Localization Standard (Strictly English)
 
-- **100% English Codebase**: All source code, scripts, module functions, comments, UI text, logs, console messages, commit messages, and documentation must be written strictly in English.
+- **100% English Codebase**: All source code, methods, services, comments, UI text, logs, console messages, commit messages, and documentation must be written strictly in English.
 - **Zero Foreign Language Residue**: Do not introduce non-English strings into code, manifests, launchers, or output streams unless specifically required for localized test fixtures.
 
 ---
 
-## 7. Application Catalog & Installer Standards (`AppInstaller`)
+## 7. Application Catalog & Installer Standards (`AppInstallerService`)
 
 - **Concise Naming**: Always use concise, canonical application names for both `DisplayName` and `ShortcutName` (e.g., `UniKey`, `UltraVNC`, `Google Chrome`, `Foxit PDF Reader`, `K-Lite Codec Pack`, `Visual C++ Redistributable AIO`, `Zalo`, `WinRAR`).
-- **Winget Support Verification**: Whenever adding, removing, or updating an application in the catalog (`Install-ToolkitApplication`, `Get-ToolkitInstalledApplication`, `Resolve-ToolkitApplicationDownloadUrl`), always verify whether the application has a valid, officially maintained Winget package ID before choosing its installation mode:
+- **Winget Support Verification**: Whenever adding, removing, or updating an application in the catalog (`AppInstallerService`, `InstallApplicationAsync`, `GetInstalledApplications`, `ResolveDownloadUrl`), always verify whether the application has a valid, officially maintained Winget package ID before choosing its installation mode:
   - **Winget-Supported Apps**: Configure `WingetId` as the primary installation method with direct-download URL fallback.
-  - **Non-Winget Apps (e.g., `UniKey`, `VCRedistAIO`, `Zalo`, `UltraVNC`)**: Set `WingetId = $null` to bypass Winget, download the official installer or archive directly to `$TEMP`, execute silent installation or archive extraction, and always clean up (`Remove-Item`) temporary downloaded files upon completion.
-
-
+  - **Non-Winget Apps (e.g., `UniKey`, `VCRedistAIO`, `Zalo`, `UltraVNC`)**: Set `WingetId = null` to bypass Winget, download the official installer or archive directly to `%TEMP%`, execute silent installation or archive extraction, and always clean up (`IFileSystemService.DeleteFile`) temporary downloaded files upon completion.

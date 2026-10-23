@@ -1,5 +1,5 @@
 # ==============================================================================
-# IToolkit .gitignore - PowerShell IT Administration Toolkit
+# iToolKit .gitignore - Native C# .NET 8 WPF IT Administration Toolkit
 # ==============================================================================
 
 # --- Codebase Memory & AI Agent Tooling ---------------------------------------
@@ -37,6 +37,7 @@ RegistryBackup_*.reg
 
 # --- Packaging, Distribution & Build Output -----------------------------------
 *.zip
+iToolKit.zip
 IToolkit.zip
 dist/
 out/
@@ -71,6 +72,9 @@ coverage/
 .DS_Store?
 ._*
 Thumbs.db
-ehthumbs.db
-desktop.ini
 [Dd]esktop.ini
+
+# --- .NET Build Outputs ---
+[Bb]in/
+[Oo]bj/
+

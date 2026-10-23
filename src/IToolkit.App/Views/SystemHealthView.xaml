@@ -1,0 +1,111 @@
+<UserControl x:Class="IToolkit.App.Views.SystemHealthView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
+             xmlns:converters="clr-namespace:IToolkit.App.Converters"
+             d:DataContext="{d:DesignInstance Type=vm:SystemHealthViewModel}"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24" MaxWidth="1000" HorizontalAlignment="Stretch">
+            <!-- Header -->
+            <TextBlock Text="System Health &amp; Component Maintenance" FontSize="20" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,4"/>
+            <TextBlock Text="Automated DISM/SFC image repairs, Windows Update reset, WMI repository salvage, and unified storage cleanup." FontSize="13" Foreground="#AAAAAA" Margin="0,0,0,20"/>
+
+            <!-- Execution Status Banner -->
+            <Border Background="#252528" CornerRadius="6" Padding="14" Margin="0,0,0,16" BorderBrush="#3A3A3E" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="Current Operation Status" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/>
+                        <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium" Foreground="#E0E0E0" Margin="0,4,0,0"/>
+                    </StackPanel>
+                    <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="120" Height="6" VerticalAlignment="Center" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}"/>
+                </Grid>
+            </Border>
+
+            <!-- Card 1: DISM & SFC Image & File Integrity -->
+            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="1. Windows Image &amp; File Integrity (DISM &amp; SFC)" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
+                    <TextBlock Text="Execute dual DISM RestoreHealth and SFC Scannow integrity checks to repair component store and protected OS files." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                    
+                    <WrapPanel Margin="0,0,0,12">
+                        <Button Content="Run DISM + SFC Combo Repair" Command="{Binding RunDismSfcPipelineCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" FontWeight="SemiBold" Background="#0067C0" Foreground="#FFFFFF" Margin="0,0,10,8"/>
+                        <Button Content="Run SFC Scan Only" Command="{Binding RunSfcScanCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
+                        <Button Content="Run DISM RestoreHealth" Command="{Binding RunDismRestoreHealthCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
+                    </WrapPanel>
+
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding LastDismStatus, StringFormat='DISM Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
+                        <TextBlock Grid.Column="1" Text="{Binding LastSfcStatus, StringFormat='SFC Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Card 2: Windows Update Subsystem -->
+            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="2. Windows Update Subsystem Reset" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
+                    <TextBlock Text="Stops update services (wuauserv, cryptsvc, bits, msiserver), renames SoftwareDistribution and Catroot2, re-registers 35 DLLs, and restarts services." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                    
+                    <WrapPanel Margin="0,0,0,12">
+                        <Button Content="Reset Windows Update Components" Command="{Binding ResetWindowsUpdateCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,0"/>
+                    </WrapPanel>
+
+                    <TextBlock Text="{Binding LastWindowsUpdateStatus, StringFormat='WU Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Card 3: WMI Repository -->
+            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="3. WMI Repository Maintenance" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
+                    <TextBlock Text="Verifies WMI repository consistency and executes /salvagerepository repair to resolve CIM/WMI corruption." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                    
+                    <WrapPanel Margin="0,0,0,12">
+                        <Button Content="Salvage WMI Repository" Command="{Binding RepairWmiCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,0"/>
+                    </WrapPanel>
+
+                    <TextBlock Text="{Binding LastWmiStatus, StringFormat='WMI Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Card 4: Unified Storage & Component Store Cleanup -->
+            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="4. Unified Storage &amp; WinSxS Cleanup" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
+                    <TextBlock Text="Purges WinSxS component supersedence, Windows Update download cache, Delivery Optimization cache, and temp files." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                        <TextBlock Text="Temp Files Age Threshold:" VerticalAlignment="Center" Foreground="#E0E0E0" Margin="0,0,12,0" FontSize="12"/>
+                        <ComboBox SelectedValue="{Binding SelectedCleanupThresholdHours, Mode=TwoWay}" SelectedValuePath="Tag" Width="180">
+                            <ComboBoxItem Content="24 Hours (Recommended)" Tag="24" IsSelected="True"/>
+                            <ComboBoxItem Content="7 Days" Tag="168"/>
+                        </ComboBox>
+                        <CheckBox Content="Deep WinSxS Cleanup (ResetBase)" IsChecked="{Binding WinSxSResetBase, Mode=TwoWay}" VerticalAlignment="Center" Foreground="#E0E0E0" Margin="24,0,0,0" FontSize="12"/>
+                    </StackPanel>
+
+                    <WrapPanel Margin="0,0,0,12">
+                        <Button Content="Run Unified Disk Cleanup" Command="{Binding RunUnifiedDiskCleanupCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#0067C0" Foreground="#FFFFFF" Margin="0,0,10,8"/>
+                        <Button Content="Run WinSxS Component Cleanup" Command="{Binding CleanWinSxSCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
+                    </WrapPanel>
+
+                    <TextBlock Text="{Binding LastCleanupSummary, StringFormat='Cleanup Summary: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

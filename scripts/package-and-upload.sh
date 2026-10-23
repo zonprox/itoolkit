@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # package-and-upload.sh
-# Release packaging and multi-provider public upload helper for IToolkit.
-# Creates clean standalone IToolkit.zip and uploads to public host (onlyfiles.com / storage.to).
+# Release packaging and multi-provider public upload helper for iToolKit.
+# Compiles native C# .NET 8 win-x64 standalone single-file executable,
+# packages clean iToolKit.zip, and uploads to public cloud (onlyfiles.com / storage.to).
 # ==============================================================================
 set -euo pipefail
+
+# Ensure .NET SDK in PATH and invariant globalization mode for non-Windows hosts
+export PATH="$HOME/.dotnet:$PATH"
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -42,7 +47,7 @@ while [ $# -gt 0 ]; do
             echo "  -h, --help          Show this help message"
             echo ""
             echo "Positional Arguments (optional):"
-            echo "  ZIP_PATH            Path for output archive (default: IToolkit.zip)"
+            echo "  ZIP_PATH            Path for output archive (default: iToolKit.zip)"
             echo "  PROVIDER            Provider if not specified via --provider (default: auto)"
             exit 0
             ;;
@@ -57,11 +62,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-ZIP_PATH="${ZIP_PATH:-$REPO_ROOT/IToolkit.zip}"
+ZIP_PATH="${ZIP_PATH:-$REPO_ROOT/iToolKit.zip}"
 PROVIDER="${PROVIDER:-auto}"
 
 echo "================================================================================"
-echo "          IToolkit Bash Release Packaging & Public Cloud Distribution           "
+echo "          iToolKit Bash Release Packaging & Public Cloud Distribution           "
 echo "================================================================================"
 echo "  Repository Root : $REPO_ROOT"
 echo "  Output Archive  : $ZIP_PATH"
@@ -69,74 +74,54 @@ echo "  Target Provider : $PROVIDER"
 echo "  Upload Mode     : $(if [ "$SKIP_UPLOAD" = true ]; then echo "Skip (Local Only)"; else echo "Upload Requested"; fi)"
 echo "================================================================================"
 
-# If PowerShell Core (pwsh) is available, prioritize the PowerShell packaging engine
-if command -v pwsh >/dev/null 2>&1 && [ -f "$REPO_ROOT/Build-IToolkitPackage.ps1" ]; then
-    echo "[Info] Utilizing PowerShell packaging engine via pwsh..."
-    PWSH_ARGS=(-NoProfile -File "$REPO_ROOT/Build-IToolkitPackage.ps1" -DestinationPath "$ZIP_PATH" -Provider "$PROVIDER" -Force)
-    if [ "$SKIP_UPLOAD" = true ]; then
-        PWSH_ARGS+=(-SkipUpload)
-    else
-        PWSH_ARGS+=(-Upload)
-    fi
-    pwsh "${PWSH_ARGS[@]}"
-    exit 0
-fi
-
-# Fallback: Pure Bash Staging & Zip Generation
-echo "[1/4] Staging production runtime files in temporary workspace..."
-TEMP_STAGE="$(mktemp -d /tmp/itoolkit_pkg_XXXXXX)"
-trap 'rm -rf "$TEMP_STAGE"' EXIT
-
-CONTENT_DIR="$TEMP_STAGE/Content"
-mkdir -p "$CONTENT_DIR"
-mkdir -p "$CONTENT_DIR/Modules"
-
-# Whitelist root production files
-for f in IToolkit.psd1 IToolkit.psm1 Start-IToolkit.ps1 Run-IToolkit.bat README.md; do
-    if [ -f "$REPO_ROOT/$f" ]; then
-        cp -p "$REPO_ROOT/$f" "$CONTENT_DIR/"
-        echo "  + Staged root file: $f"
-    fi
-done
-
-# Whitelist production modules
-MODULES=(Core Outlook Office Printers Network Backup Accounts ExternalTools WindowsRepair WindowsCleanup AppInstaller TUI)
-for mod in "${MODULES[@]}"; do
-    if [ -d "$REPO_ROOT/Modules/$mod" ]; then
-        cp -r "$REPO_ROOT/Modules/$mod" "$CONTENT_DIR/Modules/"
-        echo "  + Staged module: Modules/$mod"
-    fi
-done
-
-# Ensure clean Logs directory exists in package for diagnostic log retention
-mkdir -p "$CONTENT_DIR/Logs"
-touch "$CONTENT_DIR/Logs/.gitkeep"
-
-# Sanitize staging: remove accidental logs, temps, or backups
-echo "[2/4] Sanitizing package contents..."
-find "$CONTENT_DIR" -type f \( -name "*.log" -o -name "*.tmp" -o -name "*.bak" -o -name "*.orig" -o -name "RegistryBackup_*.reg" -o -name ".DS_Store" -o -name "Thumbs.db" \) -delete 2>/dev/null || true
-
-# Assert no prohibited paths exist
-if find "$CONTENT_DIR" -type d \( -name ".git" -o -name ".agents" -o -name ".codebase-memory" -o -name "Tests" -o -name "Build" -o -name "scripts" -o -name "Backups" \) | grep -q .; then
-    echo "[Error] Security assertion failed: Disallowed development directory found in staging!" >&2
+# Validate .NET SDK presence
+if ! command -v dotnet >/dev/null 2>&1; then
+    echo "[Error] .NET SDK (dotnet) not found in PATH." >&2
     exit 1
 fi
 
-# Create ZIP archive
-echo "[3/4] Creating standalone ZIP archive: $ZIP_PATH..."
+# Step 1: Clean-slate .NET compilation & publication
+echo "[1/4] Compiling and publishing self-contained win-x64 release via .NET SDK..."
+STAGE_DIR="$(mktemp -d /tmp/itoolkit_publish_XXXXXX)"
+trap 'rm -rf "$STAGE_DIR"' EXIT
+
+dotnet publish "$REPO_ROOT/src/IToolkit.App/IToolkit.App.csproj" \
+    -c Release \
+    -r win-x64 \
+    --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
+    -p:IncludeAllContentForSelfExtract=true \
+    -p:EnableWindowsTargeting=true \
+    -o "$STAGE_DIR"
+
+if [ ! -f "$STAGE_DIR/iToolKit.exe" ]; then
+    echo "[Error] Build artifact $STAGE_DIR/iToolKit.exe was not created." >&2
+    exit 1
+fi
+
+# Sanitize stage directory: remove PDB debug files and stage README.md
+rm -f "$STAGE_DIR"/*.pdb
+if [ -f "$REPO_ROOT/README.md" ]; then
+    cp "$REPO_ROOT/README.md" "$STAGE_DIR/README.md"
+fi
+
+# Step 2: Standalone ZIP Archive Packaging
+echo "[2/4] Packaging standalone ZIP archive: $ZIP_PATH..."
 rm -f "$ZIP_PATH"
+mkdir -p "$(dirname "$ZIP_PATH")"
 
 if command -v zip >/dev/null 2>&1; then
-    (cd "$CONTENT_DIR" && zip -qr "$ZIP_PATH" .)
+    (cd "$STAGE_DIR" && zip -qr "$ZIP_PATH" .)
 elif command -v python3 >/dev/null 2>&1; then
-    (cd "$CONTENT_DIR" && python3 -c '
+    (cd "$STAGE_DIR" && python3 -c '
 import zipfile, os, sys
 dest = sys.argv[1]
-with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
     for root, dirs, files in os.walk("."):
         for file in files:
             full_path = os.path.join(root, file)
-            arcname = os.path.normpath(full_path)
+            arcname = os.path.relpath(full_path, ".")
             zf.write(full_path, arcname)
 ' "$ZIP_PATH")
 else
@@ -155,17 +140,20 @@ SHA256="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
 echo "  -> Archive created: $ZIP_PATH ($FILE_SIZE bytes)"
 echo "  -> SHA-256 Checksum: $SHA256"
 
-# Public Cloud Upload
+# Step 3: Public Cloud Upload
 UPLOAD_URL=""
+ONLYFILES_URL=""
+STORAGE_TO_URL=""
+
 if [ "$SKIP_UPLOAD" = true ]; then
-    echo "[4/4] Upload skipped (--skip-upload requested; local package build only)."
+    echo "[3/4] Upload skipped (--skip-upload requested; local package build only)."
 else
-    echo "[4/4] Uploading to public cloud hosting service..."
+    echo "[3/4] Uploading to public cloud hosting service..."
 
     upload_onlyfiles() {
         local target="$1"
         local resp
-        resp="$(curl -s -F "file=@$target" -F "expire=0" https://api.onlyfiles.com/v1/upload 2>/dev/null || true)"
+        resp="$(curl -m 300 -s -F "file=@$target" -F "expire=0" https://api.onlyfiles.com/v1/upload 2>/dev/null || true)"
         if [ -n "$resp" ]; then
             local full_url
             full_url="$(echo "$resp" | grep -o 'https://onlyfiles\.com/[^"]*' | head -n 1 || true)"
@@ -197,7 +185,7 @@ else
         fi
 
         local put_status
-        put_status="$(curl -m 60 -s -o /dev/null -w "%{http_code}" -X PUT -T "$target" -H "Content-Type: application/zip" "$upload_url" 2>/dev/null || true)"
+        put_status="$(curl -m 300 -s -o /dev/null -w "%{http_code}" -X PUT -T "$target" -H "Content-Type: application/zip" "$upload_url" 2>/dev/null || true)"
         if [ "$put_status" != "200" ]; then
             return
         fi
@@ -215,13 +203,12 @@ else
         fi
     }
 
-    ONLYFILES_URL=""
-    STORAGE_TO_URL=""
-
     if [ "$PROVIDER" = "onlyfiles" ]; then
+        echo "  Uploading to onlyfiles.com..."
         ONLYFILES_URL="$(upload_onlyfiles "$ZIP_PATH")"
         UPLOAD_URL="$ONLYFILES_URL"
     elif [ "$PROVIDER" = "storage.to" ] || [ "$PROVIDER" = "storageto" ]; then
+        echo "  Uploading to storage.to..."
         STORAGE_TO_URL="$(upload_storage_to "$ZIP_PATH")"
         UPLOAD_URL="$STORAGE_TO_URL"
     else
@@ -243,8 +230,9 @@ else
     fi
 fi
 
+# Step 4: Summary Output
 echo "================================================================================"
-echo "                        IToolkit Release Summary                                "
+echo "                        iToolKit Release Summary                                "
 echo "================================================================================"
 echo "  Archive Path : $ZIP_PATH"
 echo "  File Size    : $FILE_SIZE bytes"
@@ -264,8 +252,8 @@ elif [ -n "${ONLYFILES_URL:-}" ] || [ -n "${STORAGE_TO_URL:-}" ] || [ -n "$UPLOA
         echo "  Download URL             : $UPLOAD_URL"
     fi
     echo "================================================================================"
-    echo "  Distribution Ready: Download and extract on Windows 10/11,"
-    echo "  then run Run-IToolkit.bat or Start-IToolkit.ps1."
+    echo "  Distribution Ready: Download and extract iToolKit.zip on Windows 10/11 x64,"
+    echo "  then run iToolKit.exe directly."
 else
     echo "  [Warning] Public upload failed or timed out. Archive preserved locally."
 fi
