@@ -17,6 +17,8 @@ public class SystemHealthViewModel : ViewModelBase
     private string _lastDismStatus = "Ready";
     private string _lastSfcStatus = "Ready";
     private string _lastWindowsUpdateStatus = "Ready";
+    private string _lastWindowsUpdateBlockStatus = "Ready";
+    private string _lastTimeSyncStatus = "Ready";
     private string _lastWmiStatus = "Ready";
     private string _lastCleanupSummary = "Ready";
     private bool _rebootRequired;
@@ -39,6 +41,9 @@ public class SystemHealthViewModel : ViewModelBase
         RunSfcScanCommand = new AsyncRelayCommand(RunSfcScanAsync, () => IsNotBusy);
         RunDismRestoreHealthCommand = new AsyncRelayCommand(RunDismRestoreHealthAsync, () => IsNotBusy);
         ResetWindowsUpdateCommand = new AsyncRelayCommand(ResetWindowsUpdateAsync, () => IsNotBusy);
+        BlockWindowsUpdatesCommand = new AsyncRelayCommand(BlockWindowsUpdatesAsync, () => IsNotBusy);
+        UnblockWindowsUpdatesCommand = new AsyncRelayCommand(UnblockWindowsUpdatesAsync, () => IsNotBusy);
+        SyncSystemTimeCommand = new AsyncRelayCommand(SyncSystemTimeAsync, () => IsNotBusy);
         RepairWmiCommand = new AsyncRelayCommand(RepairWmiAsync, () => IsNotBusy);
         CleanWinSxSCommand = new AsyncRelayCommand(CleanWinSxSAsync, () => IsNotBusy);
         RunUnifiedDiskCleanupCommand = new AsyncRelayCommand(RunUnifiedDiskCleanupAsync, () => IsNotBusy);
@@ -92,6 +97,18 @@ public class SystemHealthViewModel : ViewModelBase
         set => SetProperty(ref _lastWindowsUpdateStatus, value);
     }
 
+    public string LastWindowsUpdateBlockStatus
+    {
+        get => _lastWindowsUpdateBlockStatus;
+        set => SetProperty(ref _lastWindowsUpdateBlockStatus, value);
+    }
+
+    public string LastTimeSyncStatus
+    {
+        get => _lastTimeSyncStatus;
+        set => SetProperty(ref _lastTimeSyncStatus, value);
+    }
+
     public string LastWmiStatus
     {
         get => _lastWmiStatus;
@@ -116,6 +133,9 @@ public class SystemHealthViewModel : ViewModelBase
     public IAsyncRelayCommand RunSfcScanCommand { get; }
     public IAsyncRelayCommand RunDismRestoreHealthCommand { get; }
     public IAsyncRelayCommand ResetWindowsUpdateCommand { get; }
+    public IAsyncRelayCommand BlockWindowsUpdatesCommand { get; }
+    public IAsyncRelayCommand UnblockWindowsUpdatesCommand { get; }
+    public IAsyncRelayCommand SyncSystemTimeCommand { get; }
     public IAsyncRelayCommand RepairWmiCommand { get; }
     public IAsyncRelayCommand CleanWinSxSCommand { get; }
     public IAsyncRelayCommand RunUnifiedDiskCleanupCommand { get; }
@@ -161,6 +181,42 @@ public class SystemHealthViewModel : ViewModelBase
             LastWindowsUpdateStatus = res.Success
                 ? $"Windows Update Reset: {res.ReRegisteredDllCount} DLLs registered, services restarted."
                 : $"Windows Update Reset Failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task BlockWindowsUpdatesAsync()
+    {
+        await ExecuteAsync("Block Windows Updates (Win 10/11)", () =>
+        {
+            var res = _systemHealthService.BlockWindowsUpdates();
+            LastWindowsUpdateBlockStatus = res.Success
+                ? "Windows Updates: Blocked (Services & Policies Locked)"
+                : $"Block Failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task UnblockWindowsUpdatesAsync()
+    {
+        await ExecuteAsync("Unblock Windows Updates (Win 10/11)", () =>
+        {
+            var res = _systemHealthService.UnblockWindowsUpdates();
+            LastWindowsUpdateBlockStatus = res.Success
+                ? "Windows Updates: Unblocked (Services & Policies Restored)"
+                : $"Unblock Failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task SyncSystemTimeAsync()
+    {
+        await ExecuteAsync("Server Time Synchronization (W32Time)", () =>
+        {
+            var res = _systemHealthService.SyncSystemTime();
+            LastTimeSyncStatus = res.Success
+                ? "System Time: Synchronized with server."
+                : $"Time Sync Failed: {res.Message}";
             return Task.CompletedTask;
         });
     }

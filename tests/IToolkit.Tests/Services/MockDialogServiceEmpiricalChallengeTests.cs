@@ -182,13 +182,13 @@ public class MockDialogServiceEmpiricalChallengeTests
     {
         // Locate iToolKit.dll which contains WpfDialogService
         string appAssemblyPath = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "src", "IToolkit.App", "bin", "Release", "net10.0-windows", "win-x64", "iToolKit.dll"));
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "src", "IToolkit.App", "bin", "Release", "net8.0-windows", "win-x64", "iToolKit.dll"));
 
         if (!File.Exists(appAssemblyPath))
         {
             // If the Release binary is not at the expected path, attempt debug or current configuration
             appAssemblyPath = Path.GetFullPath(
-                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "src", "IToolkit.App", "bin", "Debug", "net10.0-windows", "win-x64", "iToolKit.dll"));
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "src", "IToolkit.App", "bin", "Debug", "net8.0-windows", "win-x64", "iToolKit.dll"));
         }
 
         // Only run if the WPF assembly has been compiled on this system

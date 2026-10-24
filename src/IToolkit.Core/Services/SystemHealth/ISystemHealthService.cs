@@ -13,6 +13,9 @@ public interface ISystemHealthService
     SfcScanResult RunSfcScan();
     (DismScanResult DismResult, SfcScanResult SfcResult) RunDismSfcPipeline(string? source = null, bool limitAccess = false);
     WindowsUpdateResetResult ResetWindowsUpdateComponents();
+    WindowsUpdateBlockResult BlockWindowsUpdates();
+    WindowsUpdateBlockResult UnblockWindowsUpdates();
+    TimeSyncResult SyncSystemTime(string? ntpServers = null);
     WmiRepairResult RepairWmiRepository();
     ComponentCleanupResult CleanWinSxS(bool resetBase = false);
     StorageCleanupResult RunUnifiedDiskCleanup(int tempAgeHoursThreshold = 24);

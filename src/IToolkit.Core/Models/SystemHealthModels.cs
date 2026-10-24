@@ -78,3 +78,25 @@ public record WmiRepairResult(
     bool Salvaged,
     bool Reset,
     string Output);
+
+/// <summary>
+/// Result of Windows Time (W32Time) server synchronization repair.
+/// </summary>
+public record TimeSyncResult(
+    bool Success,
+    string NtpServers,
+    bool ServiceRegistered,
+    bool ServiceStarted,
+    bool Resynced,
+    string Output,
+    string Message = "");
+
+/// <summary>
+/// Result of blocking or unblocking Windows Update on Windows 10/11.
+/// </summary>
+public record WindowsUpdateBlockResult(
+    bool Success,
+    bool IsBlocked,
+    IReadOnlyList<string> ConfiguredServices,
+    bool PolicyApplied,
+    string Message = "");

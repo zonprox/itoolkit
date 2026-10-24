@@ -144,6 +144,41 @@
                                     </StackPanel>
                                 </DockPanel>
                             </Border>
+
+                            <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,12">
+                                <DockPanel LastChildFill="False">
+                                    <StackPanel DockPanel.Dock="Top">
+                                        <TextBlock Text="Windows Update Blocker (Windows 10 / 11)" Style="{StaticResource FluentSectionTitleStyle}" />
+                                        <TextBlock Text="Block or unblock automatic Windows Updates on Windows 10 and 11 via update services and Group Policy locks."
+                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel DockPanel.Dock="Bottom">
+                                        <WrapPanel Margin="0,0,0,8">
+                                            <Button Content="Block Updates" Command="{Binding BlockWindowsUpdatesCommand}"
+                                                    IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,0" />
+                                            <Button Content="Unblock Updates" Command="{Binding UnblockWindowsUpdatesCommand}"
+                                                    IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="14,7" />
+                                        </WrapPanel>
+                                        <TextBlock Text="{Binding LastWindowsUpdateBlockStatus, StringFormat='Result: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource FluentCardStyle}" Margin="6,0,0,12">
+                                <DockPanel LastChildFill="False">
+                                    <StackPanel DockPanel.Dock="Top">
+                                        <TextBlock Text="Server Time Synchronization (W32Time)" Style="{StaticResource FluentSectionTitleStyle}" />
+                                        <TextBlock Text="Re-register W32Time service, configure NTP and domain peers, and force immediate server clock synchronization."
+                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel DockPanel.Dock="Bottom">
+                                        <Button Content="Sync Server Time" Command="{Binding SyncSystemTimeCommand}"
+                                                IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                                HorizontalAlignment="Left" Padding="14,7" Margin="0,0,0,8" />
+                                        <TextBlock Text="{Binding LastTimeSyncStatus, StringFormat='Result: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
                         </UniformGrid>
                     </StackPanel>
                 </ScrollViewer>

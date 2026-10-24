@@ -426,7 +426,7 @@ public class ViewModelSmartControlTests
         var backupMock = new Mock<IBackupService>();
 
         identityMock.Setup(i => i.RemoveLocalAccount(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        backupMock.Setup(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>()))
+        backupMock.Setup(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>(), null))
             .Returns(new ProfileRestoreResult(true, 10, true, "Restored"));
         backupMock.Setup(b => b.GetUserProfileMap(null))
             .Returns(new UserProfileMap("User", @"C:\Users\User", "", "", "", "", "", false));
@@ -447,7 +447,7 @@ public class ViewModelSmartControlTests
         Assert.Contains("cancelled by user", vm.LastIdentityStatus);
 
         await vm.RestoreProfileCommand.ExecuteAsync(null);
-        backupMock.Verify(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        backupMock.Verify(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>(), null), Times.Never);
         Assert.Contains("cancelled by user", vm.LastBackupStatus);
 
         await vm.ExecuteProfileBackupCommand.ExecuteAsync(null);
@@ -461,7 +461,7 @@ public class ViewModelSmartControlTests
         identityMock.Verify(i => i.RemoveLocalAccount("TestUser", "S-1-5-21-1234"), Times.Once);
 
         await vm.RestoreProfileCommand.ExecuteAsync(null);
-        backupMock.Verify(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        backupMock.Verify(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>(), null), Times.Once);
 
         await vm.ExecuteProfileBackupCommand.ExecuteAsync(null);
         backupMock.Verify(b => b.RunRobocopySync(It.IsAny<string>(), It.IsAny<string>(), true), Times.Once);

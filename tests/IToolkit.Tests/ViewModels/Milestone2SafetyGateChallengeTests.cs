@@ -305,7 +305,7 @@ public class Milestone2SafetyGateChallengeTests
         _dialogService.ConfirmationResult = false;
         await vm.RestoreProfileCommand.ExecuteAsync(null);
 
-        backupMock.Verify(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        backupMock.Verify(b => b.RestoreProfileData(It.IsAny<string>(), It.IsAny<string>(), null), Times.Never);
         Assert.Contains("cancelled by user", vm.LastBackupStatus);
         _loggerMock.Verify(l => l.LogWarning(
             nameof(IdentityBackupViewModel),
@@ -317,7 +317,8 @@ public class Milestone2SafetyGateChallengeTests
     {
         var identityMock = new Mock<IIdentityService>();
         var backupMock = new Mock<IBackupService>();
-        backupMock.Setup(b => b.RestoreProfileData(@"D:\Backups\ProfileSource", @"D:\Backups\ProfileSource\iToolKit_Backup_Manifest.json"))
+        string expectedManifest = System.IO.Path.Combine(@"D:\Backups\ProfileSource", "iToolKit_Backup_Manifest.json");
+        backupMock.Setup(b => b.RestoreProfileData(@"D:\Backups\ProfileSource", expectedManifest, null))
             .Returns(new ProfileRestoreResult(true, 42, true, "Restored"));
 
         var vm = new IdentityBackupViewModel(identityMock.Object, backupMock.Object, _loggerMock.Object, _dialogService, _dialogService)
@@ -328,7 +329,7 @@ public class Milestone2SafetyGateChallengeTests
         _dialogService.ConfirmationResult = true;
         await vm.RestoreProfileCommand.ExecuteAsync(null);
 
-        backupMock.Verify(b => b.RestoreProfileData(@"D:\Backups\ProfileSource", @"D:\Backups\ProfileSource\iToolKit_Backup_Manifest.json"), Times.Once);
+        backupMock.Verify(b => b.RestoreProfileData(@"D:\Backups\ProfileSource", expectedManifest, null), Times.Once);
         Assert.Contains("42 files restored", vm.LastBackupStatus);
     }
 

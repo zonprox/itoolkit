@@ -115,4 +115,38 @@ public class SystemHealthViewModelTests
         Assert.Contains("Reclaimed 500.0 MB", vm.LastCleanupSummary);
         Assert.Contains("across 142 files", vm.LastCleanupSummary);
     }
+
+    [Fact]
+    public async Task BlockAndUnblockWindowsUpdatesCommands_ExecuteAndUpdateStatus()
+    {
+        _healthServiceMock
+            .Setup(s => s.BlockWindowsUpdates())
+            .Returns(new WindowsUpdateBlockResult(true, true, new[] { "wuauserv", "UsoSvc" }, true, "Blocked"));
+        _healthServiceMock
+            .Setup(s => s.UnblockWindowsUpdates())
+            .Returns(new WindowsUpdateBlockResult(true, false, new[] { "wuauserv", "UsoSvc" }, true, "Unblocked"));
+
+        var vm = new SystemHealthViewModel(_healthServiceMock.Object, _loggerMock.Object);
+
+        await vm.BlockWindowsUpdatesCommand.ExecuteAsync(null);
+        Assert.Contains("Blocked", vm.LastWindowsUpdateBlockStatus);
+
+        await vm.UnblockWindowsUpdatesCommand.ExecuteAsync(null);
+        Assert.Contains("Unblocked", vm.LastWindowsUpdateBlockStatus);
+    }
+
+    [Fact]
+    public async Task SyncSystemTimeCommand_ExecutesAndUpdatesStatus()
+    {
+        _healthServiceMock
+            .Setup(s => s.SyncSystemTime(null))
+            .Returns(new TimeSyncResult(true, SystemHealthService.DefaultNtpServers, true, true, true, "The command completed successfully."));
+
+        var vm = new SystemHealthViewModel(_healthServiceMock.Object, _loggerMock.Object);
+
+        await vm.SyncSystemTimeCommand.ExecuteAsync(null);
+
+        Assert.Contains("Synchronized", vm.LastTimeSyncStatus);
+        _healthServiceMock.Verify(s => s.SyncSystemTime(null), Times.Once);
+    }
 }

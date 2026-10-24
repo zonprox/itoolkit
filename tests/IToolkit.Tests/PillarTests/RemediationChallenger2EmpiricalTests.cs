@@ -193,12 +193,14 @@ public class RemediationChallenger2EmpiricalTests
         Assert.NotEmpty(pfxBytes);
 
         // Verification: load with correct password
-        var certCollection = X509CertificateLoader.LoadPkcs12Collection(pfxBytes, password, X509KeyStorageFlags.DefaultKeySet);
+        var certCollection = new X509Certificate2Collection();
+        certCollection.Import(pfxBytes, password, X509KeyStorageFlags.DefaultKeySet);
         Assert.Equal(2, certCollection.Count);
 
         // Verification: load with wrong password fails
+        var failCollection = new X509Certificate2Collection();
         Assert.ThrowsAny<CryptographicException>(() =>
-            X509CertificateLoader.LoadPkcs12Collection(pfxBytes, "WrongPassword!", X509KeyStorageFlags.DefaultKeySet));
+            failCollection.Import(pfxBytes, "WrongPassword!", X509KeyStorageFlags.DefaultKeySet));
     }
 
     [Fact]

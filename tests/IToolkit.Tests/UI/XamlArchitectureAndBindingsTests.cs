@@ -72,6 +72,9 @@ public class XamlArchitectureAndBindingsTests
         Assert.Contains("WinSxSResetBase", xaml);
         Assert.Contains("RunDismSfcPipelineCommand", xaml);
         Assert.Contains("ResetWindowsUpdateCommand", xaml);
+        Assert.Contains("BlockWindowsUpdatesCommand", xaml);
+        Assert.Contains("UnblockWindowsUpdatesCommand", xaml);
+        Assert.Contains("SyncSystemTimeCommand", xaml);
         Assert.Contains("RepairWmiCommand", xaml);
         Assert.Contains("RunUnifiedDiskCleanupCommand", xaml);
     }

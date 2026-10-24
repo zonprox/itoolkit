@@ -1,8 +1,10 @@
 namespace IToolkit.Core.Services.SystemHealth;
 
 using System.Globalization;
+using Microsoft.Win32;
 using IToolkit.Core.Abstractions;
 using IToolkit.Core.Models;
+using IToolkit.Core.Safety;
 
 /// <summary>
 /// Pillar 1: System Health &amp; Maintenance implementation in pure C# .NET 10.0 LTS (win-x64).
@@ -12,8 +14,16 @@ public class SystemHealthService : ISystemHealthService
     private readonly IProcessRunner _processRunner;
     private readonly IFileSystemService _fileSystem;
     private readonly IActivityLogger? _logger;
+    private readonly IRegistryService? _registry;
+    private readonly AtomicRegistryService? _atomicRegistry;
+
+    public const string DefaultNtpServers = "time.windows.com,0x9 time.cloudflare.com,0x9 pool.ntp.org,0x9";
+    public const string WindowsUpdatePolicyKey = @"HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate";
+    public const string WindowsUpdateAuPolicyKey = @"HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU";
+    public const string WaaSMedicServiceKey = @"HKLM\SYSTEM\CurrentControlSet\Services\WaaSMedicSvc";
 
     public static readonly string[] WindowsUpdateServices = { "wuauserv", "cryptsvc", "bits", "msiserver" };
+    public static readonly string[] WindowsUpdateBlockerServices = { "wuauserv", "dosvc", "UsoSvc", "WaaSMedicSvc" };
 
     public static readonly string[] WindowsUpdateDlls =
     {
@@ -29,11 +39,15 @@ public class SystemHealthService : ISystemHealthService
     public SystemHealthService(
         IProcessRunner processRunner,
         IFileSystemService fileSystem,
-        IActivityLogger? logger = null)
+        IActivityLogger? logger = null,
+        IRegistryService? registry = null,
+        AtomicRegistryService? atomicRegistry = null)
     {
         _processRunner = processRunner ?? throw new ArgumentNullException(nameof(processRunner));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _logger = logger;
+        _registry = registry;
+        _atomicRegistry = atomicRegistry;
     }
 
     private string GetSystemRoot()
@@ -190,6 +204,151 @@ public class SystemHealthService : ISystemHealthService
 
         _logger?.LogSuccess(nameof(SystemHealthService), $"Windows Update reset completed: {stopped.Count} stopped, {renamed.Count} renamed/purged, {reRegistered}/{WindowsUpdateDlls.Length} DLLs registered, {restarted.Count} restarted.");
         return new WindowsUpdateResetResult(true, stopped, renamed, reRegistered, restarted, "Windows Update components successfully reset.");
+    }
+
+    public WindowsUpdateBlockResult BlockWindowsUpdates()
+    {
+        _logger?.LogInfo(nameof(SystemHealthService), "Blocking Windows Update across Windows 10/11 (services and Group Policy locks)...");
+        var configuredServices = new List<string>();
+
+        foreach (var svc in new[] { "wuauserv", "dosvc", "UsoSvc" })
+        {
+            _processRunner.Run("net", $"stop {svc} /y");
+            _processRunner.Run("sc.exe", $"config {svc} start= disabled");
+            configuredServices.Add(svc);
+        }
+
+        _processRunner.Run("net", "stop bits /y");
+
+        bool ApplyRegistryBlock()
+        {
+            if (_registry == null) return true;
+
+            _registry.CreateKey(WindowsUpdatePolicyKey);
+            _registry.SetValue(WindowsUpdatePolicyKey, "DisableWindowsUpdateAccess", 1, RegistryValueKind.DWord);
+            _registry.SetValue(WindowsUpdatePolicyKey, "DoNotConnectToWindowsUpdateInternetLocations", 1, RegistryValueKind.DWord);
+            _registry.SetValue(WindowsUpdatePolicyKey, "SetDisableUXWUAccess", 1, RegistryValueKind.DWord);
+            _registry.SetValue(WindowsUpdatePolicyKey, "ExcludeWUDriversInQualityUpdate", 1, RegistryValueKind.DWord);
+
+            _registry.CreateKey(WindowsUpdateAuPolicyKey);
+            _registry.SetValue(WindowsUpdateAuPolicyKey, "NoAutoUpdate", 1, RegistryValueKind.DWord);
+            _registry.SetValue(WindowsUpdateAuPolicyKey, "AUOptions", 1, RegistryValueKind.DWord);
+
+            _registry.CreateKey(WaaSMedicServiceKey);
+            _registry.SetValue(WaaSMedicServiceKey, "Start", 4, RegistryValueKind.DWord);
+            return true;
+        }
+
+        bool policyApplied = _atomicRegistry != null
+            ? _atomicRegistry.ExecuteAtomicMutation(WindowsUpdatePolicyKey, ApplyRegistryBlock, "Block Windows Updates (Win 10/11)").Success
+            : ApplyRegistryBlock();
+
+        configuredServices.Add("WaaSMedicSvc");
+
+        _logger?.LogSuccess(nameof(SystemHealthService), "Windows Updates blocked for Windows 10/11.");
+        return new WindowsUpdateBlockResult(
+            policyApplied,
+            IsBlocked: true,
+            configuredServices,
+            policyApplied,
+            policyApplied
+                ? "Windows Updates blocked for Windows 10/11 (services disabled and Group Policy locks applied)."
+                : "Failed to apply Windows Update blocker registry policies.");
+    }
+
+    public WindowsUpdateBlockResult UnblockWindowsUpdates()
+    {
+        _logger?.LogInfo(nameof(SystemHealthService), "Unblocking Windows Update across Windows 10/11 (restoring services and clearing Group Policy locks)...");
+        var configuredServices = new List<string>();
+
+        bool ApplyRegistryUnblock()
+        {
+            if (_registry == null) return true;
+
+            if (_registry.KeyExists(WindowsUpdatePolicyKey))
+            {
+                _registry.DeleteValue(WindowsUpdatePolicyKey, "DisableWindowsUpdateAccess");
+                _registry.DeleteValue(WindowsUpdatePolicyKey, "DoNotConnectToWindowsUpdateInternetLocations");
+                _registry.DeleteValue(WindowsUpdatePolicyKey, "SetDisableUXWUAccess");
+                _registry.DeleteValue(WindowsUpdatePolicyKey, "ExcludeWUDriversInQualityUpdate");
+            }
+
+            if (_registry.KeyExists(WindowsUpdateAuPolicyKey))
+            {
+                _registry.SetValue(WindowsUpdateAuPolicyKey, "NoAutoUpdate", 0, RegistryValueKind.DWord);
+                _registry.DeleteValue(WindowsUpdateAuPolicyKey, "AUOptions");
+            }
+
+            _registry.CreateKey(WaaSMedicServiceKey);
+            _registry.SetValue(WaaSMedicServiceKey, "Start", 3, RegistryValueKind.DWord);
+            return true;
+        }
+
+        bool policyApplied = _atomicRegistry != null
+            ? _atomicRegistry.ExecuteAtomicMutation(WindowsUpdatePolicyKey, ApplyRegistryUnblock, "Unblock Windows Updates (Win 10/11)").Success
+            : ApplyRegistryUnblock();
+
+        configuredServices.Add("WaaSMedicSvc");
+
+        foreach (var svc in new[] { "wuauserv", "dosvc", "UsoSvc" })
+        {
+            _processRunner.Run("sc.exe", $"config {svc} start= demand");
+            _processRunner.Run("net", $"start {svc}");
+            configuredServices.Add(svc);
+        }
+
+        _processRunner.Run("sc.exe", "config bits start= delayed-auto");
+        _processRunner.Run("net", "start bits");
+
+        _logger?.LogSuccess(nameof(SystemHealthService), "Windows Updates unblocked and restored for Windows 10/11.");
+        return new WindowsUpdateBlockResult(
+            policyApplied,
+            IsBlocked: false,
+            configuredServices,
+            policyApplied,
+            policyApplied
+                ? "Windows Updates unblocked and restored for Windows 10/11."
+                : "Failed to clear Windows Update blocker registry policies.");
+    }
+
+    public TimeSyncResult SyncSystemTime(string? ntpServers = null)
+    {
+        string peers = string.IsNullOrWhiteSpace(ntpServers) ? DefaultNtpServers : ntpServers.Trim();
+        _logger?.LogInfo(nameof(SystemHealthService), $"Repairing Windows Time (W32Time) and synchronizing clock with '{peers}'...");
+
+        _processRunner.Run("net", "stop w32time /y");
+        _processRunner.Run("w32tm.exe", "/unregister");
+        var regRes = _processRunner.Run("w32tm.exe", "/register");
+        bool registered = regRes.ExitCode == 0;
+
+        _processRunner.Run("sc.exe", "config w32time start= auto");
+        var startRes = _processRunner.Run("net", "start w32time");
+        bool started = startRes.ExitCode == 0;
+
+        _processRunner.Run("w32tm.exe", $"/config /manualpeerlist:\"{peers}\" /syncfromflags:manual,domhier /reliable:YES /update");
+        var resyncRes = _processRunner.Run("w32tm.exe", "/resync /force");
+        bool resynced = resyncRes.ExitCode == 0;
+
+        bool success = registered && started && resynced;
+        if (success)
+        {
+            _logger?.LogSuccess(nameof(SystemHealthService), "System clock successfully synchronized with time server.");
+        }
+        else
+        {
+            _logger?.LogWarning(nameof(SystemHealthService), $"Time synchronization completed with non-zero status (Registered={registered}, Started={started}, Resynced={resynced}).");
+        }
+
+        return new TimeSyncResult(
+            success,
+            peers,
+            registered,
+            started,
+            resynced,
+            resyncRes.StandardOutput,
+            success
+                ? "System time synchronized with server successfully."
+                : $"Time sync failed (Exit {resyncRes.ExitCode}).");
     }
 
     public WmiRepairResult RepairWmiRepository()

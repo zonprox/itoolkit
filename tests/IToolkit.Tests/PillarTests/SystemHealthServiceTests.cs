@@ -10,13 +10,15 @@ public class SystemHealthServiceTests
 {
     private readonly MockProcessRunner _processRunner;
     private readonly MockFileSystemService _fileSystem;
+    private readonly MockRegistryService _registry;
     private readonly SystemHealthService _service;
 
     public SystemHealthServiceTests()
     {
         _processRunner = new MockProcessRunner();
         _fileSystem = new MockFileSystemService();
-        _service = new SystemHealthService(_processRunner, _fileSystem);
+        _registry = new MockRegistryService();
+        _service = new SystemHealthService(_processRunner, _fileSystem, registry: _registry);
     }
 
     [Fact]
@@ -226,5 +228,52 @@ public class SystemHealthServiceTests
         Assert.True(result.Success);
         Assert.True(result.BytesReclaimed > 0);
         Assert.True(result.FilesDeleted >= 3);
+    }
+
+    [Fact]
+    public void BlockAndUnblockWindowsUpdates_AppliesAndClearsServicesAndPoliciesForWindows10And11()
+    {
+        var blockRes = _service.BlockWindowsUpdates();
+
+        Assert.True(blockRes.Success);
+        Assert.True(blockRes.IsBlocked);
+        Assert.True(blockRes.PolicyApplied);
+        Assert.Contains("wuauserv", blockRes.ConfiguredServices);
+        Assert.Contains("dosvc", blockRes.ConfiguredServices);
+        Assert.Contains("UsoSvc", blockRes.ConfiguredServices);
+        Assert.Contains("WaaSMedicSvc", blockRes.ConfiguredServices);
+        Assert.Contains("sc.exe config wuauserv start= disabled", _processRunner.ExecutedCommands);
+        Assert.Contains("sc.exe config UsoSvc start= disabled", _processRunner.ExecutedCommands);
+        Assert.Equal(1, _registry.GetValue<int>(SystemHealthService.WindowsUpdatePolicyKey, "DisableWindowsUpdateAccess"));
+        Assert.Equal(1, _registry.GetValue<int>(SystemHealthService.WindowsUpdateAuPolicyKey, "NoAutoUpdate"));
+        Assert.Equal(4, _registry.GetValue<int>(SystemHealthService.WaaSMedicServiceKey, "Start"));
+
+        var unblockRes = _service.UnblockWindowsUpdates();
+
+        Assert.True(unblockRes.Success);
+        Assert.False(unblockRes.IsBlocked);
+        Assert.True(unblockRes.PolicyApplied);
+        Assert.False(_registry.ValueExists(SystemHealthService.WindowsUpdatePolicyKey, "DisableWindowsUpdateAccess"));
+        Assert.Equal(0, _registry.GetValue<int>(SystemHealthService.WindowsUpdateAuPolicyKey, "NoAutoUpdate"));
+        Assert.Equal(3, _registry.GetValue<int>(SystemHealthService.WaaSMedicServiceKey, "Start"));
+        Assert.Contains("sc.exe config wuauserv start= demand", _processRunner.ExecutedCommands);
+        Assert.Contains("net start wuauserv", _processRunner.ExecutedCommands);
+    }
+
+    [Fact]
+    public void SyncSystemTime_RegistersStartsAndResyncsW32Time()
+    {
+        var res = _service.SyncSystemTime();
+
+        Assert.True(res.Success);
+        Assert.True(res.ServiceRegistered);
+        Assert.True(res.ServiceStarted);
+        Assert.True(res.Resynced);
+        Assert.Contains("net stop w32time /y", _processRunner.ExecutedCommands);
+        Assert.Contains("w32tm.exe /unregister", _processRunner.ExecutedCommands);
+        Assert.Contains("w32tm.exe /register", _processRunner.ExecutedCommands);
+        Assert.Contains("sc.exe config w32time start= auto", _processRunner.ExecutedCommands);
+        Assert.Contains("net start w32time", _processRunner.ExecutedCommands);
+        Assert.Contains("w32tm.exe /resync /force", _processRunner.ExecutedCommands);
     }
 }
