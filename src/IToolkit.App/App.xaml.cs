@@ -26,6 +26,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        System.Threading.SynchronizationContext.SetSynchronizationContext(
+            new System.Windows.Threading.DispatcherSynchronizationContext(Dispatcher));
         ShutdownMode = ShutdownMode.OnMainWindowClose;
 
         // Configure global unhandled exception handling to fail loud and capture crashes
@@ -61,24 +63,29 @@ public partial class App : Application
             ConfigureServices(serviceCollection);
             Services = serviceCollection.BuildServiceProvider();
 
-            // Log application startup
-            var appLogger = Services.GetRequiredService<IActivityLogger>();
-            appLogger.LogInfo("Application", "iToolKit initializing on Windows 64-bit (win-x64)...");
-
-            // Verify Administrator elevation status
+            // Enforce mandatory Administrator elevation at startup
             var elevation = Services.GetRequiredService<IElevationService>();
+            var appLogger = Services.GetRequiredService<IActivityLogger>();
             if (!elevation.IsElevated())
             {
-                appLogger.LogWarning("Security", "Running in standard user mode. Some remediation features require elevation.");
-            }
-            else
-            {
-                appLogger.LogSuccess("Security", "Elevated as Administrator.");
+                appLogger.LogError("Security", "Administrator privileges are required to run iToolKit.");
+                MessageBox.Show(
+                    "iToolKit requires Administrator privileges to run.\nPlease launch iToolKit as Administrator.",
+                    "iToolKit Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                Environment.Exit(1);
+                return;
             }
 
-            // Show Main Window
+            // Resolve Main Window first so ActivityConsoleViewModel receives startup log entries
             var mainWindow = Services.GetRequiredService<MainWindow>();
             MainWindow = mainWindow;
+
+            appLogger.LogInfo("Application", "iToolKit initializing on Windows 64-bit (win-x64)...");
+            appLogger.LogSuccess("Security", "Elevated as Administrator.");
+
+            // Show Main Window
             mainWindow.Show();
         }
         catch (Exception ex)

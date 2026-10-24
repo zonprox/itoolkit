@@ -1,6 +1,5 @@
 namespace IToolkit.Core.Safety;
 
-using System.Runtime.InteropServices;
 using System.Security.Principal;
 using IToolkit.Core.Abstractions;
 
@@ -54,26 +53,18 @@ public class ElevationGuard : IElevationService
         }
     }
 
-    /// <summary>
-    /// Relaunches the current process requesting UAC elevation via 'runas'.
-    /// </summary>
-    public bool RestartElevated()
+    private static bool CheckPlatformElevation()
     {
-        if (_underlyingService != null)
+        string? envSimulate = Environment.GetEnvironmentVariable("ITOOLKIT_SIMULATE_ADMIN");
+        if (envSimulate == "1" || string.Equals(envSimulate, "true", StringComparison.OrdinalIgnoreCase))
         {
-            return _underlyingService.RestartElevated();
+            return true;
         }
-
-        if (!OperatingSystem.IsWindows())
+        if (envSimulate == "0" || string.Equals(envSimulate, "false", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        return LaunchElevatedProcess();
-    }
-
-    private static bool CheckPlatformElevation()
-    {
         if (OperatingSystem.IsWindows())
         {
             try
@@ -88,47 +79,6 @@ public class ElevationGuard : IElevationService
             }
         }
 
-        // On non-Windows development/testing hosts:
-        string? envSimulate = Environment.GetEnvironmentVariable("ITOOLKIT_SIMULATE_ADMIN");
-        if (envSimulate == "1" || string.Equals(envSimulate, "true", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            return GetUnixEuid() == 0;
-        }
-
         return false;
     }
-
-    private static bool LaunchElevatedProcess()
-    {
-        string? exePath = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exePath)) return false;
-
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = exePath,
-            UseShellExecute = true,
-            Verb = "runas",
-            WorkingDirectory = Environment.CurrentDirectory
-        };
-
-        try
-        {
-            System.Diagnostics.Process.Start(psi);
-            Environment.Exit(0);
-            return true;
-        }
-        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            // ERROR_CANCELLED (User cancelled UAC elevation prompt)
-            return false;
-        }
-    }
-
-    [DllImport("libc", EntryPoint = "geteuid", SetLastError = true)]
-    private static extern uint GetUnixEuid();
 }

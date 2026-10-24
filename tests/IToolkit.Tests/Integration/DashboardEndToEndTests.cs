@@ -70,7 +70,6 @@ public class DashboardEndToEndTests
         services.AddSingleton<IElevationService>(elevationMock.Object);
 
         // Safety Engines
-        services.AddSingleton<AtomicRegistryEngine>();
         services.AddSingleton<AtomicRegistryService>();
         services.AddSingleton<ProcessLockGuard>();
         services.AddSingleton<ResourceGuard>();

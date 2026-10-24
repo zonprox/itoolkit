@@ -33,12 +33,15 @@ public class MockFileSystemService : IFileSystemService
     public void CreateDirectory(string path)
     {
         string norm = Normalize(path);
+        if (string.IsNullOrEmpty(norm)) return;
         _directories.Add(norm);
-        string? parent = Path.GetDirectoryName(norm);
-        while (!string.IsNullOrEmpty(parent) && !_directories.Contains(parent))
+        string? rawParent = Path.GetDirectoryName(norm);
+        while (!string.IsNullOrEmpty(rawParent))
         {
+            string parent = Normalize(rawParent);
+            if (string.IsNullOrEmpty(parent)) break;
             _directories.Add(parent);
-            parent = Path.GetDirectoryName(parent);
+            rawParent = Path.GetDirectoryName(parent);
         }
     }
 
@@ -57,7 +60,7 @@ public class MockFileSystemService : IFileSystemService
 
         if (recursive)
         {
-            string prefix = norm.EndsWith(Path.DirectorySeparatorChar) ? norm : norm + Path.DirectorySeparatorChar;
+            string prefix = norm.EndsWith('/') ? norm : norm + "/";
             var filesToDelete = _files.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
             foreach (var f in filesToDelete) DeleteFile(f);
 
@@ -238,7 +241,7 @@ public class MockFileSystemService : IFileSystemService
         string? dir = Path.GetDirectoryName(norm);
         if (!string.IsNullOrEmpty(dir))
         {
-            _directories.Add(dir);
+            CreateDirectory(dir);
         }
 
         _files[norm] = (byte[])bytes.Clone();

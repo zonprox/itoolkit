@@ -19,6 +19,7 @@ public class AsyncRelayCommand : IAsyncRelayCommand
 {
     private readonly Func<object?, Task> _execute;
     private readonly Predicate<object?>? _canExecute;
+    private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
     private int _isExecutingState;
 
     public AsyncRelayCommand(Func<object?, Task> execute, Predicate<object?>? canExecute = null)
@@ -43,7 +44,7 @@ public class AsyncRelayCommand : IAsyncRelayCommand
 
     public async void Execute(object? parameter)
     {
-        await ExecuteAsync(parameter).ConfigureAwait(false);
+        await ExecuteAsync(parameter);
     }
 
     public async Task ExecuteAsync(object? parameter)
@@ -61,7 +62,7 @@ public class AsyncRelayCommand : IAsyncRelayCommand
         try
         {
             RaiseCanExecuteChanged();
-            await _execute(parameter).ConfigureAwait(false);
+            await _execute(parameter);
         }
         finally
         {
@@ -72,6 +73,12 @@ public class AsyncRelayCommand : IAsyncRelayCommand
 
     public void RaiseCanExecuteChanged()
     {
+        if (_uiContext != null && SynchronizationContext.Current != _uiContext)
+        {
+            _uiContext.Post(_ => CanExecuteChanged?.Invoke(this, EventArgs.Empty), null);
+            return;
+        }
+
         CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }
@@ -83,6 +90,7 @@ public class AsyncRelayCommand<T> : IAsyncRelayCommand
 {
     private readonly Func<T?, Task> _execute;
     private readonly Predicate<T?>? _canExecute;
+    private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
     private int _isExecutingState;
 
     public AsyncRelayCommand(Func<T?, Task> execute, Predicate<T?>? canExecute = null)
@@ -117,7 +125,7 @@ public class AsyncRelayCommand<T> : IAsyncRelayCommand
 
     public async void Execute(object? parameter)
     {
-        await ExecuteAsync(parameter).ConfigureAwait(false);
+        await ExecuteAsync(parameter);
     }
 
     public async Task ExecuteAsync(object? parameter)
@@ -137,11 +145,11 @@ public class AsyncRelayCommand<T> : IAsyncRelayCommand
             RaiseCanExecuteChanged();
             if (parameter == null && typeof(T).IsValueType && Nullable.GetUnderlyingType(typeof(T)) == null)
             {
-                await _execute(default).ConfigureAwait(false);
+                await _execute(default);
             }
             else
             {
-                await _execute((T?)parameter).ConfigureAwait(false);
+                await _execute((T?)parameter);
             }
         }
         finally
@@ -153,6 +161,12 @@ public class AsyncRelayCommand<T> : IAsyncRelayCommand
 
     public void RaiseCanExecuteChanged()
     {
+        if (_uiContext != null && SynchronizationContext.Current != _uiContext)
+        {
+            _uiContext.Post(_ => CanExecuteChanged?.Invoke(this, EventArgs.Empty), null);
+            return;
+        }
+
         CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }

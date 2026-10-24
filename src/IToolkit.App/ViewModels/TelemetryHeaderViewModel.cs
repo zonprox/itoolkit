@@ -10,15 +10,14 @@ using IToolkit.Core.Models;
 public class TelemetryHeaderViewModel : ViewModelBase, IDisposable
 {
     private readonly ISystemTelemetryService _telemetryService;
-    private readonly IElevationService _elevationService;
     private readonly SynchronizationContext? _uiContext;
     private Timer? _pollingTimer;
 
     private string _osDescription = "Windows 11 / 10 64-bit";
     private string _osBuild = "Detecting...";
-    private bool _isElevated;
-    private string _elevationBadgeText = "Checking...";
-    private string _elevationBadgeBrush = "#64748B";
+    private bool _isElevated = true;
+    private string _elevationBadgeText = "Administrator";
+    private string _elevationBadgeBrush = "#22C55E";
 
     private double _cpuUsagePercentage;
     private string _cpuUsageText = "0%";
@@ -42,16 +41,12 @@ public class TelemetryHeaderViewModel : ViewModelBase, IDisposable
     private bool _isTaskActive;
     private string _lastUpdatedText = "Just now";
 
-    public TelemetryHeaderViewModel(
-        ISystemTelemetryService telemetryService,
-        IElevationService elevationService)
+    public TelemetryHeaderViewModel(ISystemTelemetryService telemetryService)
     {
         _telemetryService = telemetryService ?? throw new ArgumentNullException(nameof(telemetryService));
-        _elevationService = elevationService ?? throw new ArgumentNullException(nameof(elevationService));
         _uiContext = SynchronizationContext.Current;
 
         RefreshCommand = new AsyncRelayCommand(RefreshTelemetryAsync);
-        ElevateCommand = new RelayCommand(() => _elevationService.RestartElevated());
 
         StartPolling();
     }
@@ -85,7 +80,6 @@ public class TelemetryHeaderViewModel : ViewModelBase, IDisposable
     public string LastUpdatedText { get => _lastUpdatedText; set => SetProperty(ref _lastUpdatedText, value); }
 
     public ICommand RefreshCommand { get; }
-    public ICommand ElevateCommand { get; }
 
     public void StartPolling(int intervalMs = 2500)
     {
@@ -164,8 +158,11 @@ public class TelemetryHeaderViewModel : ViewModelBase, IDisposable
             NetworkStatusText = snapshot.NetworkConnected ? "Connected" : "Offline";
             NetworkStatusBrush = snapshot.NetworkConnected ? "#22C55E" : "#EF4444";
 
-            ActiveTaskDescription = snapshot.ActiveTaskDescription;
-            IsTaskActive = !string.Equals(snapshot.ActiveTaskDescription, "Idle", StringComparison.OrdinalIgnoreCase);
+            if (!IsTaskActive || !string.Equals(snapshot.ActiveTaskDescription, "Idle", StringComparison.OrdinalIgnoreCase))
+            {
+                ActiveTaskDescription = snapshot.ActiveTaskDescription;
+                IsTaskActive = !string.Equals(snapshot.ActiveTaskDescription, "Idle", StringComparison.OrdinalIgnoreCase);
+            }
             LastUpdatedText = DateTime.Now.ToString("HH:mm:ss");
         }
 

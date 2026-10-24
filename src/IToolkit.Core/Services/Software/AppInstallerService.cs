@@ -7,7 +7,7 @@ using IToolkit.Core.Models;
 using IToolkit.Core.Safety;
 
 /// <summary>
-/// Pillar 5: Managed Enterprise 8-Application Catalog implementation in pure C# .NET 8 (win-x64).
+/// Pillar 5: Managed Enterprise 8-Application Catalog implementation in pure C# .NET 10.0 LTS (win-x64).
 /// </summary>
 public class AppInstallerService : IAppInstallerService
 {

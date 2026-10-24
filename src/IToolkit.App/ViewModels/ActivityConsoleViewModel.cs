@@ -20,17 +20,14 @@ public class DefaultClipboardService : IClipboardService
 {
     public void SetText(string text)
     {
-        if (OperatingSystem.IsWindows())
+        try
         {
-            try
-            {
-                var clipboardType = Type.GetType("System.Windows.Clipboard, PresentationCore");
-                clipboardType?.GetMethod("SetText", new[] { typeof(string) })?.Invoke(null, new object[] { text });
-            }
-            catch
-            {
-                // Ignore transient COM clipboard errors
-            }
+            var clipboardType = Type.GetType("System.Windows.Clipboard, PresentationCore");
+            clipboardType?.GetMethod("SetText", new[] { typeof(string) })?.Invoke(null, new object[] { text });
+        }
+        catch
+        {
+            // Ignore transient COM clipboard errors
         }
     }
 }
@@ -48,7 +45,7 @@ public class ActivityConsoleViewModel : ViewModelBase
     private string _selectedLevelFilter = "All";
     private bool _autoScroll = true;
     private bool _isExpanded = true;
-    private double _consoleHeight = 220;
+    private double _consoleHeight = 180;
 
     private int _totalCount;
     private int _errorCount;
@@ -217,7 +214,7 @@ public class ActivityConsoleViewModel : ViewModelBase
     private void ToggleExpanded()
     {
         IsExpanded = !IsExpanded;
-        ConsoleHeight = IsExpanded ? 220 : 36;
+        ConsoleHeight = IsExpanded ? 180 : 30;
     }
 
     private void ApplyFilter()

@@ -7,7 +7,7 @@ using IToolkit.Core.Models;
 using IToolkit.Core.Safety;
 
 /// <summary>
-/// Pillar 2: Outlook & PST/OST subsystem implementation in pure C# .NET 8 (win-x64).
+/// Pillar 2: Outlook &amp; PST/OST subsystem implementation in pure C# .NET 10.0 LTS (win-x64).
 /// </summary>
 public class OutlookService : IOutlookService
 {

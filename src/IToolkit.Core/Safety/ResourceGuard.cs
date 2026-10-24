@@ -41,7 +41,9 @@ public class ResourceGuard
     public static long CalculateRequiredHeadroom(long requiredBytes, double safetyMultiplier = DefaultHeadroomMultiplier)
     {
         if (requiredBytes <= 0) return 0;
-        return (long)Math.Ceiling(requiredBytes * safetyMultiplier);
+        double scaled = Math.Ceiling(requiredBytes * safetyMultiplier);
+        if (scaled >= (double)long.MaxValue || double.IsNaN(scaled)) return long.MaxValue;
+        return (long)scaled;
     }
 
     /// <summary>

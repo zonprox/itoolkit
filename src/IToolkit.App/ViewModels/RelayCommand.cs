@@ -1,6 +1,7 @@
 namespace IToolkit.App.ViewModels;
 
 using System;
+using System.Threading;
 using System.Windows.Input;
 
 public interface IRelayCommand : ICommand
@@ -15,6 +16,7 @@ public class RelayCommand : IRelayCommand
 {
     private readonly Action<object?> _execute;
     private readonly Predicate<object?>? _canExecute;
+    private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
 
     public RelayCommand(Action<object?> execute, Predicate<object?>? canExecute = null)
     {
@@ -33,7 +35,16 @@ public class RelayCommand : IRelayCommand
 
     public void Execute(object? parameter) => _execute(parameter);
 
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void RaiseCanExecuteChanged()
+    {
+        if (_uiContext != null && SynchronizationContext.Current != _uiContext)
+        {
+            _uiContext.Post(_ => CanExecuteChanged?.Invoke(this, EventArgs.Empty), null);
+            return;
+        }
+
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    }
 }
 
 /// <summary>
@@ -43,6 +54,7 @@ public class RelayCommand<T> : IRelayCommand
 {
     private readonly Action<T?> _execute;
     private readonly Predicate<T?>? _canExecute;
+    private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
 
     public RelayCommand(Action<T?> execute, Predicate<T?>? canExecute = null)
     {
@@ -78,5 +90,14 @@ public class RelayCommand<T> : IRelayCommand
         _execute((T?)parameter);
     }
 
-    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void RaiseCanExecuteChanged()
+    {
+        if (_uiContext != null && SynchronizationContext.Current != _uiContext)
+        {
+            _uiContext.Post(_ => CanExecuteChanged?.Invoke(this, EventArgs.Empty), null);
+            return;
+        }
+
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    }
 }

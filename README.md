@@ -1,11 +1,11 @@
-# iToolkit — Native Windows Desktop Administration Suite
+# iToolKit — Native Windows Desktop Administration Suite
 
 [![Target](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(win--x64)-blue.svg)](#system-requirements)
-[![Framework](https://img.shields.io/badge/.NET-8.0%20LTS-purple.svg)](#development--compilation)
+[![Framework](https://img.shields.io/badge/.NET-10.0%20LTS-purple.svg)](#development--compilation)
 [![UI](https://img.shields.io/badge/UI-Fluent%20%2F%20Mica%20WPF-0078D7.svg)](#user-interface)
 [![License](https://img.shields.io/badge/Language-100%25%20English-success.svg)](#license--standards)
 
-**iToolkit** is a high-performance, 100% native C# desktop application built on **.NET 8** and **WPF** (Windows Presentation Foundation) with modern Windows 11 Fluent UI and Mica styling. Engineered specifically for IT administrators, system support engineers, and helpdesk technicians, iToolkit provides unified endpoint remediation, system diagnostics, automated application provisioning, and data protection across **64-bit Windows 10 (22H2+) and Windows 11 (21H2–24H2)**.
+**iToolKit** is a high-performance, 100% native C# desktop application built on **.NET 10.0 LTS** and **WPF** (Windows Presentation Foundation) with native Windows 10/11 Fluent Design (`ThemeMode="System"`). Engineered specifically for IT administrators, system support engineers, and helpdesk technicians, iToolKit provides unified endpoint remediation, system diagnostics, automated application provisioning, and data protection across **64-bit Windows 10 (22H2+) and Windows 11 (21H2–24H2)**.
 
 ---
 
@@ -121,43 +121,30 @@
 |---|---|
 | **Operating System** | Windows 10 (22H2+) or Windows 11 (21H2, 22H2, 23H2, 24H2) 64-bit (`win-x64`) ONLY. |
 | **Architecture** | 64-bit (`x64`) strictly. (32-bit x86 and ARM architectures are not supported). |
-| **Privileges** | Local Administrator privileges (UAC elevation requested automatically upon launch). |
-| **Runtime** | .NET 8.0 Desktop Runtime (included in self-contained release builds). |
+| **Privileges** | Local Administrator privileges (mandatory `requireAdministrator` manifest and startup verification). |
+| **Runtime** | .NET 10.0 LTS Desktop Runtime (included in self-contained release builds). |
 
 ---
 
 ## Development & Compilation
 
-The solution builds, tests, and publishes cleanly on both Linux and Windows workstations.
-
 ### 1. Prerequisites
-- **.NET 8.0 SDK** (v8.0.400 or higher)
-- On Linux workstations lacking `libicu`:
-  ```bash
-  export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-  export DOTNET_ROOT="$HOME/.dotnet"
-  export PATH="$DOTNET_ROOT:$PATH"
-  ```
+- **.NET 10.0 LTS SDK** (v10.0.400 or higher)
 
 ### 2. Build the Solution
-```bash
+```powershell
 dotnet build IToolkit.sln -c Release
 ```
 
 ### 3. Run Automated Tests
-```bash
-dotnet test IToolkit.sln
+```powershell
+dotnet test IToolkit.sln -c Release
 ```
 All unit, workflow, and static analysis tests run deterministically with 0 failures and 0 skipped tests.
 
-### 4. Package Release Archive (`IToolkit.zip`)
-To publish the standalone Windows PE executable and create `IToolkit.zip`:
-```bash
-# Package locally without uploading:
-./scripts/package-and-upload.sh --skip-upload
-
-# Package and upload to public distribution host (Storage.to):
-./scripts/package-and-upload.sh
+### 4. Publish Self-Contained Release
+```powershell
+dotnet publish src/IToolkit.App/IToolkit.App.csproj -c Release -r win-x64 --self-contained true
 ```
 
 ---

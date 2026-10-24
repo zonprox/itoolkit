@@ -14,9 +14,4 @@ public interface IElevationService
     /// Throws UnauthorizedAccessException if the process does not possess elevated privileges.
     /// </summary>
     void AssertElevated(string operationName);
-
-    /// <summary>
-    /// Attempts to relaunch the current application with elevated privileges via UAC prompt.
-    /// </summary>
-    bool RestartElevated();
 }

@@ -11,6 +11,8 @@ public class OfficeOutlookViewModel : ViewModelBase
 {
     private readonly IOfficeSuiteService _officeSuiteService;
     private readonly IOutlookService _outlookService;
+    private readonly IDialogService? _dialogService;
+    private readonly ISafetyConfirmationService? _confirmationService;
     private bool _useOnlineC2RRepair;
     private bool _disableHardwareAcceleration;
     private MapiDataFileInfo? _selectedDataFile;
@@ -24,13 +26,25 @@ public class OfficeOutlookViewModel : ViewModelBase
     public OfficeOutlookViewModel(
         IOfficeSuiteService officeSuiteService,
         IOutlookService outlookService,
-        IActivityLogger? logger = null)
+        IActivityLogger? logger = null,
+        IDialogService? dialogService = null,
+        ISafetyConfirmationService? confirmationService = null)
         : base(logger)
     {
         _officeSuiteService = officeSuiteService ?? throw new ArgumentNullException(nameof(officeSuiteService));
         _outlookService = outlookService ?? throw new ArgumentNullException(nameof(outlookService));
+        _dialogService = dialogService;
+        _confirmationService = confirmationService;
 
         DataFiles = new ObservableCollection<MapiDataFileInfo>();
+
+        // Smart Path Commands
+        BrowseTargetPstCommand = new RelayCommand(BrowseTargetPst, () => IsNotBusy);
+        BrowseSourcePstCommand = new RelayCommand(BrowseSourcePst, () => IsNotBusy);
+        BrowseRelocationDirCommand = new RelayCommand(BrowseRelocationDir, () => IsNotBusy);
+        OpenRelocationDirCommand = new RelayCommand(OpenRelocationDir, () => IsNotBusy && !string.IsNullOrWhiteSpace(RelocationDestinationDir));
+        BrowseBackupDirCommand = new RelayCommand(BrowseBackupDir, () => IsNotBusy);
+        OpenBackupDirCommand = new RelayCommand(OpenBackupDir, () => IsNotBusy && !string.IsNullOrWhiteSpace(BackupDirectory));
 
         // Commands
         RepairC2RCommand = new AsyncRelayCommand(RepairC2RAsync, () => IsNotBusy);
@@ -62,6 +76,10 @@ public class OfficeOutlookViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedDataFile, value))
             {
+                if (value != null && !string.IsNullOrWhiteSpace(value.FilePath))
+                {
+                    SourcePstPath = value.FilePath;
+                }
                 RelocatePstCommand.RaiseCanExecuteChanged();
                 CompactPstCommand.RaiseCanExecuteChanged();
                 BackupPstCommand.RaiseCanExecuteChanged();
@@ -96,13 +114,25 @@ public class OfficeOutlookViewModel : ViewModelBase
     public string RelocationDestinationDir
     {
         get => _relocationDestinationDir;
-        set => SetProperty(ref _relocationDestinationDir, value);
+        set
+        {
+            if (SetProperty(ref _relocationDestinationDir, value))
+            {
+                OpenRelocationDirCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public string BackupDirectory
     {
         get => _backupDirectory;
-        set => SetProperty(ref _backupDirectory, value);
+        set
+        {
+            if (SetProperty(ref _backupDirectory, value))
+            {
+                OpenBackupDirCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public string LastOfficeSummary
@@ -116,6 +146,13 @@ public class OfficeOutlookViewModel : ViewModelBase
         get => _lastOutlookSummary;
         set => SetProperty(ref _lastOutlookSummary, value);
     }
+
+    public IRelayCommand BrowseTargetPstCommand { get; }
+    public IRelayCommand BrowseSourcePstCommand { get; }
+    public IRelayCommand BrowseRelocationDirCommand { get; }
+    public IRelayCommand OpenRelocationDirCommand { get; }
+    public IRelayCommand BrowseBackupDirCommand { get; }
+    public IRelayCommand OpenBackupDirCommand { get; }
 
     public IAsyncRelayCommand RepairC2RCommand { get; }
     public IAsyncRelayCommand RepairC2RServiceCommand { get; }
@@ -132,9 +169,76 @@ public class OfficeOutlookViewModel : ViewModelBase
     public IAsyncRelayCommand Expand100GBCommand { get; }
     public IAsyncRelayCommand DiscoverDataFilesCommand { get; }
     public IAsyncRelayCommand RunPstPipelineCommand { get; }
+    public IAsyncRelayCommand CreateAndSetDefaultPstCommand => RunPstPipelineCommand;
     public IAsyncRelayCommand RelocatePstCommand { get; }
+    public IAsyncRelayCommand RelocateSelectedPstCommand => RelocatePstCommand;
     public IAsyncRelayCommand CompactPstCommand { get; }
+    public IAsyncRelayCommand CompactSelectedPstCommand => CompactPstCommand;
     public IAsyncRelayCommand BackupPstCommand { get; }
+    public IAsyncRelayCommand BackupSelectedPstCommand => BackupPstCommand;
+
+    private void BrowseTargetPst()
+    {
+        if (_dialogService == null) return;
+        string? selected = _dialogService.ShowSaveFileDialog(
+            "Select Target PST Destination",
+            "Outlook Data Files (*.pst)|*.pst|All Files (*.*)|*.*",
+            "NewDefaultStore.pst",
+            TargetPstPath);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            TargetPstPath = selected;
+        }
+    }
+
+    private void BrowseSourcePst()
+    {
+        if (_dialogService == null) return;
+        string? selected = _dialogService.ShowOpenFileDialog(
+            "Select Source PST File",
+            "Outlook Data Files (*.pst)|*.pst|All Files (*.*)|*.*",
+            SourcePstPath);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            SourcePstPath = selected;
+        }
+    }
+
+    private void BrowseRelocationDir()
+    {
+        if (_dialogService == null) return;
+        string? selected = _dialogService.ShowOpenFolderDialog(
+            "Select PST Relocation Target Directory",
+            RelocationDestinationDir);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            RelocationDestinationDir = selected;
+        }
+    }
+
+    private void OpenRelocationDir()
+    {
+        if (_dialogService == null || string.IsNullOrWhiteSpace(RelocationDestinationDir)) return;
+        _dialogService.OpenFolderInExplorer(RelocationDestinationDir);
+    }
+
+    private void BrowseBackupDir()
+    {
+        if (_dialogService == null) return;
+        string? selected = _dialogService.ShowOpenFolderDialog(
+            "Select PST Backup Directory",
+            BackupDirectory);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            BackupDirectory = selected;
+        }
+    }
+
+    private void OpenBackupDir()
+    {
+        if (_dialogService == null || string.IsNullOrWhiteSpace(BackupDirectory)) return;
+        _dialogService.OpenFolderInExplorer(BackupDirectory);
+    }
 
     private async Task RepairC2RAsync() => await ExecuteAsync("Office Click-to-Run Repair", () =>
     {
@@ -171,12 +275,29 @@ public class OfficeOutlookViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
-    private async Task ScrubOfficeSuiteAsync() => await ExecuteAsync("Scrub Office Suite", () =>
+    private async Task ScrubOfficeSuiteAsync()
     {
-        var res = _officeSuiteService.ScrubOfficeSuiteCleanly();
-        LastOfficeSummary = res.Success ? "Office suite scrubber completed successfully." : $"Scrubber failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Office Suite Scrub",
+                "Scrub Office Suite will completely remove all Microsoft Office and Microsoft 365 installations, settings, and license tokens from this system.",
+                "This operation cannot be undone. Are you sure you want to proceed?");
+            if (!confirmed)
+            {
+                LastOfficeSummary = "Office scrub cancelled by user.";
+                Logger?.LogWarning(nameof(OfficeOutlookViewModel), "Office suite scrubber was cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync("Scrub Office Suite", () =>
+        {
+            var res = _officeSuiteService.ScrubOfficeSuiteCleanly();
+            LastOfficeSummary = res.Success ? "Office suite scrubber completed successfully." : $"Scrubber failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
     private async Task WordQuickRepairAsync() => await ExecuteAsync("Word Quick Repair", () =>
     {
@@ -217,19 +338,58 @@ public class OfficeOutlookViewModel : ViewModelBase
 
     public async Task DiscoverDataFilesAsync() => await ExecuteAsync("Discover Outlook Data Files", () =>
     {
-        var files = _outlookService.DiscoverDataFiles();
+        RefreshDataFilesCore();
+        return Task.CompletedTask;
+    });
+
+    public async Task ScanOutlookDataFilesAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Scanning MAPI profiles for Outlook PST/OST data files...";
+            var files = await Task.Run(() => _outlookService.DiscoverDataFiles() ?? Array.Empty<MapiDataFileInfo>());
+            ApplyDiscoveredDataFiles(files);
+        }
+        catch (Exception ex)
+        {
+            LastOutlookSummary = $"MAPI scan failed: {ex.Message}";
+            StatusMessage = LastOutlookSummary;
+            Logger?.LogError(nameof(OfficeOutlookViewModel), LastOutlookSummary);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void RefreshDataFilesCore()
+    {
+        var files = _outlookService.DiscoverDataFiles() ?? Array.Empty<MapiDataFileInfo>();
+        ApplyDiscoveredDataFiles(files);
+    }
+
+    private void ApplyDiscoveredDataFiles(System.Collections.Generic.IReadOnlyList<MapiDataFileInfo> files)
+    {
         DataFiles.Clear();
         foreach (var file in files)
         {
             DataFiles.Add(file);
         }
-        LastOutlookSummary = $"Discovered {files.Count} PST/OST files in MAPI profiles.";
-        return Task.CompletedTask;
-    });
+
+        if (SelectedDataFile == null && DataFiles.Count > 0)
+        {
+            SelectedDataFile = DataFiles[0];
+        }
+
+        LastOutlookSummary = $"Discovered {DataFiles.Count} PST/OST files in MAPI profiles.";
+        StatusMessage = LastOutlookSummary;
+    }
 
     private async Task RunPstPipelineAsync() => await ExecuteAsync("New Default PST Pipeline", () =>
     {
         var res = _outlookService.RunNewDefaultPstPipeline(TargetPstPath, SourcePstPath);
+        RefreshDataFilesCore();
         LastOutlookSummary = res.Success
             ? $"New Default PST pipeline finished: Cloned {res.FoldersClonedCount} folders, migrated {res.RulesMigratedCount} rules."
             : $"PST Pipeline failed: {res.Message}";
@@ -240,6 +400,7 @@ public class OfficeOutlookViewModel : ViewModelBase
     {
         if (SelectedDataFile == null) return Task.CompletedTask;
         var res = _outlookService.RelocateDataFile(SelectedDataFile.FilePath, RelocationDestinationDir);
+        RefreshDataFilesCore();
         LastOutlookSummary = res.Success
             ? $"Relocated to '{res.DestinationPath}' with verified SHA-256 and symlink."
             : $"Relocation failed: {res.Message}";

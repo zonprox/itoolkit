@@ -2,6 +2,8 @@ namespace IToolkit.App.ViewModels;
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using IToolkit.Core.Abstractions;
 using IToolkit.Core.Models;
@@ -11,22 +13,32 @@ public class ConnectivityViewModel : ViewModelBase
 {
     private readonly IConnectivityService _connectivityService;
     private readonly IPrinterService _printerService;
+    private readonly INetworkService? _networkService;
+    private readonly ISafetyConfirmationService? _confirmationService;
+    private readonly IDialogService? _dialogService;
 
     private PointAndPrintPreset _selectedPreset = PointAndPrintPreset.Compatibility;
     private string? _selectedErrorCode = "0x0000011b";
     private string _printerDiagnosticsHost = "192.168.1.100";
     private string _networkAdapterName = "Ethernet";
+    private NetworkAdapterInfo? _selectedAdapter;
     private string _lastNetworkStatus = "Ready";
     private string _lastPrinterStatus = "Ready";
 
     public ConnectivityViewModel(
         IConnectivityService connectivityService,
         IPrinterService printerService,
-        IActivityLogger? logger = null)
+        IActivityLogger? logger = null,
+        INetworkService? networkService = null,
+        ISafetyConfirmationService? confirmationService = null,
+        IDialogService? dialogService = null)
         : base(logger)
     {
         _connectivityService = connectivityService ?? throw new ArgumentNullException(nameof(connectivityService));
         _printerService = printerService ?? throw new ArgumentNullException(nameof(printerService));
+        _networkService = networkService;
+        _confirmationService = confirmationService;
+        _dialogService = dialogService;
 
         AvailablePresets = new[] { PointAndPrintPreset.Compatibility, PointAndPrintPreset.StrictAdminOnly };
         SupportedErrorCodes = _printerService.GetSupportedErrorCodes();
@@ -40,6 +52,7 @@ public class ConnectivityViewModel : ViewModelBase
         ResetTcpIpCommand = new AsyncRelayCommand(ResetTcpIpAsync, () => IsNotBusy);
         ConfigureSmbSharingCommand = new AsyncRelayCommand(ConfigureSmbSharingAsync, () => IsNotBusy);
         RestartAdapterCommand = new AsyncRelayCommand(RestartAdapterAsync, () => IsNotBusy);
+        RefreshAdaptersCommand = new AsyncRelayCommand(RefreshAdaptersAsync, () => IsNotBusy);
 
         PurgeSpoolerCommand = new AsyncRelayCommand(PurgeSpoolerAsync, () => IsNotBusy);
         RegisterSpoolerCommand = new AsyncRelayCommand(RegisterSpoolerAsync, () => IsNotBusy);
@@ -82,6 +95,24 @@ public class ConnectivityViewModel : ViewModelBase
         }
     }
 
+    public ObservableCollection<NetworkAdapterInfo> AvailableAdapters { get; } = new();
+
+    public NetworkAdapterInfo? SelectedAdapter
+    {
+        get => _selectedAdapter;
+        set
+        {
+            if (SetProperty(ref _selectedAdapter, value))
+            {
+                if (value != null)
+                {
+                    NetworkAdapterName = value.Name;
+                }
+                RestartAdapterCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     public string NetworkAdapterName
     {
         get => _networkAdapterName;
@@ -108,6 +139,7 @@ public class ConnectivityViewModel : ViewModelBase
     public IAsyncRelayCommand ResetTcpIpCommand { get; }
     public IAsyncRelayCommand ConfigureSmbSharingCommand { get; }
     public IAsyncRelayCommand RestartAdapterCommand { get; }
+    public IAsyncRelayCommand RefreshAdaptersCommand { get; }
 
     public IAsyncRelayCommand PurgeSpoolerCommand { get; }
     public IAsyncRelayCommand RegisterSpoolerCommand { get; }
@@ -116,14 +148,59 @@ public class ConnectivityViewModel : ViewModelBase
     public IAsyncRelayCommand RemediatePrinterErrorCommand { get; }
     public IAsyncRelayCommand DiagnosePrinterHostCommand { get; }
 
-    private async Task RemediateNetworkStackAsync() => await ExecuteAsync("Full Network Stack Remediation", () =>
+    public async Task RefreshAdaptersAsync()
     {
-        var res = _connectivityService.RemediateNetworkStack();
-        LastNetworkStatus = res.Success
-            ? $"Remediated: DNS flushed, DHCP renewed, ARP cleared, Winsock/TCP-IP/NLA/Proxy reset. {(res.RequiresReboot ? "[Reboot Recommended]" : string.Empty)}"
-            : $"Network remediation failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (_networkService == null) return;
+
+        try
+        {
+            var adapters = await Task.Run(() => _networkService.GetAdapters()?.ToList() ?? new List<NetworkAdapterInfo>());
+            AvailableAdapters.Clear();
+            foreach (var adapter in adapters)
+            {
+                AvailableAdapters.Add(adapter);
+            }
+
+            if (SelectedAdapter == null && AvailableAdapters.Count > 0)
+            {
+                var active = AvailableAdapters.FirstOrDefault(a => string.Equals(a.Status, "Up", StringComparison.OrdinalIgnoreCase));
+                SelectedAdapter = active ?? AvailableAdapters[0];
+            }
+
+            LastNetworkStatus = $"Discovered {AvailableAdapters.Count} network adapter(s). Active: {NetworkAdapterName}";
+        }
+        catch (Exception ex)
+        {
+            LastNetworkStatus = $"Adapter discovery failed: {ex.Message}";
+            Logger?.LogError(nameof(ConnectivityViewModel), LastNetworkStatus);
+        }
+    }
+
+    private async Task RemediateNetworkStackAsync()
+    {
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Network Stack Remediation",
+                "Full Network Stack Remediation will reset Winsock, TCP/IP, ARP, DNS, and DHCP.",
+                "All active network connections will be dropped and a system reboot is required. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastNetworkStatus = "Network remediation cancelled by user.";
+                Logger?.LogWarning(nameof(ConnectivityViewModel), "Network stack remediation cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync("Full Network Stack Remediation", () =>
+        {
+            var res = _connectivityService.RemediateNetworkStack();
+            LastNetworkStatus = res.Success
+                ? $"Remediated: DNS flushed, DHCP renewed, ARP cleared, Winsock/TCP-IP/NLA/Proxy reset. {(res.RequiresReboot ? "[Reboot Recommended]" : string.Empty)}"
+                : $"Network remediation failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
     private async Task FlushDnsAsync() => await ExecuteAsync("Flush DNS", () =>
     {
@@ -146,19 +223,53 @@ public class ConnectivityViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
-    private async Task ResetWinsockAsync() => await ExecuteAsync("Reset Winsock Catalog", () =>
+    private async Task ResetWinsockAsync()
     {
-        bool ok = _connectivityService.ResetWinsock();
-        LastNetworkStatus = ok ? "Winsock Catalog reset successfully. Reboot recommended." : "Failed to reset Winsock.";
-        return Task.CompletedTask;
-    });
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Winsock Reset",
+                "Resetting the Winsock catalog will restore default network socket configurations.",
+                "Active network connections will be dropped and a system reboot is recommended. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastNetworkStatus = "Winsock reset cancelled by user.";
+                Logger?.LogWarning(nameof(ConnectivityViewModel), "Winsock reset cancelled by user.");
+                return;
+            }
+        }
 
-    private async Task ResetTcpIpAsync() => await ExecuteAsync("Reset TCP/IP Stack", () =>
+        await ExecuteAsync("Reset Winsock Catalog", () =>
+        {
+            bool ok = _connectivityService.ResetWinsock();
+            LastNetworkStatus = ok ? "Winsock Catalog reset successfully. Reboot recommended." : "Failed to reset Winsock.";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task ResetTcpIpAsync()
     {
-        bool ok = _connectivityService.ResetTcpIpStack();
-        LastNetworkStatus = ok ? "TCP/IP stack reset successfully. Reboot recommended." : "Failed to reset TCP/IP.";
-        return Task.CompletedTask;
-    });
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm TCP/IP Reset",
+                "Resetting the TCP/IP stack will rewrite registry configurations to factory defaults.",
+                "Active network connections will be dropped and a system reboot is recommended. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastNetworkStatus = "TCP/IP reset cancelled by user.";
+                Logger?.LogWarning(nameof(ConnectivityViewModel), "TCP/IP reset cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync("Reset TCP/IP Stack", () =>
+        {
+            bool ok = _connectivityService.ResetTcpIpStack();
+            LastNetworkStatus = ok ? "TCP/IP stack reset successfully. Reboot recommended." : "Failed to reset TCP/IP.";
+            return Task.CompletedTask;
+        });
+    }
 
     private async Task ConfigureSmbSharingAsync() => await ExecuteAsync("Configure SMB Sharing", () =>
     {
@@ -174,12 +285,29 @@ public class ConnectivityViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
-    private async Task PurgeSpoolerAsync() => await ExecuteAsync("Purge Print Spooler Queue", () =>
+    private async Task PurgeSpoolerAsync()
     {
-        var res = _printerService.PurgeSpoolerQueue();
-        LastPrinterStatus = res.Success ? $"Spooler purged: {res.PurgedFilesCount} spool files deleted, service restarted." : $"Purge failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Spooler Queue Purge",
+                "Purging the Print Spooler queue will permanently delete all pending print jobs across all installed printers.",
+                "All active and pending spool files will be removed. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastPrinterStatus = "Spooler purge cancelled by user.";
+                Logger?.LogWarning(nameof(ConnectivityViewModel), "Spooler queue purge cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync("Purge Print Spooler Queue", () =>
+        {
+            var res = _printerService.PurgeSpoolerQueue();
+            LastPrinterStatus = res.Success ? $"Spooler purged: {res.PurgedFilesCount} spool files deleted, service restarted." : $"Purge failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
     private async Task RegisterSpoolerAsync() => await ExecuteAsync("Re-Register Spooler Components", () =>
     {

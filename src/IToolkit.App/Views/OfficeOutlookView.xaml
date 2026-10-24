@@ -11,118 +11,231 @@
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="24" MaxWidth="1000" HorizontalAlignment="Stretch">
-            <!-- Header -->
-            <TextBlock Text="Office &amp; Outlook Management Suite" FontSize="20" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,4"/>
-            <TextBlock Text="Click-to-Run repairs, token resets, Word/Excel/PowerPoint repairs, Outbox purge, 100GB limit, and PST pipeline." FontSize="13" Foreground="#AAAAAA" Margin="0,0,0,20"/>
+    <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-            <!-- Execution Status Banner -->
-            <Border Background="#252528" CornerRadius="6" Padding="14" Margin="0,0,0,16" BorderBrush="#3A3A3E" BorderThickness="1">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="Current Operation Status" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/>
-                        <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium" Foreground="#E0E0E0" Margin="0,4,0,0"/>
+        <!-- Status Banner -->
+        <Border Grid.Row="0" Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
+                    <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                </StackPanel>
+                <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
+            </Grid>
+        </Border>
+
+        <!-- Structured 3-Tab Sub-Views -->
+        <TabControl Grid.Row="1" Style="{StaticResource FluentTabControlStyle}" Margin="0">
+            <!-- Tab 1: Click-to-Run & App Quick Repairs -->
+            <TabItem Header="Click-to-Run &amp; App Quick Repairs">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,8,0,16">
+                        <!-- Office Suite & Click-to-Run Maintenance Card -->
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Office Suite &amp; Click-to-Run Maintenance" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Repair Click-to-Run service, reset WAM/OneAuth identity tokens, configure hardware acceleration, or cleanly scrub Office."
+                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
+
+                                <WrapPanel Margin="0,0,0,12">
+                                    <CheckBox Content="Online C2R Repair (Full)" IsChecked="{Binding UseOnlineC2RRepair, Mode=TwoWay}"
+                                              Margin="0,0,20,0" FontSize="12" />
+                                    <CheckBox Content="Disable Hardware Acceleration" IsChecked="{Binding DisableHardwareAcceleration, Mode=TwoWay}"
+                                              FontSize="12" />
+                                </WrapPanel>
+
+                                <WrapPanel Margin="0,0,0,8">
+                                    <Button Content="Run Click-to-Run Repair" Command="{Binding RepairC2RCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Repair C2R Service" Command="{Binding RepairC2RServiceCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Reset WAM Identity" Command="{Binding ResetOfficeIdentityCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Apply HW Acceleration" Command="{Binding ToggleHardwareAccelerationCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Close Office Apps" Command="{Binding TerminateOfficeProcessesCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Scrub Office Suite" Command="{Binding ScrubOfficeSuiteCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                </WrapPanel>
+
+                                <TextBlock Text="{Binding LastOfficeSummary, StringFormat='Office Status: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Application Quick Repairs Card -->
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Application Quick Repairs (Word, Excel, PowerPoint)" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Word (reset Normal.dotm, add-ins, orphaned locks), Excel (isolate XLSTART preserving personal.xlsb, DDE, GDI leak audit), and PowerPoint (cache &amp; resiliency)."
+                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
+
+                                <WrapPanel>
+                                    <Button Content="Word Quick Repair" Command="{Binding WordQuickRepairCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,0" />
+                                    <Button Content="Excel Quick Repair" Command="{Binding ExcelQuickRepairCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,0" />
+                                    <Button Content="PowerPoint Quick Repair" Command="{Binding PowerPointQuickRepairCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                    <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="120" Height="6" VerticalAlignment="Center" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}"/>
-                </Grid>
-            </Border>
+                </ScrollViewer>
+            </TabItem>
 
-            <!-- Card 1: Office Common & Service Repairs -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="1. Office Suite &amp; Click-to-Run Maintenance" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Repair Click-to-Run service, reset WAM/OneAuth token cache, toggle hardware acceleration, or cleanly scrub Office." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+            <!-- Tab 2: Outlook MAPI Data Files -->
+            <TabItem Header="Outlook MAPI Data Files">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,8,0,16">
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Outlook Mail &amp; MAPI Data Files (PST / OST)" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Purge stuck Outbox, reset SRS &amp; RoamCache, expand PST/OST size limits to 100 GB, and manage discovered data files."
+                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                        <CheckBox Content="Use Online C2R Repair (default: Quick Repair)" IsChecked="{Binding UseOnlineC2RRepair, Mode=TwoWay}" VerticalAlignment="Center" Foreground="#E0E0E0" FontSize="12" Margin="0,0,20,0"/>
-                        <CheckBox Content="Disable Hardware Acceleration" IsChecked="{Binding DisableHardwareAcceleration, Mode=TwoWay}" VerticalAlignment="Center" Foreground="#E0E0E0" FontSize="12"/>
+                                <WrapPanel Margin="0,0,0,12">
+                                    <Button Content="Quick Mail &amp; Cache Repair" Command="{Binding QuickMailRepairCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Expand Limits to 100 GB" Command="{Binding Expand100GBCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Refresh Data Files" Command="{Binding DiscoverDataFilesCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Compact Selected PST" Command="{Binding CompactSelectedPstCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                </WrapPanel>
+
+                                <DataGrid ItemsSource="{Binding DataFiles}" SelectedItem="{Binding SelectedDataFile, Mode=TwoWay}"
+                                          AutoGenerateColumns="False" CanUserAddRows="False" Height="180" Margin="0,0,0,14">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}" Width="180" />
+                                        <DataGridTextColumn Header="Format" Binding="{Binding Format}" Width="80" />
+                                        <DataGridTextColumn Header="Size (Bytes)" Binding="{Binding FileSizeBytes}" Width="120" />
+                                        <DataGridTextColumn Header="File Path" Binding="{Binding FilePath}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <!-- Relocation Section -->
+                                <TextBlock Text="Relocate MAPI Data File" FontWeight="SemiBold" FontSize="13"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="150" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Relocation Destination:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding RelocationDestinationDir, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseRelocationDirCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                            ToolTip="Select relocation destination folder" />
+                                    <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenRelocationDirCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                            ToolTip="Open destination folder in Explorer" />
+                                    <Button Grid.Column="4" Content="Relocate Selected PST" Command="{Binding RelocateSelectedPstCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" />
+                                </Grid>
+
+                                <!-- Backup Section -->
+                                <TextBlock Text="Backup MAPI Data File" FontWeight="SemiBold" FontSize="13"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="150" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Backup Directory:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding BackupDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseBackupDirCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                            ToolTip="Select backup destination folder" />
+                                    <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenBackupDirCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                            ToolTip="Open backup folder in Explorer" />
+                                    <Button Grid.Column="4" Content="Backup Selected PST" Command="{Binding BackupSelectedPstCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" />
+                                </Grid>
+
+                                <TextBlock Text="{Binding LastOutlookSummary, StringFormat='Outlook Status: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                    <WrapPanel Margin="0,0,0,12">
-                        <Button Content="Run Click-to-Run Repair" Command="{Binding RepairC2RCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#0067C0" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Repair C2R Service" Command="{Binding RepairC2RServiceCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Reset WAM Identity Tokens" Command="{Binding ResetOfficeIdentityCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Apply HW Acceleration Setting" Command="{Binding ToggleHardwareAccelerationCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Terminate Office Processes" Command="{Binding TerminateOfficeProcessesCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Scrub Office Suite Cleanly" Command="{Binding ScrubOfficeSuiteCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#6B1D1D" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                    </WrapPanel>
+            <!-- Tab 3: Automated New Default PST Pipeline -->
+            <TabItem Header="Automated New Default PST Pipeline">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,8,0,16">
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Automated New Default PST Pipeline" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Create a new 100 GB Unicode PST, clone folder hierarchy, migrate rules, and assign as default delivery store."
+                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
-                    <TextBlock Text="{Binding LastOfficeSummary, StringFormat='Office Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
-                </StackPanel>
-            </Border>
+                                <!-- Source PST Path Row -->
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="140" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Source PST Path:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding SourcePstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseSourcePstCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5"
+                                            ToolTip="Select source PST file" />
+                                </Grid>
 
-            <!-- Card 2: Word, Excel & PowerPoint App Repairs -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="2. Application-Specific Quick Repairs" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Perform targeted repairs for Word (Normal.dotm, add-ins, lock files), Excel (XLSTART, DDE, GDI leak audit), and PowerPoint (cache, resiliency)." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                                <!-- Target PST Path Row -->
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="140" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Target PST Path:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding TargetPstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPstCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5"
+                                            ToolTip="Select target PST destination file" />
+                                </Grid>
 
-                    <WrapPanel Margin="0,0,0,12">
-                        <Button Content="Word Quick Repair" Command="{Binding WordQuickRepairCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Excel Quick Repair" Command="{Binding ExcelQuickRepairCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="PowerPoint Quick Repair" Command="{Binding PowerPointQuickRepairCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                    </WrapPanel>
-                </StackPanel>
-            </Border>
-
-            <!-- Card 3: Outlook Mailbox & Cache Repair -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="3. Outlook Mail &amp; Cache Remediation" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Purge stuck Outbox messages, reset send/receive SRS, clean RoamCache (preserving AutoComplete), and expand file size limits." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
-
-                    <WrapPanel Margin="0,0,0,12">
-                        <Button Content="Quick Mail &amp; Cache Repair" Command="{Binding QuickMailRepairCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#0067C0" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Expand Limits to 100GB" Command="{Binding Expand100GBCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Discover Data Files" Command="{Binding DiscoverDataFilesCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                    </WrapPanel>
-
-                    <!-- Data Files Table -->
-                    <TextBlock Text="Discovered MAPI Data Files (PST/OST):" FontSize="12" FontWeight="SemiBold" Foreground="#E0E0E0" Margin="0,8,0,6"/>
-                    <DataGrid ItemsSource="{Binding DataFiles}" SelectedItem="{Binding SelectedDataFile, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="False" Height="140" Background="#18181A" Foreground="#FFFFFF" BorderBrush="#3A3A3E" Margin="0,0,0,10">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}" Width="160"/>
-                            <DataGridTextColumn Header="Format" Binding="{Binding Format}" Width="70"/>
-                            <DataGridTextColumn Header="Size (Bytes)" Binding="{Binding FileSizeBytes}" Width="100"/>
-                            <DataGridTextColumn Header="File Path" Binding="{Binding FilePath}" Width="*"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
-
-                    <WrapPanel Margin="0,0,0,12">
-                        <Button Content="Compact Selected" Command="{Binding CompactPstCommand}" IsEnabled="{Binding IsNotBusy}" Padding="12,6" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Backup Selected" Command="{Binding BackupPstCommand}" IsEnabled="{Binding IsNotBusy}" Padding="12,6" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Relocate Selected" Command="{Binding RelocatePstCommand}" IsEnabled="{Binding IsNotBusy}" Padding="12,6" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                    </WrapPanel>
-
-                    <TextBlock Text="{Binding LastOutlookSummary, StringFormat='Outlook Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
-                </StackPanel>
-            </Border>
-
-            <!-- Card 4: Automated New Default PST Pipeline -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="4. Automated New Default PST Pipeline" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Creates a new 100GB-capable PST data file, clones folder hierarchies, migrates rules, and sets it as the default delivery store." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
-
-                    <Grid Margin="0,0,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="140"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Target PST Path:" VerticalAlignment="Center" Foreground="#E0E0E0" FontSize="12"/>
-                        <TextBox Grid.Column="1" Text="{Binding TargetPstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Background="#252528" Foreground="#FFFFFF" BorderBrush="#3A3A3E" Padding="6,4"/>
-                    </Grid>
-
-                    <WrapPanel>
-                        <Button Content="Run New Default PST Pipeline" Command="{Binding RunPstPipelineCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#0067C0" Foreground="#FFFFFF"/>
-                    </WrapPanel>
-                </StackPanel>
-            </Border>
-        </StackPanel>
-    </ScrollViewer>
+                                <Button Content="Create &amp; Set Default PST Pipeline" Command="{Binding CreateAndSetDefaultPstCommand}"
+                                        IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                        HorizontalAlignment="Left" Padding="16,8" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
 </UserControl>

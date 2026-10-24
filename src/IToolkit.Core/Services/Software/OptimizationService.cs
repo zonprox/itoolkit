@@ -5,7 +5,7 @@ using IToolkit.Core.Abstractions;
 using IToolkit.Core.Models;
 
 /// <summary>
-/// Pillar 5: Windows Package Manager (Winget) and External Debloat Tools implementation in pure C# .NET 8 (win-x64).
+/// Pillar 5: Windows Package Manager (Winget) and External Debloat Tools implementation in pure C# .NET 10.0 LTS (win-x64).
 /// </summary>
 public class OptimizationService : IOptimizationService
 {

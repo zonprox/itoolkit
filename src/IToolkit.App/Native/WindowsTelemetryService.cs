@@ -13,7 +13,6 @@ public class WindowsTelemetryService : ISystemTelemetryService
 {
     private readonly IElevationService _elevationService;
     private readonly IFileSystemService _fileSystemService;
-    private readonly INetworkService _networkService;
     private readonly IWmiService? _wmiService;
     private readonly IRegistryService? _registryService;
     private volatile string _activeTask = "Idle";
@@ -39,13 +38,11 @@ public class WindowsTelemetryService : ISystemTelemetryService
     public WindowsTelemetryService(
         IElevationService elevationService,
         IFileSystemService fileSystemService,
-        INetworkService networkService,
         IWmiService? wmiService = null,
         IRegistryService? registryService = null)
     {
         _elevationService = elevationService ?? throw new ArgumentNullException(nameof(elevationService));
         _fileSystemService = fileSystemService ?? throw new ArgumentNullException(nameof(fileSystemService));
-        _networkService = networkService ?? throw new ArgumentNullException(nameof(networkService));
         _wmiService = wmiService;
         _registryService = registryService;
     }
@@ -60,7 +57,7 @@ public class WindowsTelemetryService : ISystemTelemetryService
         string osDescription = RuntimeInformation.OSDescription;
         string osBuild = Environment.OSVersion.Version.ToString();
 
-        if (OperatingSystem.IsWindows() && _registryService != null)
+        if (_registryService != null)
         {
             string? displayVersion = _registryService.GetValue<string>(
                 @"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "DisplayVersion");
@@ -82,14 +79,11 @@ public class WindowsTelemetryService : ISystemTelemetryService
         try
         {
             driveFreeBytes = _fileSystemService.GetAvailableFreeSpace(@"C:\");
-            if (OperatingSystem.IsWindows())
+            var driveInfo = new DriveInfo("C");
+            if (driveInfo.IsReady)
             {
-                var driveInfo = new DriveInfo("C");
-                if (driveInfo.IsReady)
-                {
-                    driveTotalBytes = driveInfo.TotalSize;
-                    driveFreeBytes = driveInfo.AvailableFreeSpace;
-                }
+                driveTotalBytes = driveInfo.TotalSize;
+                driveFreeBytes = driveInfo.AvailableFreeSpace;
             }
         }
         catch
@@ -99,28 +93,16 @@ public class WindowsTelemetryService : ISystemTelemetryService
 
         long totalMemory = 16L * 1024 * 1024 * 1024;
         long usedMemory = 4L * 1024 * 1024 * 1024;
-        if (OperatingSystem.IsWindows())
+        try
         {
-            try
+            var memStatus = new MEMORYSTATUSEX();
+            if (GlobalMemoryStatusEx(memStatus))
             {
-                var memStatus = new MEMORYSTATUSEX();
-                if (GlobalMemoryStatusEx(memStatus))
-                {
-                    totalMemory = (long)memStatus.ullTotalPhys;
-                    usedMemory = (long)(memStatus.ullTotalPhys - memStatus.ullAvailPhys);
-                }
-            }
-            catch
-            {
-                var gcInfo = GC.GetGCMemoryInfo();
-                if (gcInfo.TotalAvailableMemoryBytes > 0)
-                {
-                    totalMemory = gcInfo.TotalAvailableMemoryBytes;
-                    usedMemory = gcInfo.MemoryLoadBytes > 0 ? gcInfo.MemoryLoadBytes : gcInfo.TotalCommittedBytes;
-                }
+                totalMemory = (long)memStatus.ullTotalPhys;
+                usedMemory = (long)(memStatus.ullTotalPhys - memStatus.ullAvailPhys);
             }
         }
-        else
+        catch
         {
             var gcInfo = GC.GetGCMemoryInfo();
             if (gcInfo.TotalAvailableMemoryBytes > 0)
@@ -131,7 +113,7 @@ public class WindowsTelemetryService : ISystemTelemetryService
         }
 
         double cpuPercentage = 0.0;
-        if (OperatingSystem.IsWindows() && _wmiService != null)
+        if (_wmiService != null)
         {
             try
             {

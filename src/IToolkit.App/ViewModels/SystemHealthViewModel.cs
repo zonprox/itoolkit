@@ -8,6 +8,8 @@ using IToolkit.Core.Services.SystemHealth;
 public class SystemHealthViewModel : ViewModelBase
 {
     private readonly ISystemHealthService _systemHealthService;
+    private readonly IDialogService? _dialogService;
+    private readonly ISafetyConfirmationService? _confirmationService;
     private int _selectedCleanupThresholdHours = 24;
     private bool _winSxSResetBase;
     private string? _customWimSource;
@@ -19,10 +21,19 @@ public class SystemHealthViewModel : ViewModelBase
     private string _lastCleanupSummary = "Ready";
     private bool _rebootRequired;
 
-    public SystemHealthViewModel(ISystemHealthService systemHealthService, IActivityLogger? logger = null)
+    public SystemHealthViewModel(
+        ISystemHealthService systemHealthService,
+        IActivityLogger? logger = null,
+        IDialogService? dialogService = null,
+        ISafetyConfirmationService? confirmationService = null)
         : base(logger)
     {
         _systemHealthService = systemHealthService ?? throw new ArgumentNullException(nameof(systemHealthService));
+        _dialogService = dialogService;
+        _confirmationService = confirmationService;
+
+        BrowseWimSourceCommand = new RelayCommand(BrowseWimSource, () => IsNotBusy);
+        OpenWimFolderCommand = new RelayCommand(OpenWimFolder, () => IsNotBusy && !string.IsNullOrWhiteSpace(CustomWimSource));
 
         RunDismSfcPipelineCommand = new AsyncRelayCommand(RunDismSfcPipelineAsync, () => IsNotBusy);
         RunSfcScanCommand = new AsyncRelayCommand(RunSfcScanAsync, () => IsNotBusy);
@@ -48,7 +59,13 @@ public class SystemHealthViewModel : ViewModelBase
     public string? CustomWimSource
     {
         get => _customWimSource;
-        set => SetProperty(ref _customWimSource, value);
+        set
+        {
+            if (SetProperty(ref _customWimSource, value))
+            {
+                OpenWimFolderCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public bool LimitSourceAccess
@@ -93,6 +110,8 @@ public class SystemHealthViewModel : ViewModelBase
         set => SetProperty(ref _rebootRequired, value);
     }
 
+    public IRelayCommand BrowseWimSourceCommand { get; }
+    public IRelayCommand OpenWimFolderCommand { get; }
     public IAsyncRelayCommand RunDismSfcPipelineCommand { get; }
     public IAsyncRelayCommand RunSfcScanCommand { get; }
     public IAsyncRelayCommand RunDismRestoreHealthCommand { get; }
@@ -158,8 +177,41 @@ public class SystemHealthViewModel : ViewModelBase
         });
     }
 
+    private void BrowseWimSource()
+    {
+        if (_dialogService == null) return;
+        string? selected = _dialogService.ShowOpenFileDialog(
+            "Select Windows Image Source",
+            "WIM/ESD Files (*.wim;*.esd)|*.wim;*.esd|All Files (*.*)|*.*",
+            CustomWimSource);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            CustomWimSource = selected;
+        }
+    }
+
+    private void OpenWimFolder()
+    {
+        if (_dialogService == null || string.IsNullOrWhiteSpace(CustomWimSource)) return;
+        _dialogService.OpenFolderInExplorer(CustomWimSource);
+    }
+
     private async Task CleanWinSxSAsync()
     {
+        if (WinSxSResetBase && _confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Deep WinSxS Cleanup",
+                "Deep WinSxS Cleanup with /ResetBase will permanently remove superseded component versions.",
+                "You will NOT be able to uninstall previous Windows updates after this operation completes. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastCleanupSummary = "WinSxS cleanup cancelled by user.";
+                Logger?.LogWarning(nameof(SystemHealthViewModel), "WinSxS cleanup with ResetBase cancelled by user.");
+                return;
+            }
+        }
+
         await ExecuteAsync("WinSxS Component Store Cleanup", () =>
         {
             var res = _systemHealthService.CleanWinSxS(WinSxSResetBase);

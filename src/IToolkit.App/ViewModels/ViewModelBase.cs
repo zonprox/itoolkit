@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using IToolkit.Core.Abstractions;
 
@@ -12,6 +13,7 @@ using IToolkit.Core.Abstractions;
 /// </summary>
 public abstract class ViewModelBase : INotifyPropertyChanged
 {
+    private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
     private bool _isBusy;
     private string _statusMessage = string.Empty;
 
@@ -46,6 +48,12 @@ public abstract class ViewModelBase : INotifyPropertyChanged
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
+        if (_uiContext != null && SynchronizationContext.Current != _uiContext)
+        {
+            _uiContext.Post(_ => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName)), null);
+            return;
+        }
+
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
@@ -77,7 +85,7 @@ public abstract class ViewModelBase : INotifyPropertyChanged
             StatusMessage = $"Running {operationName}...";
             Logger?.LogInfo(GetType().Name, $"Starting operation: {operationName}...");
 
-            await action().ConfigureAwait(false);
+            await action();
 
             StatusMessage = $"{operationName} completed successfully.";
             Logger?.LogSuccess(GetType().Name, $"{operationName} completed successfully.");
@@ -91,15 +99,5 @@ public abstract class ViewModelBase : INotifyPropertyChanged
         {
             IsBusy = false;
         }
-    }
-}
-
-/// <summary>
-/// Backward-compatible alias for ViewModelBase.
-/// </summary>
-public abstract class ObservableObject : ViewModelBase
-{
-    protected ObservableObject(IActivityLogger? logger = null) : base(logger)
-    {
     }
 }

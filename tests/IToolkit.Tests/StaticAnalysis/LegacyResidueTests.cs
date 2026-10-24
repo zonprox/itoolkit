@@ -19,8 +19,7 @@ public class LegacyResidueTests
         string repoRoot = StaticAnalysisHelper.GetRepoRoot();
         var files = StaticAnalysisHelper.EnumerateSourceFiles(
             repoRoot,
-            LegacyScriptExtensions,
-            additionalExclusions: new[] { "scripts" }); // bash scripts in scripts/ are permitted (*.sh)
+            LegacyScriptExtensions);
 
         // Act
         var violations = files

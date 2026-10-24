@@ -38,11 +38,9 @@ public class WindowsNetworkService : INetworkService
         try
         {
             using var client = new TcpClient();
-            var ar = client.BeginConnect(host, port, null, null);
-            bool success = ar.AsyncWaitHandle.WaitOne(timeoutMs);
-            if (!success) return false;
-            client.EndConnect(ar);
-            return true;
+            using var cts = new CancellationTokenSource(timeoutMs);
+            client.ConnectAsync(host, port, cts.Token).AsTask().GetAwaiter().GetResult();
+            return client.Connected;
         }
         catch { return false; }
     }

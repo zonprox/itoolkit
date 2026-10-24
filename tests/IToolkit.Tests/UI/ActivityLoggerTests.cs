@@ -6,6 +6,7 @@ using IToolkit.App.Native;
 using IToolkit.Core.Models;
 using Xunit;
 
+[Collection("ActivityLoggerDiskFile")]
 public class ActivityLoggerTests
 {
     [Fact]

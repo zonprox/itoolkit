@@ -5,7 +5,7 @@ using IToolkit.Core.Abstractions;
 using IToolkit.Core.Models;
 
 /// <summary>
-/// Pillar 1: System Health & Maintenance implementation in pure C# .NET 8 (win-x64).
+/// Pillar 1: System Health &amp; Maintenance implementation in pure C# .NET 10.0 LTS (win-x64).
 /// </summary>
 public class SystemHealthService : ISystemHealthService
 {

@@ -11,20 +11,27 @@ public class LogLevelToBrushConverter : IValueConverter
 {
     public static readonly LogLevelToBrushConverter Instance = new();
 
-    private static readonly SolidColorBrush InfoBg = new((Color)ColorConverter.ConvertFromString("#0C4A6E"));
-    private static readonly SolidColorBrush InfoFg = new((Color)ColorConverter.ConvertFromString("#38BDF8"));
+    private static readonly SolidColorBrush InfoBg = CreateFrozenBrush("#0C4A6E");
+    private static readonly SolidColorBrush InfoFg = CreateFrozenBrush("#38BDF8");
 
-    private static readonly SolidColorBrush SuccessBg = new((Color)ColorConverter.ConvertFromString("#064E3B"));
-    private static readonly SolidColorBrush SuccessFg = new((Color)ColorConverter.ConvertFromString("#4ADE80"));
+    private static readonly SolidColorBrush SuccessBg = CreateFrozenBrush("#064E3B");
+    private static readonly SolidColorBrush SuccessFg = CreateFrozenBrush("#4ADE80");
 
-    private static readonly SolidColorBrush WarningBg = new((Color)ColorConverter.ConvertFromString("#78350F"));
-    private static readonly SolidColorBrush WarningFg = new((Color)ColorConverter.ConvertFromString("#FBBF24"));
+    private static readonly SolidColorBrush WarningBg = CreateFrozenBrush("#78350F");
+    private static readonly SolidColorBrush WarningFg = CreateFrozenBrush("#FBBF24");
 
-    private static readonly SolidColorBrush ErrorBg = new((Color)ColorConverter.ConvertFromString("#7F1D1D"));
-    private static readonly SolidColorBrush ErrorFg = new((Color)ColorConverter.ConvertFromString("#F87171"));
+    private static readonly SolidColorBrush ErrorBg = CreateFrozenBrush("#7F1D1D");
+    private static readonly SolidColorBrush ErrorFg = CreateFrozenBrush("#F87171");
 
-    private static readonly SolidColorBrush DebugBg = new((Color)ColorConverter.ConvertFromString("#1E293B"));
-    private static readonly SolidColorBrush DebugFg = new((Color)ColorConverter.ConvertFromString("#94A3B8"));
+    private static readonly SolidColorBrush DebugBg = CreateFrozenBrush("#1E293B");
+    private static readonly SolidColorBrush DebugFg = CreateFrozenBrush("#94A3B8");
+
+    private static SolidColorBrush CreateFrozenBrush(string hex)
+    {
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        brush.Freeze();
+        return brush;
+    }
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {

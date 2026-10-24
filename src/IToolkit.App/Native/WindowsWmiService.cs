@@ -11,7 +11,6 @@ public class WindowsWmiService : IWmiService
     public IEnumerable<IDictionary<string, object?>> Query(string wqlQuery, string wmiNamespace = @"root\cimv2")
     {
         var results = new List<IDictionary<string, object?>>();
-        if (!OperatingSystem.IsWindows()) return results;
 
         try
         {
@@ -39,7 +38,6 @@ public class WindowsWmiService : IWmiService
 
     public int ExecuteMethod(string className, string methodName, IDictionary<string, object?>? inParams = null, string wmiNamespace = @"root\cimv2")
     {
-        if (!OperatingSystem.IsWindows()) return -1;
         try
         {
             using var managementClass = new ManagementClass(wmiNamespace, className, null);

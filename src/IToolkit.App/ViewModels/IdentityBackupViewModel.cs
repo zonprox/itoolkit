@@ -12,6 +12,8 @@ public class IdentityBackupViewModel : ViewModelBase
 {
     private readonly IIdentityService _identityService;
     private readonly IBackupService _backupService;
+    private readonly IDialogService? _dialogService;
+    private readonly ISafetyConfirmationService? _confirmationService;
 
     private LocalAccountItem? _selectedAccount;
     private string _builtInAdminName = "Administrator (SID -500)";
@@ -39,19 +41,29 @@ public class IdentityBackupViewModel : ViewModelBase
     public IdentityBackupViewModel(
         IIdentityService identityService,
         IBackupService backupService,
-        IActivityLogger? logger = null)
+        IActivityLogger? logger = null,
+        IDialogService? dialogService = null,
+        ISafetyConfirmationService? confirmationService = null)
         : base(logger)
     {
         _identityService = identityService ?? throw new ArgumentNullException(nameof(identityService));
         _backupService = backupService ?? throw new ArgumentNullException(nameof(backupService));
+        _dialogService = dialogService;
+        _confirmationService = confirmationService;
 
         Accounts = new ObservableCollection<LocalAccountItem>();
+
+        // Smart Path Commands
+        BrowseBackupDestinationCommand = new RelayCommand(BrowseBackupDestination, () => IsNotBusy);
+        OpenBackupDestinationCommand = new RelayCommand(OpenBackupDestination, () => IsNotBusy && !string.IsNullOrWhiteSpace(BackupDestinationDirectory));
+        BrowseRestoreBackupCommand = new RelayCommand(BrowseRestoreBackup, () => IsNotBusy);
+        OpenRestoreBackupCommand = new RelayCommand(OpenRestoreBackup, () => IsNotBusy && !string.IsNullOrWhiteSpace(RestoreBackupDirectory));
 
         // Commands
         RefreshAccountsCommand = new AsyncRelayCommand(RefreshAccountsAsync, () => IsNotBusy);
         EnableBuiltInAdminCommand = new AsyncRelayCommand(EnableBuiltInAdminAsync, () => IsNotBusy);
-        ResetAdminPasswordCommand = new AsyncRelayCommand(ResetAdminPasswordAsync, () => IsNotBusy && !string.IsNullOrEmpty(NewAdminPassword));
-        CreateAccountCommand = new AsyncRelayCommand(CreateAccountAsync, () => IsNotBusy && !string.IsNullOrEmpty(NewAccountUsername) && !string.IsNullOrEmpty(NewAccountPassword));
+        ResetAdminPasswordCommand = new AsyncRelayCommand(ResetAdminPasswordAsync, () => IsNotBusy && !string.IsNullOrWhiteSpace(NewAdminPassword));
+        CreateAccountCommand = new AsyncRelayCommand(CreateAccountAsync, () => IsNotBusy && !string.IsNullOrWhiteSpace(NewAccountUsername) && !string.IsNullOrWhiteSpace(NewAccountPassword));
         UnlockAccountCommand = new AsyncRelayCommand(UnlockAccountAsync, () => IsNotBusy && SelectedAccount != null);
         ToggleAccountEnabledCommand = new AsyncRelayCommand(ToggleAccountEnabledAsync, () => IsNotBusy && SelectedAccount != null);
         RemoveAccountCommand = new AsyncRelayCommand(RemoveAccountAsync, () => IsNotBusy && SelectedAccount != null);
@@ -173,6 +185,7 @@ public class IdentityBackupViewModel : ViewModelBase
             if (SetProperty(ref _backupDestinationDirectory, value))
             {
                 ExecuteProfileBackupCommand.RaiseCanExecuteChanged();
+                OpenBackupDestinationCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -186,6 +199,7 @@ public class IdentityBackupViewModel : ViewModelBase
             {
                 ValidateBackupManifestCommand.RaiseCanExecuteChanged();
                 RestoreProfileCommand.RaiseCanExecuteChanged();
+                OpenRestoreBackupCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -238,6 +252,11 @@ public class IdentityBackupViewModel : ViewModelBase
         set => SetProperty(ref _lastBackupStatus, value);
     }
 
+    public IRelayCommand BrowseBackupDestinationCommand { get; }
+    public IRelayCommand OpenBackupDestinationCommand { get; }
+    public IRelayCommand BrowseRestoreBackupCommand { get; }
+    public IRelayCommand OpenRestoreBackupCommand { get; }
+
     public IAsyncRelayCommand RefreshAccountsCommand { get; }
     public IAsyncRelayCommand EnableBuiltInAdminCommand { get; }
     public IAsyncRelayCommand ResetAdminPasswordCommand { get; }
@@ -253,6 +272,71 @@ public class IdentityBackupViewModel : ViewModelBase
     public IAsyncRelayCommand ValidateBackupManifestCommand { get; }
     public IAsyncRelayCommand RestoreProfileCommand { get; }
 
+    private void BrowseBackupDestination()
+    {
+        if (_dialogService == null) return;
+        string? selected = _dialogService.ShowOpenFolderDialog(
+            "Select User Profile Backup Destination",
+            BackupDestinationDirectory);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            BackupDestinationDirectory = selected;
+        }
+    }
+
+    private void OpenBackupDestination()
+    {
+        if (_dialogService == null || string.IsNullOrWhiteSpace(BackupDestinationDirectory)) return;
+        _dialogService.OpenFolderInExplorer(BackupDestinationDirectory);
+    }
+
+    private void BrowseRestoreBackup()
+    {
+        if (_dialogService == null) return;
+        string? selected = _dialogService.ShowOpenFolderDialog(
+            "Select User Profile Backup Source",
+            RestoreBackupDirectory);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            RestoreBackupDirectory = selected;
+        }
+    }
+
+    private void OpenRestoreBackup()
+    {
+        if (_dialogService == null || string.IsNullOrWhiteSpace(RestoreBackupDirectory)) return;
+        _dialogService.OpenFolderInExplorer(RestoreBackupDirectory);
+    }
+
+    public void AutoDetectDomain()
+    {
+        DomainTestName = DetectDomain();
+    }
+
+    public static string DetectDomain()
+    {
+        try
+        {
+            string? domain = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().DomainName;
+            if (!string.IsNullOrWhiteSpace(domain))
+            {
+                return domain;
+            }
+
+            string? userDomain = Environment.UserDomainName;
+            if (!string.IsNullOrWhiteSpace(userDomain))
+            {
+                return userDomain;
+            }
+
+            return "corp.local";
+        }
+        catch
+        {
+            return "corp.local";
+        }
+    }
+
     public async Task RefreshAccountsAsync() => await ExecuteAsync("Query Local Accounts", () =>
     {
         RefreshAccountsCore();
@@ -260,13 +344,80 @@ public class IdentityBackupViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
+    public async Task ScanIdentityAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Scanning local user accounts, Built-in Administrator, and profile paths...";
+            var (accounts, admin, profileMap) = await Task.Run(() =>
+            {
+                var accs = _identityService.GetLocalAccounts() ?? Array.Empty<LocalAccountItem>();
+                LocalAccountItem? builtIn = null;
+                foreach (var a in accs)
+                {
+                    if (a.IsBuiltInAdmin)
+                    {
+                        builtIn = a;
+                        break;
+                    }
+                }
+                builtIn ??= _identityService.GetBuiltInAdministrator();
+                UserProfileMap? map = null;
+                try { map = _backupService.GetUserProfileMap(); } catch { }
+                return (accs, builtIn, map);
+            });
+
+            Accounts.Clear();
+            foreach (var acc in accounts)
+            {
+                Accounts.Add(acc);
+            }
+
+            if (SelectedAccount == null && Accounts.Count > 0)
+            {
+                SelectedAccount = Accounts[0];
+            }
+
+            if (admin != null)
+            {
+                BuiltInAdminName = $"{admin.Username} ({admin.Sid})";
+                IsBuiltInAdminEnabled = admin.IsEnabled;
+            }
+
+            AutoDetectDomain();
+
+            LastIdentityStatus = $"Loaded {Accounts.Count} local user accounts (Built-in Admin: {(IsBuiltInAdminEnabled ? "Enabled" : "Disabled")}).";
+            if (profileMap != null)
+            {
+                LastBackupStatus = $"Active profile mapped: {profileMap.Username} ({profileMap.ProfilePath})";
+            }
+            StatusMessage = LastIdentityStatus;
+        }
+        catch (Exception ex)
+        {
+            LastIdentityStatus = $"Account scan failed: {ex.Message}";
+            StatusMessage = LastIdentityStatus;
+            Logger?.LogError(nameof(IdentityBackupViewModel), LastIdentityStatus);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private void RefreshAccountsCore()
     {
-        var accounts = _identityService.GetLocalAccounts();
+        var accounts = _identityService.GetLocalAccounts() ?? Array.Empty<LocalAccountItem>();
         Accounts.Clear();
         foreach (var acc in accounts)
         {
             Accounts.Add(acc);
+        }
+
+        if (SelectedAccount == null && Accounts.Count > 0)
+        {
+            SelectedAccount = Accounts[0];
         }
 
         var admin = _identityService.GetBuiltInAdministrator();
@@ -325,16 +476,34 @@ public class IdentityBackupViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
-    private async Task RemoveAccountAsync() => await ExecuteAsync($"Remove Account '{SelectedAccount?.Username}'", () =>
+    private async Task RemoveAccountAsync()
     {
-        if (SelectedAccount == null) return Task.CompletedTask;
+        if (SelectedAccount == null) return;
         string username = SelectedAccount.Username;
         string sid = SelectedAccount.Sid;
-        bool ok = _identityService.RemoveLocalAccount(username, sid);
-        RefreshAccountsCore();
-        LastIdentityStatus = ok ? $"Account '{username}' removed." : "Failed to remove account.";
-        return Task.CompletedTask;
-    });
+
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Account Deletion",
+                $"Are you sure you want to permanently delete local user account '{username}'?",
+                $"Account SID: {sid}. This account and its credentials will be permanently removed from SAM. This action cannot be undone.");
+            if (!confirmed)
+            {
+                LastIdentityStatus = $"Account removal of '{username}' cancelled by user.";
+                Logger?.LogWarning(nameof(IdentityBackupViewModel), $"Account removal of '{username}' was cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync($"Remove Account '{username}'", () =>
+        {
+            bool ok = _identityService.RemoveLocalAccount(username, sid);
+            RefreshAccountsCore();
+            LastIdentityStatus = ok ? $"Account '{username}' removed." : "Failed to remove account.";
+            return Task.CompletedTask;
+        });
+    }
 
     private async Task TestDomainReachabilityAsync() => await ExecuteAsync($"Test Domain '{DomainTestName}'", () =>
     {
@@ -352,31 +521,48 @@ public class IdentityBackupViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
-    private async Task ExecuteProfileBackupAsync() => await ExecuteAsync("User Profile Backup Pipeline", () =>
+    private async Task ExecuteProfileBackupAsync()
     {
-        if (IncludeBookmarks)
+        if (RobocopyMirror && _confirmationService != null)
         {
-            _backupService.ExportBrowserBookmarks(BackupDestinationDirectory);
-        }
-        if (IncludeCertificates)
-        {
-            _backupService.ExportCertificates(CertificateStoreName, BackupDestinationDirectory, CertificatePassword);
-        }
-
-        var profileMap = _backupService.GetUserProfileMap();
-        var syncRes = _backupService.RunRobocopySync(profileMap.ProfilePath, BackupDestinationDirectory, RobocopyMirror);
-
-        if (CreateManifest)
-        {
-            string manifestPath = Path.Combine(BackupDestinationDirectory, "iToolKit_Backup_Manifest.json");
-            _backupService.CreateBackupManifest(BackupDestinationDirectory, manifestPath);
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Robocopy Mirror (/MIR)",
+                $"Robocopy Mirror mode will purge any files or folders in '{BackupDestinationDirectory}' that do not exist in the source profile.",
+                "Files present in the destination but missing from the current user profile will be permanently deleted. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastBackupStatus = "Profile backup cancelled by user (Mirror confirmation declined).";
+                Logger?.LogWarning(nameof(IdentityBackupViewModel), "Robocopy Mirror backup was cancelled by user.");
+                return;
+            }
         }
 
-        LastBackupStatus = syncRes.IsSuccess
-            ? $"Profile backup completed successfully to '{BackupDestinationDirectory}'."
-            : $"Robocopy sync exited with code {syncRes.ExitCode}.";
-        return Task.CompletedTask;
-    });
+        await ExecuteAsync("User Profile Backup Pipeline", () =>
+        {
+            if (IncludeBookmarks)
+            {
+                _backupService.ExportBrowserBookmarks(BackupDestinationDirectory);
+            }
+            if (IncludeCertificates)
+            {
+                _backupService.ExportCertificates(CertificateStoreName, BackupDestinationDirectory, CertificatePassword);
+            }
+
+            var profileMap = _backupService.GetUserProfileMap();
+            var syncRes = _backupService.RunRobocopySync(profileMap.ProfilePath, BackupDestinationDirectory, RobocopyMirror);
+
+            if (CreateManifest)
+            {
+                string manifestPath = Path.Combine(BackupDestinationDirectory, "iToolKit_Backup_Manifest.json");
+                _backupService.CreateBackupManifest(BackupDestinationDirectory, manifestPath);
+            }
+
+            LastBackupStatus = syncRes.IsSuccess
+                ? $"Profile backup completed successfully to '{BackupDestinationDirectory}'."
+                : $"Robocopy sync exited with code {syncRes.ExitCode}.";
+            return Task.CompletedTask;
+        });
+    }
 
     private async Task ValidateBackupManifestAsync() => await ExecuteAsync("Validate Backup Manifest", () =>
     {
@@ -388,13 +574,30 @@ public class IdentityBackupViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
-    private async Task RestoreProfileAsync() => await ExecuteAsync("Restore Profile Data", () =>
+    private async Task RestoreProfileAsync()
     {
-        string manifestPath = Path.Combine(RestoreBackupDirectory, "iToolKit_Backup_Manifest.json");
-        var res = _backupService.RestoreProfileData(RestoreBackupDirectory, manifestPath);
-        LastBackupStatus = res.Success
-            ? $"Profile restored: {res.FilesRestored} files restored after manifest validation."
-            : $"Restore failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Profile Restore",
+                $"Restoring profile data will overwrite current user files from '{RestoreBackupDirectory}'.",
+                "Existing files in your profile folders may be overwritten by restored files. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastBackupStatus = "Profile restore cancelled by user.";
+                Logger?.LogWarning(nameof(IdentityBackupViewModel), "Profile restore was cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync("Restore Profile Data", () =>
+        {
+            string manifestPath = Path.Combine(RestoreBackupDirectory, "iToolKit_Backup_Manifest.json");
+            var res = _backupService.RestoreProfileData(RestoreBackupDirectory, manifestPath);
+            LastBackupStatus = res.Success
+                ? $"Profile restored: {res.FilesRestored} files restored after manifest validation."
+                : $"Restore failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 }

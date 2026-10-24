@@ -21,6 +21,7 @@ using IToolkit.Tests.TestDoubles;
 using Moq;
 using Xunit;
 
+[Collection("ActivityLoggerDiskFile")]
 public class Milestone5EmpiricalChallengeTests
 {
     // =========================================================================
@@ -122,7 +123,10 @@ public class Milestone5EmpiricalChallengeTests
             .ToArray();
 
         await Task.WhenAll(tasks);
-        await Task.Delay(100); // Allow async void to settle
+        for (int i = 0; i < 50 && cmd.IsExecuting; i++)
+        {
+            await Task.Delay(20);
+        }
 
         // Assert - zero crashes, state cleanly reset
         Assert.False(cmd.IsExecuting);

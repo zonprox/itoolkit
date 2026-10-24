@@ -11,6 +11,12 @@ using IToolkit.Core.Services.Office;
 using IToolkit.Core.Services.Software;
 using IToolkit.Core.Services.SystemHealth;
 
+#if WINDOWS || NET10_0_WINDOWS
+using IToolkit.App.Services;
+#else
+using IToolkit.Tests.TestDoubles;
+#endif
+
 /// <summary>
 /// Production Dependency Injection registration for platform abstractions, safety guards, pillar services, and ViewModels.
 /// </summary>
@@ -28,14 +34,22 @@ public static class ServiceRegistration
         services.AddSingleton<INetworkService, WindowsNetworkService>();
         services.AddSingleton<IWmiService, WindowsWmiService>();
         services.AddSingleton<ISystemTelemetryService, WindowsTelemetryService>();
+#if WINDOWS || NET10_0_WINDOWS
+        services.AddSingleton<WpfDialogService>();
+        services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<WpfDialogService>());
+        services.AddSingleton<ISafetyConfirmationService>(sp => sp.GetRequiredService<WpfDialogService>());
+#else
+        services.AddSingleton<MockDialogService>();
+        services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<MockDialogService>());
+        services.AddSingleton<ISafetyConfirmationService>(sp => sp.GetRequiredService<MockDialogService>());
+#endif
 
         // ---------------------------------------------------------
         // 2. Core Safety Engines
         // ---------------------------------------------------------
         services.AddSingleton<ElevationGuard>(_ => new ElevationGuard());
         services.AddSingleton<IElevationService>(sp => sp.GetRequiredService<ElevationGuard>());
-        services.AddSingleton<AtomicRegistryEngine>();
-        services.AddSingleton<AtomicRegistryService>(sp => sp.GetRequiredService<AtomicRegistryEngine>());
+        services.AddSingleton<AtomicRegistryService>();
         services.AddSingleton<ProcessLockGuard>();
         services.AddSingleton<ResourceGuard>();
 

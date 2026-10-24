@@ -5,18 +5,18 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
         xmlns:views="clr-namespace:IToolkit.App.Views"
+        xmlns:converters="clr-namespace:IToolkit.App.Converters"
         mc:Ignorable="d"
         Title="iToolKit"
-        Icon="pack://application:,,,/Assets/iToolKit.ico"
-        Height="850" Width="1300"
-        MinHeight="680" MinWidth="1050"
-        WindowStartupLocation="CenterScreen"
-        Background="#18181B"
-        Foreground="#F4F4F5"
-        FontFamily="Segoe UI Variable Text, Segoe UI, sans-serif">
+        Icon="pack://application:,,,/iToolKit;component/Assets/iToolKit.ico"
+        Height="600" Width="960"
+        MinHeight="500" MinWidth="800"
+        WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
-        <!-- DataTemplates for Page Navigation -->
+        <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+
+        <!-- DataTemplates for Pillar Navigation -->
         <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
             <views:DashboardView />
         </DataTemplate>
@@ -36,27 +36,41 @@
             <views:SoftwareOptimizationView />
         </DataTemplate>
 
-        <!-- Navigation Rail Item Style -->
+        <!-- Compact Fluent NavRail Item Style -->
         <Style x:Key="NavRailItemStyle" TargetType="RadioButton">
             <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="10,8" />
-            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="0,1" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Border" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center" />
-                        </Border>
+                        <Grid>
+                            <Border x:Name="ItemBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </Border>
+                            <Border x:Name="ActiveIndicator"
+                                    Width="3"
+                                    Height="14"
+                                    CornerRadius="1.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                    Visibility="Collapsed" />
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#252528" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#2E2E34" />
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#0067C0" />
-                                <Setter TargetName="Border" Property="BorderThickness" Value="3,0,0,0" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -64,193 +78,161 @@
             </Setter>
         </Style>
     </Window.Resources>
-    
-    <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="40"
-                      ResizeBorderThickness="6"
-                      GlassFrameThickness="0"
-                      CornerRadius="8"
-                      UseAeroCaptionButtons="False" />
-    </WindowChrome.WindowChrome>
 
     <Grid>
         <Grid.RowDefinitions>
-            <!-- Row 0: Custom TitleBar -->
-            <RowDefinition Height="40" />
-            <!-- Row 1: Telemetry Dashboard Header -->
+            <!-- Row 0: Compact System Telemetry Bar -->
             <RowDefinition Height="Auto" />
-            <!-- Row 2: Main Workspace (Navigation Sidebar + Active Content) -->
+            <!-- Row 1: Main Workspace (Left Slim Nav Rail + Active Page) -->
             <RowDefinition Height="*" />
-            <!-- Row 3: GridSplitter for Resizing Console -->
+            <!-- Row 2: Resizable Splitter -->
             <RowDefinition Height="4" />
-            <!-- Row 4: Docked Activity Log Console -->
+            <!-- Row 3: Collapsible Activity Log Console -->
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Row 0: Modern Custom TitleBar -->
-        <Border Grid.Row="0" Background="#141416" BorderBrush="#27272A" BorderThickness="0,0,0,1"
-                MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+        <!-- Row 0: System Telemetry Status Header -->
+        <views:TelemetryHeaderView Grid.Row="0" DataContext="{Binding TelemetryHeader}" />
 
-                <!-- App Icon & Title -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-                    <Border Width="24" Height="24" CornerRadius="5" Background="#2563EB" Margin="0,0,8,0">
-                        <Path Data="M14.7,6.3 C15.1,5.9 15.1,5.3 14.7,4.9 L13.1,3.3 C12.7,2.9 12.1,2.9 11.7,3.3 L9.6,5.4 L3,12 L3,15 L6,15 L12.6,8.4 L14.7,6.3 Z M5,13.5 L4.5,13.5 L4.5,13 L10.3,7.2 L10.8,7.7 L5,13.5 Z"
-                              Fill="#FFFFFF" Stretch="Uniform" Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <TextBlock Text="iToolKit" FontWeight="SemiBold" FontSize="13" Foreground="#FFFFFF" VerticalAlignment="Center" />
-                    <TextBlock Text="- Windows Utility Suite" FontSize="12" Foreground="#A1A1AA" Margin="6,0,0,0" VerticalAlignment="Center" />
-                </StackPanel>
-
-                <!-- Window Caption Controls (Minimize, Maximize/Restore, Close) -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button Click="Minimize_Click" Width="46" Height="40" Background="Transparent" BorderThickness="0" Foreground="#A1A1AA" Cursor="Hand" ToolTip="Minimize">
-                        <Path Data="M0,5 L10,5" Stroke="#E4E4E7" StrokeThickness="1.2" Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Button>
-                    <Button Click="Maximize_Click" Width="46" Height="40" Background="Transparent" BorderThickness="0" Foreground="#A1A1AA" Cursor="Hand" ToolTip="Maximize / Restore">
-                        <Path Data="M0.5,0.5 L9.5,0.5 L9.5,9.5 L0.5,9.5 Z" Stroke="#E4E4E7" StrokeThickness="1.2" Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Button>
-                    <Button Click="Close_Click" Width="46" Height="40" Background="Transparent" BorderThickness="0" Foreground="#A1A1AA" Cursor="Hand" ToolTip="Close">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#E11D48" />
-                                        <Setter Property="Foreground" Value="#FFFFFF" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <Path Data="M0.5,0.5 L9.5,9.5 M9.5,0.5 L0.5,9.5" Stroke="#E4E4E7" StrokeThickness="1.3" Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- Row 1: Real-Time Telemetry Dashboard Header -->
-        <views:TelemetryHeaderView Grid.Row="1" DataContext="{Binding TelemetryHeader}" />
-
-        <!-- Row 2: Main Workspace (Navigation Sidebar + Active Pillar View) -->
-        <Grid Grid.Row="2">
+        <!-- Row 1: Navigation Rail + Page Content -->
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <!-- Navigation Rail Sidebar -->
-                <ColumnDefinition Width="240" />
-                <!-- Active Content View Area -->
+                <ColumnDefinition Width="175" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Navigation Sidebar -->
-            <Border Grid.Column="0" Background="#141416" BorderBrush="#27272A" BorderThickness="0,0,1,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="8,12">
-                        <!-- Navigation Item: Dashboard -->
-                        <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
-                                     IsChecked="True" Command="{Binding NavigateCommand}" CommandParameter="Dashboard">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="28" Height="28" CornerRadius="6" Background="#172554" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <Path Data="M3,3 L10,3 L10,10 L3,10 Z M14,3 L21,3 L21,10 L14,10 Z M14,14 L21,14 L21,21 L14,21 Z M3,14 L10,14 L10,21 L3,21 Z"
-                                          Fill="#38BDF8" Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Dashboard" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF" />
-                                    <TextBlock Text="System overview &amp; status" FontSize="10" Foreground="#71717A" />
-                                </StackPanel>
-                            </StackPanel>
-                        </RadioButton>
-
-                        <Separator Background="#27272A" Margin="0,6" />
-
-                        <!-- Navigation Item: Pillar 1 System Health -->
-                        <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
-                                     Command="{Binding NavigateCommand}" CommandParameter="SystemHealth">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="28" Height="28" CornerRadius="6" Background="#143322" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <Path Data="M12,2 L4,5.5 L4,11.5 C4,16.8 7.4,21.6 12,23 C16.6,21.6 20,16.8 20,11.5 L20,5.5 L12,2 Z M10.5,16.5 L6.5,12.5 L8,11 L10.5,13.5 L16,8 L17.5,9.5 L10.5,16.5 Z"
-                                          Fill="#4ADE80" Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="System Health" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF" />
-                                    <TextBlock Text="DISM, SFC, Update &amp; Cleanup" FontSize="10" Foreground="#71717A" />
-                                </StackPanel>
-                            </StackPanel>
-                        </RadioButton>
-
-                        <!-- Navigation Item: Pillar 2 Office & Outlook -->
-                        <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
-                                     Command="{Binding NavigateCommand}" CommandParameter="OfficeOutlook">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="28" Height="28" CornerRadius="6" Background="#3B2510" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <Path Data="M2,5 C2,3.9 2.9,3 4,3 L20,3 C21.1,3 22,3.9 22,5 L22,19 C22,20.1 21.1,21 20,21 L4,21 C2.9,21 2,20.1 2,19 L2,5 Z M4,6.5 L12,12 L20,6.5 L20,5 L12,10.5 L4,5 L4,6.5 Z"
-                                          Fill="#FBBF24" Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Office &amp; Outlook" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF" />
-                                    <TextBlock Text="C2R, WAM, Office apps &amp; PST" FontSize="10" Foreground="#71717A" />
-                                </StackPanel>
-                            </StackPanel>
-                        </RadioButton>
-
-                        <!-- Navigation Item: Pillar 3 Connectivity & Printers -->
-                        <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
-                                     Command="{Binding NavigateCommand}" CommandParameter="Connectivity">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="28" Height="28" CornerRadius="6" Background="#0C2E45" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <Path Data="M6,3 L18,3 L18,8 L6,8 Z M4,9 L20,9 C21.1,9 22,9.9 22,11 L22,17 L18,17 L18,21 L6,21 L6,17 L2,17 L2,11 C2,9.9 2.9,9 4,9 Z M8,14 L8,19 L16,19 L16,14 Z"
-                                          Fill="#38BDF8" Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Connectivity &amp; Printers" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF" />
-                                    <TextBlock Text="Network, DNS, Spooler &amp; SMB" FontSize="10" Foreground="#71717A" />
-                                </StackPanel>
-                            </StackPanel>
-                        </RadioButton>
-
-                        <!-- Navigation Item: Pillar 4 Identity & Backup -->
-                        <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
-                                     Command="{Binding NavigateCommand}" CommandParameter="IdentityBackup">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="28" Height="28" CornerRadius="6" Background="#2E184A" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <Path Data="M12,4 C14.2,4 16,5.8 16,8 C16,10.2 14.2,12 12,12 C9.8,12 8,10.2 8,8 C8,5.8 9.8,4 12,4 Z M12,14 C16.4,14 20,16.2 20,19 L20,21 L4,21 L4,19 C4,16.2 7.6,14 12,14 Z"
-                                          Fill="#C084FC" Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Identity &amp; Backup" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF" />
-                                    <TextBlock Text="Admin SID, Domain, Robocopy" FontSize="10" Foreground="#71717A" />
-                                </StackPanel>
-                            </StackPanel>
-                        </RadioButton>
-
-                        <!-- Navigation Item: Pillar 5 Software & Debloat -->
-                        <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
-                                     Command="{Binding NavigateCommand}" CommandParameter="SoftwareOptimization">
-                            <StackPanel Orientation="Horizontal">
-                                <Border Width="28" Height="28" CornerRadius="6" Background="#3F161D" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <Path Data="M12,2 L21,7 L21,17 L12,22 L3,17 L3,7 L12,2 Z M12,4.3 L5.5,7.9 L12,11.5 L18.5,7.9 L12,4.3 Z M5,9.9 L5,15.8 L11,19.1 L11,13.2 L5,9.9 Z M13,13.2 L13,19.1 L19,15.8 L19,9.9 L13,13.2 Z"
-                                          Fill="#F87171" Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Software &amp; Debloat" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF" />
-                                    <TextBlock Text="8-App Catalog &amp; Optimizations" FontSize="10" Foreground="#71717A" />
-                                </StackPanel>
-                            </StackPanel>
-                        </RadioButton>
+            <!-- Left Slim Navigation Rail -->
+            <Border Grid.Column="0"
+                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,1,0"
+                    Padding="6,8">
+                <DockPanel LastChildFill="True">
+                    <!-- Brand Header -->
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,2,6,8">
+                        <Border Width="24" Height="24" CornerRadius="4"
+                                Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Path Data="M14.7,6.3 C15.1,5.9 15.1,5.3 14.7,4.9 L13.1,3.3 C12.7,2.9 12.1,2.9 11.7,3.3 L9.6,5.4 L3,12 L3,15 L6,15 L12.6,8.4 L14.7,6.3 Z"
+                                  Fill="#FFFFFF" Stretch="Uniform" Width="12" Height="12"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="iToolKit" FontWeight="SemiBold" FontSize="13"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock Text="Utility Suite" FontSize="10"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
                     </StackPanel>
-                </ScrollViewer>
+
+                    <!-- Navigation Items (Single-line icon + label) -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
+                                         IsChecked="True" Command="{Binding NavigateCommand}" CommandParameter="Dashboard">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="M3,3 L10,3 L10,10 L3,10 Z M14,3 L21,3 L21,10 L14,10 Z M14,14 L21,14 L21,21 L14,21 Z M3,14 L10,14 L10,21 L3,21 Z"
+                                          Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                          Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Dashboard" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <Separator Margin="4,4" />
+
+                            <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
+                                         Command="{Binding NavigateCommand}" CommandParameter="SystemHealth">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="M12,2 L4,5.5 L4,11.5 C4,16.8 7.4,21.6 12,23 C16.6,21.6 20,16.8 20,11.5 L20,5.5 L12,2 Z"
+                                          Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                          Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="System Health" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
+                                         Command="{Binding NavigateCommand}" CommandParameter="OfficeOutlook">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="M2,5 C2,3.9 2.9,3 4,3 L20,3 C21.1,3 22,3.9 22,5 L22,19 C22,20.1 21.1,21 20,21 L4,21 C2.9,21 2,20.1 2,19 L2,5 Z M4,6.5 L12,12 L20,6.5 L20,5 L12,10.5 L4,5 L4,6.5 Z"
+                                          Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                          Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Office &amp; Outlook" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
+                                         Command="{Binding NavigateCommand}" CommandParameter="Connectivity">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="M6,3 L18,3 L18,8 L6,8 Z M4,9 L20,9 C21.1,9 22,9.9 22,11 L22,17 L18,17 L18,21 L6,21 L6,17 L2,17 L2,11 C2,9.9 2.9,9 4,9 Z M8,14 L8,19 L16,19 L16,14 Z"
+                                          Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                          Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Network &amp; Printers" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
+                                         Command="{Binding NavigateCommand}" CommandParameter="IdentityBackup">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="M12,4 C14.2,4 16,5.8 16,8 C16,10.2 14.2,12 12,12 C9.8,12 8,10.2 8,8 C8,5.8 9.8,4 12,4 Z M12,14 C16.4,14 20,16.2 20,19 L20,21 L4,21 L4,19 C4,16.2 7.6,14 12,14 Z"
+                                          Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                          Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Identity &amp; Backup" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
+                                         Command="{Binding NavigateCommand}" CommandParameter="SoftwareOptimization">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="M12,2 L21,7 L21,17 L12,22 L3,17 L3,7 L12,2 Z M12,4.3 L5.5,7.9 L12,11.5 L18.5,7.9 L12,4.3 Z"
+                                          Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                          Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Apps &amp; Optimization" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
             </Border>
 
-            <!-- Active Content View Area -->
-            <ContentControl Grid.Column="1" Content="{Binding CurrentPageViewModel}" Margin="16" />
+            <!-- Active Content Area + System Scan Progress Banner -->
+            <DockPanel Grid.Column="1" LastChildFill="True">
+                <Border DockPanel.Dock="Top"
+                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="10,4"
+                        Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisConverter}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="40" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="System Scan:" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding ScanStatusText}" FontSize="11" FontWeight="Medium"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+                        <ProgressBar Grid.Column="2" Minimum="0" Maximum="100"
+                                     Value="{Binding ScanProgressPercentage, Mode=OneWay}" Height="4"
+                                     VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" Text="{Binding ScanProgressText}" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <ContentControl Content="{Binding CurrentPageViewModel}" />
+            </DockPanel>
         </Grid>
 
-        <!-- Row 3: Resizable GridSplitter -->
-        <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch" Background="#27272A" ResizeDirection="Rows" Cursor="SizeNS" />
+        <!-- Row 2: Resizable Splitter -->
+        <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
+                      Background="{DynamicResource DividerStrokeColorDefaultBrush}"
+                      ResizeDirection="Rows" Cursor="SizeNS" />
 
-        <!-- Row 4: Docked Activity Log Console (Replacing Legacy TUI Pause) -->
-        <views:ActivityConsoleView Grid.Row="4" DataContext="{Binding ActivityConsole}" />
+        <!-- Row 3: Collapsible Activity Console Drawer -->
+        <views:ActivityConsoleView Grid.Row="3" DataContext="{Binding ActivityConsole}" />
     </Grid>
 </Window>

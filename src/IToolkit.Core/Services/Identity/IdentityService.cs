@@ -4,7 +4,7 @@ using IToolkit.Core.Abstractions;
 using IToolkit.Core.Models;
 
 /// <summary>
-/// Pillar 4: Local Account Administration and Zero-RSAT Domain Management in pure C# .NET 8 (win-x64).
+/// Pillar 4: Local Account Administration and Zero-RSAT Domain Management in pure C# .NET 10.0 LTS (win-x64).
 /// </summary>
 public class IdentityService : IIdentityService
 {

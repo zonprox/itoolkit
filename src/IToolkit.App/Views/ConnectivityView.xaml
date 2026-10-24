@@ -11,99 +11,205 @@
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="24" MaxWidth="1000" HorizontalAlignment="Stretch">
-            <!-- Header -->
-            <TextBlock Text="Connectivity &amp; Printer Subsystem" FontSize="20" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,4"/>
-            <TextBlock Text="One-click network remediation, SMB guest auth, Print Spooler repair, and Point &amp; Print policy fixes." FontSize="13" Foreground="#AAAAAA" Margin="0,0,0,20"/>
+    <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-            <!-- Execution Status Banner -->
-            <Border Background="#252528" CornerRadius="6" Padding="14" Margin="0,0,0,16" BorderBrush="#3A3A3E" BorderThickness="1">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="Current Operation Status" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/>
-                        <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium" Foreground="#E0E0E0" Margin="0,4,0,0"/>
-                    </StackPanel>
-                    <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="120" Height="6" VerticalAlignment="Center" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}"/>
-                </Grid>
-            </Border>
-
-            <!-- Card 1: One-Click Network Stack Remediation -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="1. Network Stack Remediation" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Flushes DNS, renews DHCP lease, purges ARP cache, and resets Winsock catalog and TCP/IP stack." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
-
-                    <WrapPanel Margin="0,0,0,12">
-                        <Button Content="Remediate Entire Network Stack" Command="{Binding RemediateNetworkStackCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#0067C0" Foreground="#FFFFFF" FontWeight="SemiBold" Margin="0,0,10,8"/>
-                        <Button Content="Flush DNS Cache" Command="{Binding FlushDnsCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Renew DHCP Lease" Command="{Binding RenewDhcpCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Clear ARP Cache" Command="{Binding ClearArpCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Reset Winsock" Command="{Binding ResetWinsockCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Reset TCP/IP" Command="{Binding ResetTcpIpCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                    </WrapPanel>
-
-                    <TextBlock Text="{Binding LastNetworkStatus, StringFormat='Network Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
+        <!-- Status Banner -->
+        <Border Grid.Row="0" Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
+                    <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                 </StackPanel>
-            </Border>
+                <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
+            </Grid>
+        </Border>
 
-            <!-- Card 2: SMB & Sharing Configuration -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="2. SMB Sharing &amp; Insecure Guest Authentication" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Enables InsecureGuestAuth=1, configures firewall rules for File and Printer Sharing, and starts required Lanman services." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+        <!-- Structured 3-Tab Sub-Views -->
+        <TabControl Grid.Row="1" Style="{StaticResource FluentTabControlStyle}" Margin="0">
+            <!-- Tab 1: Network Stack & Adapter Control -->
+            <TabItem Header="Network Stack &amp; Adapter Control">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,8,0,16">
+                        <!-- Adapter Control Card -->
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Network Stack &amp; Adapter Control" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Auto-discover active network adapters, inspect connection parameters, or restart specific network interfaces."
+                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
-                    <WrapPanel Margin="0,0,0,12">
-                        <Button Content="Configure SMB Sharing &amp; Insecure Guest Auth" Command="{Binding ConfigureSmbSharingCommand}" IsEnabled="{Binding IsNotBusy}" Padding="16,8" Background="#2D2D30" Foreground="#FFFFFF"/>
-                    </WrapPanel>
-                </StackPanel>
-            </Border>
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="140" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Active Adapter:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableAdapters}"
+                                              SelectedItem="{Binding SelectedAdapter, Mode=TwoWay}"
+                                              DisplayMemberPath="Name" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Refresh Adapters" Command="{Binding RefreshAdaptersCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0" />
+                                    <Button Grid.Column="3" Content="Restart Adapter" Command="{Binding RestartAdapterCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" />
+                                </Grid>
 
-            <!-- Card 3: Print Spooler Subsystem -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="3. Print Spooler Subsystem Repair" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Purges stuck printer queue spool files, re-registers spooler components, and resets virtual NeXX: port bindings." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="Adapter Name:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                                    <TextBlock Text="{Binding NetworkAdapterName}" FontWeight="SemiBold" FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,16,0" />
+                                    <TextBlock Text="Status:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                                    <TextBlock Text="{Binding SelectedAdapter.Status, FallbackValue='N/A'}" FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,16,0" />
+                                    <TextBlock Text="Description:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                                    <TextBlock Text="{Binding SelectedAdapter.Description, FallbackValue='N/A'}" FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
-                    <WrapPanel Margin="0,0,0,12">
-                        <Button Content="Purge Spooler Queue" Command="{Binding PurgeSpoolerCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#0067C0" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Re-Register Spooler DLLs &amp; MOF" Command="{Binding RegisterSpoolerCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                        <Button Content="Reset NeXX: Port Bindings" Command="{Binding ResetNePortsCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,8" Background="#2D2D30" Foreground="#FFFFFF" Margin="0,0,10,8"/>
-                    </WrapPanel>
+                        <!-- Network Stack Remediation Card -->
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Network Stack Remediation" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Flush DNS resolver cache, renew DHCP lease, clear ARP cache, and reset Winsock &amp; TCP/IP stacks."
+                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
-                    <TextBlock Text="{Binding LastPrinterStatus, StringFormat='Printer Status: {0}'}" FontSize="12" Foreground="#CCCCCC"/>
-                </StackPanel>
-            </Border>
+                                <WrapPanel Margin="0,0,0,12">
+                                    <Button Content="Remediate Full Network Stack" Command="{Binding RemediateNetworkStackCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Flush DNS" Command="{Binding FlushDnsCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,7" Margin="0,0,8,6" />
+                                    <Button Content="Renew DHCP" Command="{Binding RenewDhcpCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,7" Margin="0,0,8,6" />
+                                    <Button Content="Clear ARP" Command="{Binding ClearArpCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,7" Margin="0,0,8,6" />
+                                    <Button Content="Reset Winsock" Command="{Binding ResetWinsockCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,7" Margin="0,0,8,6" />
+                                    <Button Content="Reset TCP/IP" Command="{Binding ResetTcpIpCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,7" Margin="0,0,8,6" />
+                                </WrapPanel>
 
-            <!-- Card 4: Point & Print & Error Code Remediation -->
-            <Border Background="#1E1E20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#2E2E32" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock Text="4. Point &amp; Print Policy &amp; Error Code Remediation" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
-                    <TextBlock Text="Resolve Point &amp; Print RPC errors (e.g., 0x0000011b, 0x00000709) and perform printer network port diagnostics." FontSize="12" Foreground="#999999" TextWrapping="Wrap" Margin="0,0,0,14"/>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                        <TextBlock Text="Point &amp; Print Preset:" VerticalAlignment="Center" Foreground="#E0E0E0" FontSize="12" Margin="0,0,10,0"/>
-                        <ComboBox ItemsSource="{Binding AvailablePresets}" SelectedItem="{Binding SelectedPreset, Mode=TwoWay}" Width="180" Margin="0,0,12,0"/>
-                        <Button Content="Apply Point &amp; Print Policy" Command="{Binding ApplyPointAndPrintCommand}" IsEnabled="{Binding IsNotBusy}" Padding="12,6" Background="#2D2D30" Foreground="#FFFFFF"/>
+                                <TextBlock Text="{Binding LastNetworkStatus, StringFormat='Network Status: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                        <TextBlock Text="Remediate Specific Error Code:" VerticalAlignment="Center" Foreground="#E0E0E0" FontSize="12" Margin="0,0,10,0"/>
-                        <ComboBox ItemsSource="{Binding SupportedErrorCodes}" SelectedItem="{Binding SelectedErrorCode, Mode=TwoWay}" Width="160" Margin="0,0,12,0"/>
-                        <Button Content="Remediate Selected Error" Command="{Binding RemediatePrinterErrorCommand}" IsEnabled="{Binding IsNotBusy}" Padding="12,6" Background="#0067C0" Foreground="#FFFFFF"/>
-                    </StackPanel>
+            <!-- Tab 2: SMB & Print Spooler Subsystem -->
+            <TabItem Header="SMB &amp; Print Spooler Subsystem">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,8,0,16">
+                        <UniformGrid Columns="2">
+                            <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,12">
+                                <DockPanel LastChildFill="False">
+                                    <StackPanel DockPanel.Dock="Top">
+                                        <TextBlock Text="SMB Sharing &amp; Guest Authentication" Style="{StaticResource FluentSectionTitleStyle}" />
+                                        <TextBlock Text="Enable InsecureGuestAuth, open File &amp; Printer Sharing firewall rules, and start Lanman services."
+                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
+                                    </StackPanel>
+                                    <Button DockPanel.Dock="Bottom" Content="Configure SMB &amp; Guest Auth"
+                                            Command="{Binding ConfigureSmbSharingCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            HorizontalAlignment="Left" Padding="14,7" />
+                                </DockPanel>
+                            </Border>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                        <TextBlock Text="Printer Host IP / Name:" VerticalAlignment="Center" Foreground="#E0E0E0" FontSize="12" Margin="0,0,10,0"/>
-                        <TextBox Text="{Binding PrinterDiagnosticsHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="160" Background="#252528" Foreground="#FFFFFF" BorderBrush="#3A3A3E" Padding="6,4" Margin="0,0,12,0"/>
-                        <Button Content="Diagnose Printer Ports" Command="{Binding DiagnosePrinterHostCommand}" IsEnabled="{Binding IsNotBusy}" Padding="12,6" Background="#2D2D30" Foreground="#FFFFFF"/>
+                            <Border Style="{StaticResource FluentCardStyle}" Margin="6,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Print Spooler Subsystem" Style="{StaticResource FluentSectionTitleStyle}" />
+                                    <TextBlock Text="Purge stuck print queues, re-register spooler DLLs/MOF, and reset NeXX: virtual ports."
+                                               Style="{StaticResource FluentSectionDescriptionStyle}" />
+                                    <WrapPanel Margin="0,0,0,10">
+                                        <Button Content="Purge Queue" Command="{Binding PurgeSpoolerCommand}"
+                                                IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                                Padding="12,6" Margin="0,0,6,6" />
+                                        <Button Content="Re-Register DLLs" Command="{Binding RegisterSpoolerCommand}"
+                                                IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,6,6" />
+                                        <Button Content="Reset NeXX: Ports" Command="{Binding ResetNePortsCommand}"
+                                                IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,6,6" />
+                                    </WrapPanel>
+                                    <TextBlock Text="{Binding LastPrinterStatus, StringFormat='Spooler: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
                     </StackPanel>
-                </StackPanel>
-            </Border>
-        </StackPanel>
-    </ScrollViewer>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Tab 3: Point & Print Policies & Diagnostics -->
+            <TabItem Header="Point &amp; Print Policies &amp; Diagnostics">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,8,0,16">
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Point &amp; Print Policy, Error Codes &amp; Port Diagnostics" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Fix RPC printer sharing errors (0x0000011b, 0x00000709, 0x00000040) and test printer host ports (RAW 9100, LPD 515, IPP 631, SMB 445)."
+                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
+
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="10" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="10" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="170" />
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Preset -->
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Point &amp; Print Preset:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" />
+                                    <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding AvailablePresets}"
+                                              SelectedItem="{Binding SelectedPreset, Mode=TwoWay}" />
+                                    <Button Grid.Row="0" Grid.Column="3" Content="Apply Policy Preset"
+                                            Command="{Binding ApplyPointAndPrintCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,6" />
+
+                                    <!-- Error Code -->
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Printer Error Code:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" />
+                                    <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SupportedErrorCodes}"
+                                              SelectedItem="{Binding SelectedErrorCode, Mode=TwoWay}" />
+                                    <Button Grid.Row="2" Grid.Column="3" Content="Remediate Error Code"
+                                            Command="{Binding RemediatePrinterErrorCommand}" IsEnabled="{Binding IsNotBusy}"
+                                            Style="{DynamicResource AccentButtonStyle}" Padding="14,6" />
+
+                                    <!-- Port Diagnostics -->
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Printer Host / IP:" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" />
+                                    <TextBox Grid.Row="4" Grid.Column="1"
+                                             Text="{Binding PrinterDiagnosticsHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             VerticalContentAlignment="Center" />
+                                    <Button Grid.Row="4" Grid.Column="3" Content="Diagnose Printer Ports"
+                                            Command="{Binding DiagnosePrinterHostCommand}" IsEnabled="{Binding IsNotBusy}" Padding="14,6" />
+                                </Grid>
+
+                                <TextBlock Text="{Binding LastPrinterStatus, StringFormat='Diagnostics: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
 </UserControl>

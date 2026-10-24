@@ -6,7 +6,7 @@ using IToolkit.Core.Models;
 using IToolkit.Core.Safety;
 
 /// <summary>
-/// Pillar 3: Print Spooler management, Point &amp; Print policies, and 12-error-code catalog implementation in pure C# .NET 8 (win-x64).
+/// Pillar 3: Print Spooler management, Point &amp; Print policies, and 12-error-code catalog implementation in pure C# .NET 10.0 LTS (win-x64).
 /// </summary>
 public class PrinterService : IPrinterService
 {

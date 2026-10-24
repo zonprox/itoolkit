@@ -62,23 +62,4 @@ public class ElevationGuardTests
         Assert.Equal(simulatedElevated, result);
         mockElevation.Verify(m => m.IsElevated(), Times.Once);
     }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void RestartElevated_DelegatesToUnderlyingService(bool restartSuccess)
-    {
-        // Arrange
-        var mockElevation = new Mock<IElevationService>();
-        mockElevation.Setup(m => m.RestartElevated()).Returns(restartSuccess);
-
-        var guard = new ElevationGuard(mockElevation.Object);
-
-        // Act
-        bool result = guard.RestartElevated();
-
-        // Assert
-        Assert.Equal(restartSuccess, result);
-        mockElevation.Verify(m => m.RestartElevated(), Times.Once);
-    }
 }

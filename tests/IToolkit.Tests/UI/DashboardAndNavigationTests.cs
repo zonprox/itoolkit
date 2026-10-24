@@ -123,7 +123,7 @@ public class DashboardAndNavigationTests
         appInstallerMock.Setup(a => a.GetCatalog()).Returns(new List<AppCatalogItem>());
         printerMock.Setup(p => p.GetSupportedErrorCodes()).Returns(new List<string>());
 
-        var telemetryHeader = new TelemetryHeaderViewModel(telemetryMock.Object, elevationMock.Object);
+        var telemetryHeader = new TelemetryHeaderViewModel(telemetryMock.Object);
         telemetryHeader.StopPolling();
 
         var activityConsole = new ActivityConsoleViewModel(loggerMock.Object);
@@ -185,7 +185,7 @@ public class DashboardAndNavigationTests
 
         telemetryMock.Setup(t => t.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(snapshot);
 
-        var vm = new TelemetryHeaderViewModel(telemetryMock.Object, elevationMock.Object);
+        var vm = new TelemetryHeaderViewModel(telemetryMock.Object);
         vm.StopPolling();
 
         await vm.RefreshTelemetryAsync();
@@ -198,5 +198,88 @@ public class DashboardAndNavigationTests
         Assert.Contains("8.0 / 16.0 GB", vm.MemoryUsageText);
         Assert.Contains("200.0 GB Free", vm.DiskFreeSpaceText);
         Assert.Equal("Connected", vm.NetworkStatusText);
+    }
+
+    [Fact]
+    public async Task MainViewModel_RunSystemScanAsync_PopulatesAllPillarViewModels()
+    {
+        var telemetryMock = new Mock<ISystemTelemetryService>();
+        var healthMock = new Mock<ISystemHealthService>();
+        var officeMock = new Mock<IOfficeSuiteService>();
+        var outlookMock = new Mock<IOutlookService>();
+        var netMock = new Mock<IConnectivityService>();
+        var printerMock = new Mock<IPrinterService>();
+        var identityMock = new Mock<IIdentityService>();
+        var backupMock = new Mock<IBackupService>();
+        var appInstallerMock = new Mock<IAppInstallerService>();
+        var optMock = new Mock<IOptimizationService>();
+        var loggerMock = new Mock<IActivityLogger>();
+
+        telemetryMock.Setup(t => t.GetSnapshotAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TelemetrySnapshot(
+                OsDescription: "Windows 11 Pro 64-bit",
+                OsBuild: "24H2 (Build 26100.2033)",
+                IsElevated: true,
+                CpuUsagePercentage: 12.0,
+                MemoryUsedBytes: 8_589_934_592,
+                MemoryTotalBytes: 17_179_869_184,
+                SystemDriveFreeBytes: 161_061_273_600,
+                SystemDriveTotalBytes: 536_870_912_000,
+                NetworkConnected: true,
+                ActiveTaskDescription: "Idle"));
+
+        identityMock.Setup(i => i.GetLocalAccounts()).Returns(new List<LocalAccountItem>
+        {
+            new LocalAccountItem("Administrator", "S-1-5-21-500", true, false, true, true),
+            new LocalAccountItem("StandardUser", "S-1-5-21-1001", true, false, false, false)
+        });
+        identityMock.Setup(i => i.GetBuiltInAdministrator())
+            .Returns(new LocalAccountItem("Administrator", "S-1-5-21-500", true, false, true, true));
+
+        outlookMock.Setup(o => o.DiscoverDataFiles()).Returns(new List<MapiDataFileInfo>
+        {
+            new MapiDataFileInfo(@"C:\Outlook\Default.pst", "Outlook", "Default Store", false, true, 104_857_600, @"HKCU\Software\Microsoft\Office", true)
+        });
+
+        optMock.Setup(o => o.GetWingetStatus())
+            .Returns(new WingetStatus(true, "1.9.25200", true, true, "Winget subsystem healthy."));
+
+        appInstallerMock.Setup(a => a.GetCatalog()).Returns(new List<AppCatalogItem>());
+        printerMock.Setup(p => p.GetSupportedErrorCodes()).Returns(new List<string> { "0x0000011b" });
+
+        var telemetryHeader = new TelemetryHeaderViewModel(telemetryMock.Object);
+        telemetryHeader.StopPolling();
+
+        var activityConsole = new ActivityConsoleViewModel(loggerMock.Object);
+        var dashboardVm = new DashboardViewModel(healthMock.Object, officeMock.Object, outlookMock.Object, netMock.Object, backupMock.Object, optMock.Object, loggerMock.Object);
+        var healthVm = new SystemHealthViewModel(healthMock.Object, loggerMock.Object);
+        var officeVm = new OfficeOutlookViewModel(officeMock.Object, outlookMock.Object, loggerMock.Object);
+        var connectivityVm = new ConnectivityViewModel(netMock.Object, printerMock.Object, loggerMock.Object);
+        var identityVm = new IdentityBackupViewModel(identityMock.Object, backupMock.Object, loggerMock.Object);
+        var softwareVm = new SoftwareOptimizationViewModel(appInstallerMock.Object, optMock.Object, loggerMock.Object);
+
+        var mainVm = new MainViewModel(
+            telemetryHeader,
+            activityConsole,
+            dashboardVm,
+            healthVm,
+            officeVm,
+            connectivityVm,
+            identityVm,
+            softwareVm,
+            loggerMock.Object);
+
+        await mainVm.RunSystemScanAsync();
+
+        Assert.False(mainVm.IsScanning);
+        Assert.Equal(100, mainVm.ScanProgressPercentage);
+        Assert.Equal("100%", mainVm.ScanProgressText);
+        Assert.Equal(2, identityVm.Accounts.Count);
+        Assert.True(identityVm.IsBuiltInAdminEnabled);
+        Assert.Single(officeVm.DataFiles);
+        Assert.Equal("v1.9.25200 (Healthy)", softwareVm.WingetVersionText);
+        Assert.Contains("2 local", dashboardVm.BackupStatus);
+        Assert.Contains("1 PST/OST", dashboardVm.OfficeStatus);
+        Assert.Contains("v1.9.25200 (Healthy)", dashboardVm.SoftwareStatus);
     }
 }

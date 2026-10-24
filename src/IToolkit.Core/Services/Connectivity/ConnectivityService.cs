@@ -6,7 +6,7 @@ using IToolkit.Core.Models;
 using IToolkit.Core.Safety;
 
 /// <summary>
-/// Pillar 3: Network Remediation & SMB Sharing Configuration implementation in pure C# .NET 8 (win-x64).
+/// Pillar 3: Network Remediation &amp; SMB Sharing Configuration implementation in pure C# .NET 10.0 LTS (win-x64).
 /// </summary>
 public class ConnectivityService : IConnectivityService
 {

@@ -7,7 +7,7 @@ using IToolkit.Core.Models;
 
 public class ActivityLogger : IActivityLogger
 {
-    private readonly object _lock = new();
+    private static readonly object _lock = new();
     private readonly string _logFilePath;
 
     public string LogFilePath => _logFilePath;
@@ -23,7 +23,7 @@ public class ActivityLogger : IActivityLogger
         }
         catch
         {
-            // Directory creation failure fallback
+            // Ignore directory creation failure in restricted environments
         }
         string dateStamp = DateTime.Now.ToString("yyyyMMdd");
         _logFilePath = Path.Combine(logsDir, $"iToolKit_{dateStamp}.log");
@@ -38,42 +38,14 @@ public class ActivityLogger : IActivityLogger
             try
             {
                 string line = $"[{entry.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{entry.Level.ToString().ToUpperInvariant(),-7}] [{entry.Component}] {entry.Message}{Environment.NewLine}";
-                File.AppendAllText(_logFilePath, line);
+                using var stream = new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                using var writer = new StreamWriter(stream);
+                writer.Write(line);
             }
             catch
             {
                 // Never crash on logging failure
             }
-        }
-
-        DispatchEntryLogged(entry);
-    }
-
-    private void DispatchEntryLogged(ActivityLogEntry entry)
-    {
-        try
-        {
-            var appType = Type.GetType("System.Windows.Application, PresentationFramework");
-            var currentApp = appType?.GetProperty("Current")?.GetValue(null);
-            if (currentApp != null)
-            {
-                var dispatcherProp = appType?.GetProperty("Dispatcher")?.GetValue(currentApp);
-                if (dispatcherProp != null)
-                {
-                    var checkAccessMethod = dispatcherProp.GetType().GetMethod("CheckAccess");
-                    bool hasAccess = (bool)(checkAccessMethod?.Invoke(dispatcherProp, null) ?? true);
-                    if (!hasAccess)
-                    {
-                        var beginInvokeMethod = dispatcherProp.GetType().GetMethod("BeginInvoke", new[] { typeof(Delegate) });
-                        beginInvokeMethod?.Invoke(dispatcherProp, new object[] { new Action(() => EntryLogged?.Invoke(entry)) });
-                        return;
-                    }
-                }
-            }
-        }
-        catch
-        {
-            // Fallback to direct invocation if Dispatcher reflection fails
         }
 
         EntryLogged?.Invoke(entry);

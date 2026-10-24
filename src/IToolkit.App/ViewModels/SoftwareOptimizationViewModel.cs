@@ -40,6 +40,7 @@ public class SoftwareOptimizationViewModel : ViewModelBase
 {
     private readonly IAppInstallerService _appInstallerService;
     private readonly IOptimizationService _optimizationService;
+    private readonly ISafetyConfirmationService? _confirmationService;
 
     private bool _createDesktopShortcutsOnInstall = true;
     private string _customDebloatScriptUrl = string.Empty;
@@ -49,11 +50,13 @@ public class SoftwareOptimizationViewModel : ViewModelBase
     public SoftwareOptimizationViewModel(
         IAppInstallerService appInstallerService,
         IOptimizationService optimizationService,
-        IActivityLogger? logger = null)
+        IActivityLogger? logger = null,
+        ISafetyConfirmationService? confirmationService = null)
         : base(logger)
     {
         _appInstallerService = appInstallerService ?? throw new ArgumentNullException(nameof(appInstallerService));
         _optimizationService = optimizationService ?? throw new ArgumentNullException(nameof(optimizationService));
+        _confirmationService = confirmationService;
 
         CatalogApps = new ObservableCollection<AppItemViewModel>();
 
@@ -132,7 +135,7 @@ public class SoftwareOptimizationViewModel : ViewModelBase
     public void LoadCatalog()
     {
         CatalogApps.Clear();
-        var catalog = _appInstallerService.GetCatalog();
+        var catalog = _appInstallerService.GetCatalog() ?? Array.Empty<AppCatalogItem>();
         foreach (var item in catalog)
         {
             CatalogApps.Add(new AppItemViewModel(item, () => InstallSingleApp(item.AppId)));
@@ -242,17 +245,65 @@ public class SoftwareOptimizationViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
+    private static string FormatWingetStatus(WingetStatus status)
+    {
+        if (!status.IsInstalled)
+        {
+            return "Not Installed";
+        }
+
+        string version = status.Version.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+            ? status.Version
+            : $"v{status.Version}";
+        return $"{version} ({(status.Healthy ? "Healthy" : "Issues Detected")})";
+    }
+
     private async Task CheckWingetStatusAsync() => await ExecuteAsync("Check Winget Status", () =>
     {
         var status = _optimizationService.GetWingetStatus();
-        WingetVersionText = status.IsInstalled ? $"v{status.Version} ({(status.Healthy ? "Healthy" : "Issues Detected")})" : "Not Installed";
-        LastSoftwareStatus = status.Message;
+        if (status != null)
+        {
+            WingetVersionText = FormatWingetStatus(status);
+            LastSoftwareStatus = status.Message;
+        }
         return Task.CompletedTask;
     });
+
+    public async Task ScanSoftwareStatusAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "Checking Windows Package Manager (Winget) status...";
+            var status = await Task.Run(() => _optimizationService.GetWingetStatus());
+            if (status != null)
+            {
+                WingetVersionText = FormatWingetStatus(status);
+                LastSoftwareStatus = status.Message;
+                StatusMessage = $"Winget {WingetVersionText} - {CatalogApps.Count} catalog applications ready.";
+            }
+        }
+        catch (Exception ex)
+        {
+            WingetVersionText = "Unavailable";
+            LastSoftwareStatus = $"Winget check failed: {ex.Message}";
+            StatusMessage = LastSoftwareStatus;
+            Logger?.LogError(nameof(SoftwareOptimizationViewModel), LastSoftwareStatus);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     private async Task RepairWingetAsync() => await ExecuteAsync("Repair Winget Subsystem", () =>
     {
         bool ok = _optimizationService.RepairWinget();
+        var status = _optimizationService.GetWingetStatus();
+        if (status != null)
+        {
+            WingetVersionText = FormatWingetStatus(status);
+        }
         LastSoftwareStatus = ok ? "Winget sources reset and repaired." : "Failed to repair Winget sources.";
         return Task.CompletedTask;
     });
@@ -292,10 +343,27 @@ public class SoftwareOptimizationViewModel : ViewModelBase
         return Task.CompletedTask;
     });
 
-    private async Task ExecuteCustomDebloatAsync() => await ExecuteAsync("Execute Custom Debloat Script", () =>
+    private async Task ExecuteCustomDebloatAsync()
     {
-        var res = _optimizationService.ExecuteDebloatScript("CustomDebloat", CustomDebloatScriptUrl);
-        LastSoftwareStatus = res.ExecutionSuccess ? "Custom script executed successfully." : $"Custom script failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Custom Script Execution",
+                $"You are about to execute an external PowerShell script from: '{CustomDebloatScriptUrl}'.",
+                "Executing untrusted scripts with Administrator privileges can alter system configurations or compromise security. Ensure you trust the script source. Proceed?");
+            if (!confirmed)
+            {
+                LastSoftwareStatus = "Custom script execution cancelled by user.";
+                Logger?.LogWarning(nameof(SoftwareOptimizationViewModel), "Custom script execution cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync("Execute Custom Debloat Script", () =>
+        {
+            var res = _optimizationService.ExecuteDebloatScript("CustomDebloat", CustomDebloatScriptUrl);
+            LastSoftwareStatus = res.ExecutionSuccess ? "Custom script executed successfully." : $"Custom script failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 }
