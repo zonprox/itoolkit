@@ -156,7 +156,7 @@ To publish the standalone Windows PE executable and create `IToolkit.zip`:
 # Package locally without uploading:
 ./scripts/package-and-upload.sh --skip-upload
 
-# Package and upload to public distribution hosts (OnlyFiles & Storage.to):
+# Package and upload to public distribution host (Storage.to):
 ./scripts/package-and-upload.sh
 ```
 
