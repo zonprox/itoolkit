@@ -11,7 +11,12 @@ public class ElevationGuard : IElevationService
 {
     private readonly IElevationService? _underlyingService;
 
-    public ElevationGuard(IElevationService? underlyingService = null)
+    public ElevationGuard()
+        : this(null)
+    {
+    }
+
+    public ElevationGuard(IElevationService? underlyingService)
     {
         _underlyingService = underlyingService;
     }

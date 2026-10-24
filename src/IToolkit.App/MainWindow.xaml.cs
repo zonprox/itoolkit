@@ -8,11 +8,22 @@ using IToolkit.App.ViewModels;
 
 public partial class MainWindow : Window
 {
+    private readonly MainViewModel _viewModel;
+
     public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
-        DataContext = viewModel;
+        _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+        DataContext = _viewModel;
         SourceInitialized += OnSourceInitialized;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _viewModel.TelemetryHeader.StopPolling();
+        base.OnClosed(e);
+        Application.Current?.Shutdown(0);
+        Environment.Exit(0);
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)

@@ -26,6 +26,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
 
         // Configure global unhandled exception handling to fail loud and capture crashes
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
@@ -47,40 +48,69 @@ public partial class App : Application
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             args.Handled = true;
+
+            if (MainWindow == null || !MainWindow.IsVisible)
+            {
+                Environment.Exit(1);
+            }
         };
 
-        var serviceCollection = new ServiceCollection();
-        ConfigureServices(serviceCollection);
-        Services = serviceCollection.BuildServiceProvider();
-
-        // Log application startup
-        var appLogger = Services.GetRequiredService<IActivityLogger>();
-        appLogger.LogInfo("Application", "iToolKit initializing on Windows 64-bit (win-x64)...");
-
-        // Verify Administrator elevation status
-        var elevation = Services.GetRequiredService<IElevationService>();
-        if (!elevation.IsElevated())
+        try
         {
-            appLogger.LogWarning("Security", "Running in standard user mode. Some remediation features require elevation.");
-        }
-        else
-        {
-            appLogger.LogSuccess("Security", "Elevated as Administrator.");
-        }
+            var serviceCollection = new ServiceCollection();
+            ConfigureServices(serviceCollection);
+            Services = serviceCollection.BuildServiceProvider();
 
-        // Show Main Window
-        var mainWindow = Services.GetRequiredService<MainWindow>();
-        mainWindow.Show();
+            // Log application startup
+            var appLogger = Services.GetRequiredService<IActivityLogger>();
+            appLogger.LogInfo("Application", "iToolKit initializing on Windows 64-bit (win-x64)...");
+
+            // Verify Administrator elevation status
+            var elevation = Services.GetRequiredService<IElevationService>();
+            if (!elevation.IsElevated())
+            {
+                appLogger.LogWarning("Security", "Running in standard user mode. Some remediation features require elevation.");
+            }
+            else
+            {
+                appLogger.LogSuccess("Security", "Elevated as Administrator.");
+            }
+
+            // Show Main Window
+            var mainWindow = Services.GetRequiredService<MainWindow>();
+            MainWindow = mainWindow;
+            mainWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            var logger = Services?.GetService<IActivityLogger>();
+            logger?.LogError("Application", $"Fatal startup exception: {ex.Message}");
+            MessageBox.Show(
+                $"Failed to initialize iToolKit:\n\n{ex.Message}",
+                "iToolKit Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Environment.Exit(1);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        if (Services is IDisposable disposable)
+        try
         {
-            disposable.Dispose();
+            Services?.GetService<TelemetryHeaderViewModel>()?.StopPolling();
+            if (Services is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+        catch
+        {
+            // Ignore disposal errors during shutdown
         }
 
         base.OnExit(e);
+        Environment.Exit(e.ApplicationExitCode);
     }
 
     /// <summary>
@@ -88,72 +118,7 @@ public partial class App : Application
     /// </summary>
     public static void ConfigureServices(IServiceCollection services)
     {
-        // ---------------------------------------------------------
-        // 1. Native Platform Abstractions
-        // ---------------------------------------------------------
-        services.AddSingleton<IActivityLogger, ActivityLogger>();
-        services.AddSingleton<IRegistryService, WindowsRegistryService>();
-        services.AddSingleton<IProcessRunner, WindowsProcessRunner>();
-        services.AddSingleton<IFileSystemService, WindowsFileSystemService>();
-        services.AddSingleton<INetworkService, WindowsNetworkService>();
-        services.AddSingleton<IWmiService, WindowsWmiService>();
-        services.AddSingleton<ISystemTelemetryService, WindowsTelemetryService>();
-        services.AddSingleton<IElevationService, ElevationGuard>();
-
-        // ---------------------------------------------------------
-        // 2. Core Safety Engines
-        // ---------------------------------------------------------
-        services.AddSingleton<ElevationGuard>();
-        services.AddSingleton<AtomicRegistryEngine>();
-        services.AddSingleton<AtomicRegistryService>();
-        services.AddSingleton<ProcessLockGuard>();
-        services.AddSingleton<ResourceGuard>();
-
-        // ---------------------------------------------------------
-        // 3. Operational Domain Services (5 Pillars)
-        // ---------------------------------------------------------
-        // Pillar 1: System Health & Maintenance
-        services.AddSingleton<ISystemHealthService, SystemHealthService>();
-        services.AddSingleton<SystemHealthService>();
-
-        // Pillar 2: Office & Outlook Productivity Suite
-        services.AddSingleton<IOfficeSuiteService, OfficeSuiteService>();
-        services.AddSingleton<OfficeSuiteService>();
-        services.AddSingleton<IOutlookService, OutlookService>();
-        services.AddSingleton<OutlookService>();
-
-        // Pillar 3: Connectivity & Print Subsystem
-        services.AddSingleton<IConnectivityService, ConnectivityService>();
-        services.AddSingleton<ConnectivityService>();
-        services.AddSingleton<IPrinterService, PrinterService>();
-        services.AddSingleton<PrinterService>();
-
-        // Pillar 4: Identity, Access & Data Protection
-        services.AddSingleton<IIdentityService, IdentityService>();
-        services.AddSingleton<IdentityService>();
-        services.AddSingleton<IBackupService, BackupService>();
-        services.AddSingleton<BackupService>();
-
-        // Pillar 5: Software Deployment & OS Optimization
-        services.AddSingleton<IAppInstallerService, AppInstallerService>();
-        services.AddSingleton<AppInstallerService>();
-        services.AddSingleton<IOptimizationService, OptimizationService>();
-        services.AddSingleton<OptimizationService>();
-
-        // ---------------------------------------------------------
-        // 4. ViewModels & Views
-        // ---------------------------------------------------------
-        services.AddSingleton<TelemetryHeaderViewModel>();
-        services.AddSingleton<ActivityConsoleViewModel>();
-        services.AddSingleton<DashboardViewModel>();
-
-        services.AddSingleton<SystemHealthViewModel>();
-        services.AddSingleton<OfficeOutlookViewModel>();
-        services.AddSingleton<ConnectivityViewModel>();
-        services.AddSingleton<IdentityBackupViewModel>();
-        services.AddSingleton<SoftwareOptimizationViewModel>();
-
-        services.AddSingleton<MainViewModel>();
+        ServiceRegistration.ConfigureServices(services);
         services.AddSingleton<MainWindow>();
     }
 }

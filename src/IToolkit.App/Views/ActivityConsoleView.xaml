@@ -47,7 +47,8 @@
 
                 <!-- Left: Title and Count -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="[Console]" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#38BDF8" FontWeight="Bold" />
+                    <Path Data="M3,4 L21,4 L21,20 L3,20 Z M6,8 L10,12 L6,16 M11,16 L17,16"
+                          Stroke="#38BDF8" StrokeThickness="1.8" Stretch="Uniform" Width="13" Height="13" Margin="0,0,7,0" VerticalAlignment="Center" />
                     <TextBlock Text="Activity Console" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF" VerticalAlignment="Center" />
                     <Border Background="#202026" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding TotalCount, StringFormat='{}{0} entries'}" FontSize="10" Foreground="#A1A1AA" />
@@ -103,7 +104,7 @@
                     <!-- Expand / Collapse -->
                     <Button Command="{Binding ToggleExpandedCommand}" Height="24" Width="26"
                             Background="#27272A" Foreground="#FFFFFF" BorderBrush="#3F3F46" Cursor="Hand" ToolTip="Expand or Collapse console">
-                        <TextBlock Text="^" FontSize="11" FontWeight="Bold" />
+                        <Path Data="M4,14 L10,8 L16,14" Stroke="#FFFFFF" StrokeThickness="1.8" Stretch="Uniform" Width="10" Height="6" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Button>
                 </StackPanel>
             </Grid>

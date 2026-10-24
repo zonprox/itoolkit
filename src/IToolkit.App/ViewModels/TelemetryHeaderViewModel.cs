@@ -7,7 +7,7 @@ using System.Windows.Input;
 using IToolkit.Core.Abstractions;
 using IToolkit.Core.Models;
 
-public class TelemetryHeaderViewModel : ViewModelBase
+public class TelemetryHeaderViewModel : ViewModelBase, IDisposable
 {
     private readonly ISystemTelemetryService _telemetryService;
     private readonly IElevationService _elevationService;
@@ -89,13 +89,19 @@ public class TelemetryHeaderViewModel : ViewModelBase
 
     public void StartPolling(int intervalMs = 2500)
     {
+        StopPolling();
         _pollingTimer = new Timer(async _ => await RefreshTelemetryAsync(), null, 0, intervalMs);
     }
 
     public void StopPolling()
     {
-        _pollingTimer?.Dispose();
-        _pollingTimer = null;
+        Interlocked.Exchange(ref _pollingTimer, null)?.Dispose();
+    }
+
+    public void Dispose()
+    {
+        StopPolling();
+        GC.SuppressFinalize(this);
     }
 
     public async Task RefreshTelemetryAsync()

@@ -147,6 +147,41 @@ public class DashboardEndToEndTests
     }
 
     [Fact]
+    public void App_ConfigureServices_ProductionCompositionRoot_ResolvesWithoutCircularDependenciesAndDisposesCleanly()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        IToolkit.App.ServiceRegistration.ConfigureServices(services);
+
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true
+        });
+
+        // Act
+        var elevationService = provider.GetRequiredService<IElevationService>();
+        var elevationGuard = provider.GetRequiredService<ElevationGuard>();
+        var telemetryService = provider.GetRequiredService<ISystemTelemetryService>();
+        var mainVm = provider.GetRequiredService<MainViewModel>();
+
+        // Assert
+        Assert.NotNull(elevationService);
+        Assert.Same(elevationGuard, elevationService);
+        Assert.NotNull(telemetryService);
+        Assert.NotNull(mainVm);
+        Assert.Same(provider.GetRequiredService<SystemHealthService>(), provider.GetRequiredService<ISystemHealthService>());
+        Assert.Same(provider.GetRequiredService<OfficeSuiteService>(), provider.GetRequiredService<IOfficeSuiteService>());
+        Assert.Same(provider.GetRequiredService<OutlookService>(), provider.GetRequiredService<IOutlookService>());
+        Assert.Same(provider.GetRequiredService<ConnectivityService>(), provider.GetRequiredService<IConnectivityService>());
+        Assert.Same(provider.GetRequiredService<PrinterService>(), provider.GetRequiredService<IPrinterService>());
+        Assert.Same(provider.GetRequiredService<IdentityService>(), provider.GetRequiredService<IIdentityService>());
+        Assert.Same(provider.GetRequiredService<BackupService>(), provider.GetRequiredService<IBackupService>());
+        Assert.Same(provider.GetRequiredService<AppInstallerService>(), provider.GetRequiredService<IAppInstallerService>());
+        Assert.Same(provider.GetRequiredService<OptimizationService>(), provider.GetRequiredService<IOptimizationService>());
+    }
+
+    [Fact]
     public void MainViewModel_NavigationOrchestration_SwitchesCurrentPageAcrossAllPillars()
     {
         // Arrange
