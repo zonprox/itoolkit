@@ -47,6 +47,52 @@ public class DashboardAndNavigationTests
     }
 
     [Fact]
+    public async Task DashboardViewModel_QuickSystemRepairCommand_TriggersOperationStarted_AndOpensActivityConsole()
+    {
+        var healthMock = new Mock<ISystemHealthService>();
+        var officeMock = new Mock<IOfficeSuiteService>();
+        var outlookMock = new Mock<IOutlookService>();
+        var netMock = new Mock<IConnectivityService>();
+        var backupMock = new Mock<IBackupService>();
+        var optMock = new Mock<IOptimizationService>();
+        var loggerMock = new Mock<IActivityLogger>();
+
+        healthMock.Setup(h => h.RunDismSfcPipeline(It.IsAny<string?>(), It.IsAny<bool>()))
+            .Returns((DismScanResult.Successful("DISM OK"), SfcScanResult.Clean("SFC OK")));
+
+        using var consoleVm = new ActivityConsoleViewModel(loggerMock.Object);
+        bool requestOpenFired = false;
+        consoleVm.RequestOpen += () => requestOpenFired = true;
+
+        var vm = new DashboardViewModel(
+            healthMock.Object,
+            officeMock.Object,
+            outlookMock.Object,
+            netMock.Object,
+            backupMock.Object,
+            optMock.Object,
+            loggerMock.Object);
+
+        Assert.False(consoleVm.IsOpen);
+        Assert.False(requestOpenFired);
+
+        try
+        {
+            await vm.QuickSystemRepairCommand.ExecuteAsync(null);
+
+            Assert.True(consoleVm.IsOpen);
+            Assert.True(requestOpenFired);
+            Assert.True(consoleVm.ShowCompletionBanner);
+            Assert.Equal("Completed", consoleVm.ExecutionStatus);
+            healthMock.Verify(h => h.RunDismSfcPipeline(It.IsAny<string?>(), It.IsAny<bool>()), Times.Once);
+        }
+        finally
+        {
+            ViewModelBase.ResetOperationEvents();
+        }
+    }
+
+    [Fact]
     public async Task DashboardViewModel_QuickMailRepairCommand_InvokesQuickMailAndCacheRepair()
     {
         var healthMock = new Mock<ISystemHealthService>();

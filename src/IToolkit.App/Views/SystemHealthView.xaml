@@ -12,32 +12,8 @@
     </UserControl.Resources>
 
     <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- Status Banner -->
-        <Border Grid.Row="0" Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
-                    <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                </StackPanel>
-                <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
-                             VerticalAlignment="Center"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
-            </Grid>
-        </Border>
-
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Grid.Row="1" Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Image & File Integrity -->
             <TabItem Header="Image &amp; File Integrity">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -46,8 +22,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Windows Image &amp; File Integrity (DISM &amp; SFC)" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Run DISM RestoreHealth followed by SFC /scannow to repair corrupted component store and protected system files."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel Margin="0,0,0,12">
                                     <Button Content="Run DISM + SFC Combo Repair" Command="{Binding RunDismSfcPipelineCommand}"
@@ -70,8 +44,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Custom WIM / ESD Source Configuration" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Specify an offline WIM, ESD, or side-by-side folder to use as repair source instead of Windows Update."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -118,8 +90,6 @@
                                 <DockPanel LastChildFill="False">
                                     <StackPanel DockPanel.Dock="Top">
                                         <TextBlock Text="Windows Update Reset" Style="{StaticResource FluentSectionTitleStyle}" />
-                                        <TextBlock Text="Stop update services, isolate SoftwareDistribution and catroot2, re-register 24 core DLLs, and restart services."
-                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
                                     </StackPanel>
                                     <StackPanel DockPanel.Dock="Bottom">
                                         <Button Content="Reset Windows Update" Command="{Binding ResetWindowsUpdateCommand}"
@@ -134,8 +104,6 @@
                                 <DockPanel LastChildFill="False">
                                     <StackPanel DockPanel.Dock="Top">
                                         <TextBlock Text="WMI Repository Salvage" Style="{StaticResource FluentSectionTitleStyle}" />
-                                        <TextBlock Text="Verify WMI repository consistency and execute /salvagerepository to repair CIM corruption."
-                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
                                     </StackPanel>
                                     <StackPanel DockPanel.Dock="Bottom">
                                         <Button Content="Salvage WMI Repository" Command="{Binding RepairWmiCommand}"
@@ -149,8 +117,6 @@
                                 <DockPanel LastChildFill="False">
                                     <StackPanel DockPanel.Dock="Top">
                                         <TextBlock Text="Windows Update Blocker (Windows 10 / 11)" Style="{StaticResource FluentSectionTitleStyle}" />
-                                        <TextBlock Text="Block or unblock automatic Windows Updates on Windows 10 and 11 via update services and Group Policy locks."
-                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
                                     </StackPanel>
                                     <StackPanel DockPanel.Dock="Bottom">
                                         <WrapPanel Margin="0,0,0,8">
@@ -168,8 +134,6 @@
                                 <DockPanel LastChildFill="False">
                                     <StackPanel DockPanel.Dock="Top">
                                         <TextBlock Text="Server Time Synchronization (W32Time)" Style="{StaticResource FluentSectionTitleStyle}" />
-                                        <TextBlock Text="Re-register W32Time service, configure NTP and domain peers, and force immediate server clock synchronization."
-                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
                                     </StackPanel>
                                     <StackPanel DockPanel.Dock="Bottom">
                                         <Button Content="Sync Server Time" Command="{Binding SyncSystemTimeCommand}"
@@ -191,8 +155,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Unified Storage &amp; WinSxS Component Cleanup" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Clean temporary directories, Windows Update download caches, Delivery Optimization, and WinSxS superseded components."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel VerticalAlignment="Center" Margin="0,0,0,14">
                                     <TextBlock Text="Temp File Age:" VerticalAlignment="Center" Margin="0,0,10,0"

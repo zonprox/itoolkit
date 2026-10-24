@@ -129,6 +129,7 @@ public class MainViewModel : ViewModelBase
         try
         {
             IsScanning = true;
+            ViewModelBase.RaiseOperationStarted("Full System Diagnostic Scan");
             SetScanProgress(15, "Scanning hardware telemetry, OS build, and storage health...");
             Logger?.LogInfo("SystemScan", "Starting full-system diagnostic scan across all pillars...");
 
@@ -163,6 +164,7 @@ public class MainViewModel : ViewModelBase
             _telemetryHeader.ActiveTaskDescription = "System Ready";
             _telemetryHeader.IsTaskActive = false;
             Logger?.LogSuccess("SystemScan", summary);
+            ViewModelBase.RaiseOperationFinished("Full System Diagnostic Scan", true, 0);
         }
         catch (Exception ex)
         {
@@ -170,6 +172,7 @@ public class MainViewModel : ViewModelBase
             _telemetryHeader.ActiveTaskDescription = "Scan Error";
             _telemetryHeader.IsTaskActive = false;
             Logger?.LogError("SystemScan", ScanStatusText);
+            ViewModelBase.RaiseOperationFinished("Full System Diagnostic Scan", false, 1);
         }
         finally
         {

@@ -12,32 +12,8 @@
     </UserControl.Resources>
 
     <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- Status Banner -->
-        <Border Grid.Row="0" Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
-                    <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                </StackPanel>
-                <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
-                             VerticalAlignment="Center"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
-            </Grid>
-        </Border>
-
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Grid.Row="1" Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Click-to-Run & App Quick Repairs -->
             <TabItem Header="Click-to-Run &amp; App Quick Repairs">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -46,8 +22,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Office Suite &amp; Click-to-Run Maintenance" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Repair Click-to-Run service, reset WAM/OneAuth identity tokens, configure hardware acceleration, or cleanly scrub Office."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel Margin="0,0,0,12">
                                     <CheckBox Content="Online C2R Repair (Full)" IsChecked="{Binding UseOnlineC2RRepair, Mode=TwoWay}"
@@ -80,8 +54,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Application Quick Repairs (Word, Excel, PowerPoint)" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Word (reset Normal.dotm, add-ins, orphaned locks), Excel (isolate XLSTART preserving personal.xlsb, DDE, GDI leak audit), and PowerPoint (cache &amp; resiliency)."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel>
                                     <Button Content="Word Quick Repair" Command="{Binding WordQuickRepairCommand}"
@@ -104,8 +76,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Outlook Mail &amp; MAPI Data Files (PST / OST)" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Purge stuck Outbox, reset SRS &amp; RoamCache, expand PST/OST size limits to 100 GB, and manage discovered data files."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel Margin="0,0,0,12">
                                     <Button Content="Quick Mail &amp; Cache Repair" Command="{Binding QuickMailRepairCommand}"
@@ -193,8 +163,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Automated New Default PST Pipeline" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Create a new 100 GB Unicode PST, clone folder hierarchy, migrate rules, and assign as default delivery store."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <!-- Source PST Path Row -->
                                 <Grid Margin="0,0,0,12">

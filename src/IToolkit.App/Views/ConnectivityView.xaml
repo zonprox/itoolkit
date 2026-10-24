@@ -12,32 +12,8 @@
     </UserControl.Resources>
 
     <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- Status Banner -->
-        <Border Grid.Row="0" Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
-                    <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                </StackPanel>
-                <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
-                             VerticalAlignment="Center"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
-            </Grid>
-        </Border>
-
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Grid.Row="1" Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Network Stack & Adapter Control -->
             <TabItem Header="Network Stack &amp; Adapter Control">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -46,8 +22,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Network Stack &amp; Adapter Control" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Auto-discover active network adapters, inspect connection parameters, or restart specific network interfaces."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -85,8 +59,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Network Stack Remediation" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Flush DNS resolver cache, renew DHCP lease, clear ARP cache, and reset Winsock &amp; TCP/IP stacks."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel Margin="0,0,0,12">
                                     <Button Content="Remediate Full Network Stack" Command="{Binding RemediateNetworkStackCommand}"
@@ -120,8 +92,6 @@
                                 <DockPanel LastChildFill="False">
                                     <StackPanel DockPanel.Dock="Top">
                                         <TextBlock Text="SMB Sharing &amp; Guest Authentication" Style="{StaticResource FluentSectionTitleStyle}" />
-                                        <TextBlock Text="Enable InsecureGuestAuth, open File &amp; Printer Sharing firewall rules, and start Lanman services."
-                                                   Style="{StaticResource FluentSectionDescriptionStyle}" />
                                     </StackPanel>
                                     <Button DockPanel.Dock="Bottom" Content="Configure SMB &amp; Guest Auth"
                                             Command="{Binding ConfigureSmbSharingCommand}"
@@ -133,8 +103,6 @@
                             <Border Style="{StaticResource FluentCardStyle}" Margin="6,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Print Spooler Subsystem" Style="{StaticResource FluentSectionTitleStyle}" />
-                                    <TextBlock Text="Purge stuck print queues, re-register spooler DLLs/MOF, and reset NeXX: virtual ports."
-                                               Style="{StaticResource FluentSectionDescriptionStyle}" />
                                     <WrapPanel Margin="0,0,0,10">
                                         <Button Content="Purge Queue" Command="{Binding PurgeSpoolerCommand}"
                                                 IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
@@ -159,8 +127,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Point &amp; Print Policy, Error Codes &amp; Port Diagnostics" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Fix RPC printer sharing errors (0x0000011b, 0x00000709, 0x00000040) and test printer host ports (RAW 9100, LPD 515, IPP 631, SMB 445)."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <Grid Margin="0,0,0,14">
                                     <Grid.RowDefinitions>

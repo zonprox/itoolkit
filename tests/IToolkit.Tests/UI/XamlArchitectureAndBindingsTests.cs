@@ -501,8 +501,7 @@ public class XamlArchitectureAndBindingsTests
 
         string xaml = File.ReadAllText(path);
 
-        Assert.Contains("StatusMessage", xaml);
-        Assert.Contains("IsBusy", xaml);
+        Assert.Contains("IsNotBusy", xaml);
         Assert.Contains("QuickSystemRepairCommand", xaml);
         Assert.Contains("SystemHealthStatus", xaml);
         Assert.Contains("QuickMailRepairCommand", xaml);
@@ -514,5 +513,92 @@ public class XamlArchitectureAndBindingsTests
         Assert.Contains("SoftwareStatus", xaml);
         Assert.Contains("QuickProfileBackupCommand", xaml);
         Assert.Contains("BackupStatus", xaml);
+    }
+
+    [Fact]
+    public void MainWindow_ActivityConsole_IsNotDockedInMainWindow()
+    {
+        string path = Path.Combine(SolutionRoot, "src", "IToolkit.App", "MainWindow.xaml");
+        Assert.True(File.Exists(path));
+
+        string xaml = File.ReadAllText(path);
+        Assert.DoesNotContain("ActivityConsoleView", xaml);
+        Assert.DoesNotContain("GridSplitter", xaml);
+
+        XDocument doc = XDocument.Parse(xaml);
+        var rootGrid = doc.Root!.Elements().FirstOrDefault(e => e.Name.LocalName == "Grid");
+        Assert.NotNull(rootGrid);
+
+        var rowDefs = rootGrid.Elements()
+            .FirstOrDefault(e => e.Name.LocalName == "Grid.RowDefinitions")
+            ?.Elements()
+            .Where(e => e.Name.LocalName == "RowDefinition")
+            .ToList();
+
+        Assert.NotNull(rowDefs);
+        Assert.Equal(2, rowDefs.Count);
+    }
+
+    [Fact]
+    public void MainWindow_BrandHeader_DoesNotContainSecondarySubtitleClutter()
+    {
+        string path = Path.Combine(SolutionRoot, "src", "IToolkit.App", "MainWindow.xaml");
+        Assert.True(File.Exists(path));
+
+        string xaml = File.ReadAllText(path);
+        Assert.DoesNotContain("Utility Suite", xaml);
+        Assert.Contains("iToolKit", xaml);
+    }
+
+    [Theory]
+    [InlineData("DashboardView.xaml")]
+    [InlineData("SystemHealthView.xaml")]
+    [InlineData("OfficeOutlookView.xaml")]
+    [InlineData("ConnectivityView.xaml")]
+    [InlineData("IdentityBackupView.xaml")]
+    [InlineData("SoftwareOptimizationView.xaml")]
+    public void AllSixViews_DoNotContain_VerboseDescriptionsOrStatusBanners(string viewFileName)
+    {
+        string path = Path.Combine(SolutionRoot, "src", "IToolkit.App", "Views", viewFileName);
+        Assert.True(File.Exists(path), $"View file not found: {path}");
+
+        string xaml = File.ReadAllText(path);
+        Assert.DoesNotContain("FluentSectionDescriptionStyle", xaml);
+        Assert.DoesNotContain("FluentStatusBannerStyle", xaml);
+    }
+
+    [Fact]
+    public void App_DoesNotDefine_ObsoleteStyles()
+    {
+        string path = Path.Combine(SolutionRoot, "src", "IToolkit.App", "App.xaml");
+        Assert.True(File.Exists(path), $"App.xaml not found at: {path}");
+
+        string xaml = File.ReadAllText(path);
+        Assert.DoesNotContain("FluentSectionDescriptionStyle", xaml);
+        Assert.DoesNotContain("FluentStatusBannerStyle", xaml);
+    }
+
+    [Fact]
+    public void ActivityLogWindow_ExistsAndHostsActivityConsole()
+    {
+        string path = Path.Combine(SolutionRoot, "src", "IToolkit.App", "Views", "ActivityLogWindow.xaml");
+        Assert.True(File.Exists(path), $"ActivityLogWindow.xaml not found at: {path}");
+
+        string xaml = File.ReadAllText(path);
+        XDocument doc = XDocument.Parse(xaml);
+        XElement root = doc.Root!;
+
+        Assert.Equal("iToolKit - Activity Log", root.Attribute("Title")?.Value);
+        Assert.Equal("CenterOwner", root.Attribute("WindowStartupLocation")?.Value);
+        Assert.Equal("True", root.Attribute("ShowInTaskbar")?.Value);
+        Assert.Equal("780", root.Attribute("Width")?.Value);
+        Assert.Equal("460", root.Attribute("Height")?.Value);
+        Assert.Equal("600", root.Attribute("MinWidth")?.Value);
+        Assert.Equal("320", root.Attribute("MinHeight")?.Value);
+        Assert.Contains("<views:ActivityConsoleView", xaml);
+
+        bool containsConsoleElement = root.Descendants()
+            .Any(e => e.Name.LocalName == "ActivityConsoleView");
+        Assert.True(containsConsoleElement, "ActivityLogWindow.xaml must embed an ActivityConsoleView element.");
     }
 }

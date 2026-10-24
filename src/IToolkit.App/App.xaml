@@ -28,47 +28,16 @@
                 <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="Padding" Value="12" />
-                <Setter Property="Margin" Value="0,0,0,8" />
-            </Style>
-
-            <!-- Subtle Status / Secondary Card Surface -->
-            <Style x:Key="FluentStatusBannerStyle" TargetType="Border">
-                <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="Padding" Value="10,6" />
-                <Setter Property="Margin" Value="0,0,0,8" />
+                <Setter Property="Padding" Value="10" />
+                <Setter Property="Margin" Value="0,0,0,6" />
             </Style>
 
             <!-- Typography Styles (Compact Scale) -->
-            <Style x:Key="FluentPageTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="18" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
-                <Setter Property="Margin" Value="0,0,0,2" />
-            </Style>
-
-            <Style x:Key="FluentPageSubtitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
-                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Margin" Value="0,0,0,8" />
-            </Style>
-
             <Style x:Key="FluentSectionTitleStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="13" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                 <Setter Property="Margin" Value="0,0,0,2" />
-            </Style>
-
-            <Style x:Key="FluentSectionDescriptionStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="11" />
-                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Margin" Value="0,0,0,6" />
             </Style>
 
             <Style x:Key="FluentCaptionStyle" TargetType="TextBlock">

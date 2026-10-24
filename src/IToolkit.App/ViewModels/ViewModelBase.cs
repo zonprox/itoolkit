@@ -17,6 +17,21 @@ public abstract class ViewModelBase : INotifyPropertyChanged
     private bool _isBusy;
     private string _statusMessage = string.Empty;
 
+    public static event Action<string>? OperationStarted;
+    public static event Action<string, bool, int>? OperationFinished;
+
+    public static void RaiseOperationStarted(string operationName) => OperationStarted?.Invoke(operationName);
+    public static void RaiseOperationFinished(string operationName, bool success, int exitCode = 0) => OperationFinished?.Invoke(operationName, success, exitCode);
+
+    /// <summary>
+    /// Resets all static operation event subscribers. Intended for test isolation and application reset.
+    /// </summary>
+    public static void ResetOperationEvents()
+    {
+        OperationStarted = null;
+        OperationFinished = null;
+    }
+
     protected IActivityLogger? Logger { get; }
 
     protected ViewModelBase(IActivityLogger? logger = null)
@@ -82,6 +97,7 @@ public abstract class ViewModelBase : INotifyPropertyChanged
         try
         {
             IsBusy = true;
+            RaiseOperationStarted(operationName);
             StatusMessage = $"Running {operationName}...";
             Logger?.LogInfo(GetType().Name, $"Starting operation: {operationName}...");
 
@@ -89,11 +105,13 @@ public abstract class ViewModelBase : INotifyPropertyChanged
 
             StatusMessage = $"{operationName} completed successfully.";
             Logger?.LogSuccess(GetType().Name, $"{operationName} completed successfully.");
+            RaiseOperationFinished(operationName, true, 0);
         }
         catch (Exception ex)
         {
             StatusMessage = $"{operationName} failed: {ex.Message}";
             Logger?.LogError(GetType().Name, $"Operation '{operationName}' failed: {ex.Message}");
+            RaiseOperationFinished(operationName, false, 1);
         }
         finally
         {

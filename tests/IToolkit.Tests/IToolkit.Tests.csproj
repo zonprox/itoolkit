@@ -38,4 +38,8 @@
     <Compile Include="..\..\src\IToolkit.App\Native\Windows*.cs" Link="App\Native\%(FileName)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

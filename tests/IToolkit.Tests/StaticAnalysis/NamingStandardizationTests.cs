@@ -59,6 +59,25 @@ public class NamingStandardizationTests
     }
 
     [Fact]
+    public void ActivityLogWindow_Has_Strict_iToolKit_Casing()
+    {
+        // Arrange
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string xamlPath = Path.Combine(repoRoot, "src", "IToolkit.App", "Views", "ActivityLogWindow.xaml");
+        Assert.True(File.Exists(xamlPath), $"File not found: {xamlPath}");
+
+        // Act
+        string content = File.ReadAllText(xamlPath);
+
+        // Assert
+        Assert.Contains($"Title=\"{ExpectedCasing} - Activity Log\"", content);
+        Assert.Contains($"Icon=\"pack://application:,,,/{ExpectedCasing};component/Assets/{ExpectedCasing}.ico\"", content);
+        Assert.DoesNotContain("Title=\"IToolkit", content);
+        Assert.DoesNotContain("Title=\"itoolkit", content);
+        Assert.DoesNotContain("Title=\"IToolKit", content);
+    }
+
+    [Fact]
     public void AppManifest_AssemblyIdentity_Has_Strict_iToolKit_Casing()
     {
         // Arrange

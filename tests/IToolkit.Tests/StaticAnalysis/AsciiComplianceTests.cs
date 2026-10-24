@@ -92,6 +92,61 @@ public class AsciiComplianceTests
     }
 
     [Fact]
+    public void SolutionFile_Is_100Percent_Ascii_Compliant_And_Has_Zero_Bom()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string slnPath = Path.Combine(repoRoot, "IToolkit.sln");
+        Assert.True(File.Exists(slnPath), $"IToolkit.sln not found at: {slnPath}");
+
+        byte[] bytes = File.ReadAllBytes(slnPath);
+        Assert.False(bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF,
+            "IToolkit.sln must not contain a UTF-8 BOM.");
+
+        var violations = StaticAnalysisHelper.ScanNonAsciiBytes(slnPath);
+        Assert.True(
+            violations.Count == 0,
+            FormatFailureMessage(repoRoot, "IToolkit.sln", violations));
+    }
+
+    [Fact]
+    public void Scripts_If_Present_Are_100Percent_Ascii_Compliant()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string scriptsDir = Path.Combine(repoRoot, "scripts");
+        if (Directory.Exists(scriptsDir))
+        {
+            var scriptFiles = StaticAnalysisHelper.EnumerateSourceFiles(scriptsDir, new[] { ".sh" }).ToList();
+            var violations = new List<AsciiViolation>();
+            var bomViolations = new List<string>();
+
+            foreach (var file in scriptFiles)
+            {
+                using var stream = File.OpenRead(file);
+                if (stream.Length >= 3)
+                {
+                    byte[] header = new byte[3];
+                    stream.ReadExactly(header, 0, 3);
+                    if (header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)
+                    {
+                        bomViolations.Add(Path.GetRelativePath(repoRoot, file));
+                    }
+                }
+
+                violations.AddRange(StaticAnalysisHelper.ScanNonAsciiBytes(file));
+            }
+
+            Assert.True(
+                bomViolations.Count == 0,
+                $"Found {bomViolations.Count} script file(s) with UTF-8 BOM:\n" +
+                string.Join("\n", bomViolations.Select(v => " - " + v)));
+
+            Assert.True(
+                violations.Count == 0,
+                FormatFailureMessage(repoRoot, "scripts/", violations));
+        }
+    }
+
+    [Fact]
     public void AsciiScanner_Accurately_Detects_Violations_And_Calculates_Coordinates()
     {
         // Arrange

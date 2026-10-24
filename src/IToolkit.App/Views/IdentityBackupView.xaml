@@ -12,32 +12,8 @@
     </UserControl.Resources>
 
     <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- Status Banner -->
-        <Border Grid.Row="0" Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
-                    <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                </StackPanel>
-                <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
-                             VerticalAlignment="Center"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
-            </Grid>
-        </Border>
-
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Grid.Row="1" Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Local Accounts & Built-in Admin -->
             <TabItem Header="Local Accounts &amp; Built-in Admin">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -46,8 +22,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Built-in Administrator (SID -500)" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Enable the built-in Administrator regardless of localized account name and reset its password."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel Margin="0,0,0,12">
                                     <Button Content="Enable Built-in Admin" Command="{Binding EnableBuiltInAdminCommand}"
@@ -79,8 +53,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Create Local User Account" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Create a new local standard user or administrator account with specified credentials."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <Grid Margin="0,0,0,10">
                                     <Grid.RowDefinitions>
@@ -130,8 +102,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Local Accounts Directory" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Inspect discovered accounts, unlock locked credentials, toggle enabled status, or remove accounts."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel Margin="0,0,0,10">
                                     <Button Content="Unlock Selected" Command="{Binding UnlockAccountCommand}"
@@ -170,8 +140,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Zero-RSAT Active Directory Domain Reachability" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Test DNS SRV resolution and TCP connectivity across Kerberos (88), LDAP (389), and SMB (445) ports without RSAT."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -193,8 +161,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Domain User Account Unlock" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Unlock a locked domain account on the target domain controller."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -225,8 +191,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="User Profile Backup &amp; SHA-256 Manifest" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Synchronize user shell folders via multi-threaded Robocopy, export Chrome/Edge bookmarks and PFX certificates, and generate SHA-256 manifest."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <!-- Backup Destination Row -->
                                 <Grid Margin="0,0,0,12">
@@ -271,8 +235,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Profile Restore &amp; Manifest Verification" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Verify SHA-256 integrity manifest and restore backed up user shell folders to the active profile."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <!-- Restore Destination Row -->
                                 <Grid Margin="0,0,0,14">

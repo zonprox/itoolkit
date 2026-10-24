@@ -26,7 +26,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        iToolkit Operational Pillars                    │
+│                        iToolKit Operational Pillars                    │
 ├──────────────────┬──────────────────┬──────────────────┬───────────────┤
 │ 🛡️ System Health │ 💼 Office Suite   │ 🖧 Connectivity  │ 👤 Identity   │
 │    & Maintenance │    & Outlook     │    & Printers    │    & Backup   │
@@ -192,4 +192,4 @@ dotnet publish src/IToolkit.App/IToolkit.App.csproj -c Release -r win-x64 --self
 
 - **Language Standard**: 100% English across all user interfaces, source code, manifests, comments, logs, and documentation.
 - **Enterprise Grade**: Zero third-party telemetry; strictly local diagnostic execution.
-- (c) 2026 iToolkit Team. All rights reserved.
+- (c) 2026 iToolKit Team. All rights reserved.

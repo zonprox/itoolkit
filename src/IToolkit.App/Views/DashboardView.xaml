@@ -13,25 +13,6 @@
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
-            <!-- Operation Status Banner -->
-            <Border Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
-                        <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                    </StackPanel>
-                    <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
-                                 VerticalAlignment="Center"
-                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
-                </Grid>
-            </Border>
-
             <!-- Quick Actions Grid -->
             <UniformGrid Columns="3" Margin="0,0,0,8">
                 <!-- Card 1: System Integrity -->
@@ -39,8 +20,6 @@
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="System Integrity Repair" Style="{StaticResource FluentSectionTitleStyle}" />
-                            <TextBlock Text="Run automated DISM RestoreHealth and SFC /scannow to repair OS image and system files."
-                                       Style="{StaticResource FluentSectionDescriptionStyle}" />
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock Text="{Binding SystemHealthStatus}" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,8" />
@@ -58,8 +37,6 @@
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Outlook &amp; Mail Repair" Style="{StaticResource FluentSectionTitleStyle}" />
-                            <TextBlock Text="Purge stuck Outbox queues, reset SRS rules, and clean RoamCache while keeping AutoComplete."
-                                       Style="{StaticResource FluentSectionDescriptionStyle}" />
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock Text="{Binding OfficeStatus}" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,8" />
@@ -76,8 +53,6 @@
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Network Stack Reset" Style="{StaticResource FluentSectionTitleStyle}" />
-                            <TextBlock Text="Flush DNS cache, renew DHCP lease, clear ARP table, and reset Winsock &amp; TCP/IP."
-                                       Style="{StaticResource FluentSectionDescriptionStyle}" />
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock Text="{Binding NetworkStatus}" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,8" />
@@ -94,8 +69,6 @@
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Unified Storage Cleanup" Style="{StaticResource FluentSectionTitleStyle}" />
-                            <TextBlock Text="Purge temporary files, Windows Update caches, Delivery Optimization, and Recycle Bin."
-                                       Style="{StaticResource FluentSectionDescriptionStyle}" />
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock Text="{Binding SystemHealthStatus}" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,8" />
@@ -112,8 +85,6 @@
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Upgrade All Applications" Style="{StaticResource FluentSectionTitleStyle}" />
-                            <TextBlock Text="Silently upgrade all installed packages via Windows Package Manager (Winget)."
-                                       Style="{StaticResource FluentSectionDescriptionStyle}" />
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock Text="{Binding SoftwareStatus}" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,8" />
@@ -130,8 +101,6 @@
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Verified Profile Backup" Style="{StaticResource FluentSectionTitleStyle}" />
-                            <TextBlock Text="Back up user profile folders, browser bookmarks, and SHA-256 verification manifest."
-                                       Style="{StaticResource FluentSectionDescriptionStyle}" />
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom">
                             <TextBlock Text="{Binding BackupStatus}" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,8" />

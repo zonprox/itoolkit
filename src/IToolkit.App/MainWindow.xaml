@@ -9,8 +9,8 @@
         mc:Ignorable="d"
         Title="iToolKit"
         Icon="pack://application:,,,/iToolKit;component/Assets/iToolKit.ico"
-        Height="600" Width="960"
-        MinHeight="500" MinWidth="800"
+        Height="560" Width="900"
+        MinHeight="480" MinWidth="780"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
@@ -85,10 +85,6 @@
             <RowDefinition Height="Auto" />
             <!-- Row 1: Main Workspace (Left Slim Nav Rail + Active Page) -->
             <RowDefinition Height="*" />
-            <!-- Row 2: Resizable Splitter -->
-            <RowDefinition Height="4" />
-            <!-- Row 3: Collapsible Activity Log Console -->
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Row 0: System Telemetry Status Header -->
@@ -116,12 +112,9 @@
                                   Fill="#FFFFFF" Stretch="Uniform" Width="12" Height="12"
                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="iToolKit" FontWeight="SemiBold" FontSize="13"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                            <TextBlock Text="Utility Suite" FontSize="10"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
+                        <TextBlock Text="iToolKit" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center" />
                     </StackPanel>
 
                     <!-- Navigation Items (Single-line icon + label) -->
@@ -226,13 +219,5 @@
                 <ContentControl Content="{Binding CurrentPageViewModel}" />
             </DockPanel>
         </Grid>
-
-        <!-- Row 2: Resizable Splitter -->
-        <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
-                      Background="{DynamicResource DividerStrokeColorDefaultBrush}"
-                      ResizeDirection="Rows" Cursor="SizeNS" />
-
-        <!-- Row 3: Collapsible Activity Console Drawer -->
-        <views:ActivityConsoleView Grid.Row="3" DataContext="{Binding ActivityConsole}" />
     </Grid>
 </Window>

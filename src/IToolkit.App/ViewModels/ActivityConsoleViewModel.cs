@@ -32,7 +32,7 @@ public class DefaultClipboardService : IClipboardService
     }
 }
 
-public class ActivityConsoleViewModel : ViewModelBase
+public class ActivityConsoleViewModel : ViewModelBase, IDisposable
 {
     private readonly IActivityLogger _logger;
     private readonly IClipboardService _clipboardService;
@@ -45,7 +45,9 @@ public class ActivityConsoleViewModel : ViewModelBase
     private string _selectedLevelFilter = "All";
     private bool _autoScroll = true;
     private bool _isExpanded = true;
-    private double _consoleHeight = 180;
+    private double _consoleHeight = double.NaN;
+    private bool _disposed;
+    private bool _isOpen;
 
     private int _totalCount;
     private int _errorCount;
@@ -72,9 +74,23 @@ public class ActivityConsoleViewModel : ViewModelBase
         ToggleExpandedCommand = new RelayCommand(ToggleExpanded);
         DismissCompletionCommand = new RelayCommand(() => ShowCompletionBanner = false);
         SetFilterCommand = new RelayCommand<string>(level => SelectedLevelFilter = level ?? "All");
+        CloseCommand = new RelayCommand(() =>
+        {
+            IsOpen = false;
+            RequestClose?.Invoke();
+        });
+        OpenCommand = new RelayCommand(() =>
+        {
+            IsOpen = true;
+            RequestOpen?.Invoke();
+        });
 
         // Wire into Core Activity Logger event stream
         _logger.EntryLogged += OnEntryLogged;
+
+        // Wire into ViewModelBase operation events
+        ViewModelBase.OperationStarted += OnOperationStarted;
+        ViewModelBase.OperationFinished += OnOperationFinished;
     }
 
     public ObservableCollection<ActivityLogEntry> FilteredEntries => _filteredEntries;
@@ -106,6 +122,7 @@ public class ActivityConsoleViewModel : ViewModelBase
     public bool AutoScroll { get => _autoScroll; set => SetProperty(ref _autoScroll, value); }
     public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
     public double ConsoleHeight { get => _consoleHeight; set => SetProperty(ref _consoleHeight, value); }
+    public bool IsOpen { get => _isOpen; set => SetProperty(ref _isOpen, value); }
 
     public int TotalCount { get => _totalCount; private set => SetProperty(ref _totalCount, value); }
     public int ErrorCount { get => _errorCount; private set => SetProperty(ref _errorCount, value); }
@@ -124,8 +141,12 @@ public class ActivityConsoleViewModel : ViewModelBase
     public ICommand ToggleExpandedCommand { get; }
     public ICommand DismissCompletionCommand { get; }
     public ICommand SetFilterCommand { get; }
+    public ICommand CloseCommand { get; }
+    public ICommand OpenCommand { get; }
 
     public event Action? LogEntryAppended;
+    public event Action? RequestOpen;
+    public event Action? RequestClose;
 
     private void OnEntryLogged(ActivityLogEntry entry)
     {
@@ -182,7 +203,7 @@ public class ActivityConsoleViewModel : ViewModelBase
         }
         else
         {
-            ExecutionStatus = "Failed";
+            ExecutionStatus = ErrorCount > 0 ? "Errors Encountered" : "Failed";
             ExecutionStatusBrush = "#EF4444";
             CompletionBannerBrush = "#991B1B";
             CompletionMessage = $"[FAIL] '{operationName}' failed with exit code {exitCode}. Review error logs above.";
@@ -211,10 +232,48 @@ public class ActivityConsoleViewModel : ViewModelBase
         _clipboardService.SetText(sb.ToString());
     }
 
+    private void OnOperationStarted(string opName)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        ExecutionStatus = "Executing...";
+        ExecutionStatusBrush = "#38BDF8";
+        ShowCompletionBanner = false;
+        IsOpen = true;
+        RequestOpen?.Invoke();
+    }
+
+    private void OnOperationFinished(string operationName, bool success, int exitCode)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        NotifyOperationFinished(operationName, success, exitCode);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _logger.EntryLogged -= OnEntryLogged;
+        ViewModelBase.OperationStarted -= OnOperationStarted;
+        ViewModelBase.OperationFinished -= OnOperationFinished;
+        GC.SuppressFinalize(this);
+    }
+
     private void ToggleExpanded()
     {
         IsExpanded = !IsExpanded;
-        ConsoleHeight = IsExpanded ? 180 : 30;
+        ConsoleHeight = IsExpanded ? double.NaN : 30;
     }
 
     private void ApplyFilter()

@@ -10,14 +10,14 @@
     <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
             BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
             BorderThickness="0,0,0,1"
-            Padding="10,4"
+            Padding="8,3"
             ClipToBounds="True">
         <DockPanel LastChildFill="True" ClipToBounds="True">
             <!-- Right: Network Status and Active Task Description -->
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <Ellipse Width="6" Height="6" Fill="{Binding NetworkStatusBrush}" Margin="0,0,4,0" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding NetworkStatusText}" FontSize="11" FontWeight="Medium"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
                 <Border CornerRadius="3" Padding="5,1"
                         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1"
@@ -37,20 +37,20 @@
                            MaxWidth="100" TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding OsDescription}" />
                 <TextBlock Text="{Binding OsBuild}" FontSize="10"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0"
                            MaxWidth="75" TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding OsBuild}" />
 
                 <!-- Elevation Badge -->
-                <Border CornerRadius="3" Padding="4,1" Background="{Binding ElevationBadgeBrush}" VerticalAlignment="Center" Margin="0,0,6,0">
+                <Border CornerRadius="3" Padding="4,1" Background="{Binding ElevationBadgeBrush}" VerticalAlignment="Center" Margin="0,0,4,0">
                     <TextBlock Text="{Binding ElevationBadgeText}" FontSize="10" FontWeight="SemiBold" Foreground="#FFFFFF" />
                 </Border>
 
                 <!-- Separator -->
-                <Rectangle Width="1" Height="12" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                <Rectangle Width="1" Height="12" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,0,4,0" VerticalAlignment="Center" />
 
                 <!-- CPU Metric Badge -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
                     <TextBlock Text="CPU:" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,2,0" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding CpuUsageText}" FontSize="11" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
@@ -59,7 +59,7 @@
                 </StackPanel>
 
                 <!-- Memory Metric Badge -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
                     <TextBlock Text="RAM:" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,2,0" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding MemoryUsageText}" FontSize="11" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"

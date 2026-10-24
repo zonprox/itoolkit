@@ -12,32 +12,8 @@
     </UserControl.Resources>
 
     <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- Status Banner -->
-        <Border Grid.Row="0" Style="{StaticResource FluentStatusBannerStyle}" Padding="8,4" Margin="0,0,0,6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Status:" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,8,0" />
-                    <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="13" FontWeight="Medium"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                </StackPanel>
-                <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" Width="140" Height="4"
-                             VerticalAlignment="Center"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}" />
-            </Grid>
-        </Border>
-
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Grid.Row="1" Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Enterprise 8-App Catalog -->
             <TabItem Header="Enterprise 8-App Catalog">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -45,8 +21,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Enterprise Application Catalog (8 Apps)" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Install applications silently via Winget (with direct-download fallback) or direct archive extraction."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel VerticalAlignment="Center" Margin="0,0,0,12">
                                     <Button Content="Select All" Command="{Binding SelectAllCommand}"
@@ -109,8 +83,6 @@
                             <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,12">
                                 <StackPanel>
                                     <TextBlock Text="Default App Associations &amp; Browser Policy" Style="{StaticResource FluentSectionTitleStyle}" />
-                                    <TextBlock Text="Apply standard enterprise associations and deploy uBlock Origin Lite policy."
-                                               Style="{StaticResource FluentSectionDescriptionStyle}" />
                                     <WrapPanel>
                                         <Button Content="Default Browser (Chrome)" Command="{Binding SetDefaultBrowserCommand}"
                                                 IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,6,6" />
@@ -126,7 +98,7 @@
                                 <StackPanel>
                                     <TextBlock Text="Windows Package Manager (Winget)" Style="{StaticResource FluentSectionTitleStyle}" />
                                     <TextBlock Text="{Binding WingetVersionText, StringFormat='Status: {0}'}"
-                                               Style="{StaticResource FluentSectionDescriptionStyle}" />
+                                               Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,8" />
                                     <WrapPanel>
                                         <Button Content="Check Status" Command="{Binding CheckWingetStatusCommand}"
                                                 IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,6,6" />
@@ -151,8 +123,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Verified Community Debloat &amp; Tweaking Suites" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Launch verified community tools over HTTPS with domain allowlist validation for telemetry debloat and system tweaks."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <WrapPanel Margin="0,0,0,8">
                                     <Button Content="Launch Win11Debloat" Command="{Binding LaunchWin11DebloatCommand}"
@@ -171,8 +141,6 @@
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Custom HTTPS Debloat Script Runner" Style="{StaticResource FluentSectionTitleStyle}" />
-                                <TextBlock Text="Execute an administrative PowerShell script directly from an approved HTTPS repository."
-                                           Style="{StaticResource FluentSectionDescriptionStyle}" />
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
