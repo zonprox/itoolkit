@@ -345,7 +345,7 @@ Below is the complete, itemized verification mapping for all 28 features in the 
 | **24** | Comprehensive Unit & Workflow Tests | `tests/IToolkit.Tests/**/*` | All Unit & Empirical Challenge Suites | 359/359 automated tests passing with 0 failures | **PASS** |
 | **25** | Static Analysis Zero-Residue Tests | `tests/IToolkit.Tests/StaticAnalysis/*.cs` | `StaticAnalysis/LegacyResidueTests.cs`, `StaticAnalysis/NamingStandardizationTests.cs`, `StaticAnalysis/AsciiComplianceTests.cs` | `Repository_Contains_Zero_Legacy_Scripts`, `Naming_Conforms_Strictly_To_iToolKit`, `AllFiles_ComplyWithPureAscii` | **TEST READY** |
 | **26** | Clean-Slate Repository Purge | Root repository structure | `StaticAnalysis/LegacyResidueTests.cs` | `Repository_Contains_Zero_Legacy_Directories`, `Zero_Legacy_Scripts_Exist` | **PLANNED (M6)** |
-| **27** | Packaging Pipeline & Public Upload | `scripts/package-and-upload.sh` | Shell script execution test (`--skip-upload` & live) | Produces multi-file portable `win-x64` application packaged into `iToolKit.zip` with SHA-256 | **PLANNED (M6)** |
+| **27** | Packaging Pipeline & Public Upload | `scripts/package-and-upload.sh` | Shell script execution test (`--skip-upload` & live) | Produces single-file portable `win-x64` application packaged into `iToolKit.zip` with SHA-256 | **PLANNED (M6)** |
 | **28** | Git Stage, Commit & Remote Push | Git workspace repository | Git CLI status & log verification | `git status` clean working tree & verified push to `origin/main` | **PLANNED (M6)** |
 
 ---
@@ -483,7 +483,7 @@ Below is the complete, itemized verification mapping for all 28 features in the 
 - **Verification**: Verified by `LegacyResidueTests.cs` asserting zero legacy files or prohibited directories exist in the working tree.
 
 ### Feature 27: Packaging Pipeline & Public Upload
-- **Scope**: Modernized `scripts/package-and-upload.sh` compiling multi-file portable `win-x64` application, packaging `iToolKit.zip`, computing SHA-256, and uploading to public host.
+- **Scope**: Modernized `scripts/package-and-upload.sh` compiling single-file portable `win-x64` application, packaging `iToolKit.zip`, computing SHA-256, and uploading to public host.
 - **Implementation**: `scripts/package-and-upload.sh`.
 - **Verification**: Tested in Milestone 6; outputs verifiable live download URL and SHA-256 checksum.
 

@@ -9,7 +9,7 @@
   - `src/IToolkit.App/` (`net10.0-windows` WPF executable): Fluent UI / Mica styling, real-time System Telemetry Header/Dashboard, MVVM ViewModels, 5 pillar views, docked live activity log console replacing legacy TUI console pause, Administrator elevation manifest (`app.manifest`).
   - `tests/IToolkit.Tests/` (`net10.0` xUnit test suite): Comprehensive Unit, Integration/Workflow, and Static Analysis tests (zero legacy residue, zero PowerShell shims, 100% English).
 - **Packaging Pipeline**:
-  - `scripts/package-and-upload.sh`: Compiles and publishes multi-file portable win-x64 `iToolKit.exe`, packages `iToolKit.zip`, computes SHA-256, and uploads to public host (`storage.to`).
+  - `scripts/package-and-upload.sh`: Compiles and publishes single-file portable win-x64 `iToolKit.exe`, packages `iToolKit.zip`, computes SHA-256, and uploads to public host (`storage.to`).
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
@@ -40,7 +40,7 @@
 | 24 | Comprehensive Unit & Workflow Tests | Mocked platform tests for all core safety engines and 5 pillars passing 100% | M5 | Survey 3 |
 | 25 | Static Analysis Zero-Residue Tests | C# tests asserting zero *.ps1/*.bat files, zero legacy shims/aliases, 100% English | M5 | Survey 3 |
 | 26 | Clean-Slate Repository Purge | Removal of 1,098 legacy files (Modules/, Tests/, Build/, TestLogs/, *.log, *.reg, stale zip) | M6 | Survey 3 |
-| 27 | Packaging Pipeline & Public Upload | Updated scripts/package-and-upload.sh producing multi-file portable win-x64 application, IToolkit.zip, upload, live URL & SHA-256 | M6 | Survey 3 |
+| 27 | Packaging Pipeline & Public Upload | Updated scripts/package-and-upload.sh producing single-file portable win-x64 application, IToolkit.zip, upload, live URL & SHA-256 | M6 | Survey 3 |
 | 28 | Git Stage, Commit & Remote Push | Clean commit with English message and push to origin/main with clean working tree | M6 | Survey 3 |
 
 ## Milestones
@@ -51,7 +51,7 @@
 | 3 | 5 Core Operational Pillars Implementation | Pure C# implementation of all 5 pillar domain services for win-x64 | M2 | DONE |
 | 4 | Modern Fluent UI / Mica WPF Application | net10.0-windows WPF GUI (iToolKit.exe), telemetry dashboard header, MVVM, docked activity console | M2, M3 | DONE |
 | 5 | Testing Track: E2E, Integration & Static Analysis | Complete test suite (Tiers 1-4), static analysis zero-residue assertions, iToolKit naming consistency, TEST_READY.md | M2, M3 | IN_PROGRESS |
-| 6 | Clean-Slate Purge, Build, Package, Upload & Push | Delete legacy files, win-x64 multi-file portable build (iToolKit.exe), package iToolKit.zip, upload to cloud, git push | M4, M5 | PLANNED |
+| 6 | Clean-Slate Purge, Build, Package, Upload & Push | Delete legacy files, win-x64 single-file portable build (iToolKit.exe), package iToolKit.zip, upload to cloud, git push | M4, M5 | PLANNED |
 
 ## Code Layout
 ```

@@ -124,7 +124,38 @@ public class DistributionAndPackagingTests
             var genDocElement = doc.Descendants("GenerateDocumentationFile").FirstOrDefault();
             Assert.NotNull(genDocElement);
             Assert.Equal("false", genDocElement.Value.Trim(), ignoreCase: true);
+
+            var debugTypeElement = doc.Descendants("DebugType")
+                .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Release") == true);
+            Assert.NotNull(debugTypeElement);
+            Assert.Equal("none", debugTypeElement.Value.Trim(), ignoreCase: true);
+
+            var debugSymbolsElement = doc.Descendants("DebugSymbols")
+                .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Release") == true);
+            Assert.NotNull(debugSymbolsElement);
+            Assert.Equal("false", debugSymbolsElement.Value.Trim(), ignoreCase: true);
         }
+    }
+
+    [Fact]
+    public void AppProject_ConfiguresSingleFilePublishAndSelfExtraction()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string appCsprojPath = Path.Combine(repoRoot, "src", "IToolkit.App", "IToolkit.App.csproj");
+        Assert.True(File.Exists(appCsprojPath), $"Project file not found: {appCsprojPath}");
+
+        var doc = XDocument.Load(appCsprojPath);
+        var singleFileElement = doc.Descendants("PublishSingleFile").FirstOrDefault();
+        Assert.NotNull(singleFileElement);
+        Assert.Equal("true", singleFileElement.Value.Trim(), ignoreCase: true);
+
+        var nativeLibsElement = doc.Descendants("IncludeNativeLibrariesForSelfExtract").FirstOrDefault();
+        Assert.NotNull(nativeLibsElement);
+        Assert.Equal("true", nativeLibsElement.Value.Trim(), ignoreCase: true);
+
+        var allContentElement = doc.Descendants("IncludeAllContentForSelfExtract").FirstOrDefault();
+        Assert.NotNull(allContentElement);
+        Assert.Equal("true", allContentElement.Value.Trim(), ignoreCase: true);
     }
 
     [Fact]
@@ -142,11 +173,19 @@ public class DistributionAndPackagingTests
 
         Assert.Contains(entries, e => e.Equals("iToolKit.exe", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(entries, e => e.Equals("README.md", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(entries, e => e.StartsWith("Logs/", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(entries, e => e.Equals("Logs/placeholder.log", StringComparison.OrdinalIgnoreCase));
 
         var exeEntry = zip.GetEntry("iToolKit.exe");
         Assert.NotNull(exeEntry);
         Assert.True(exeEntry.Length > 0, "iToolKit.exe in release archive must not be empty.");
+
+        var readmeEntry = zip.GetEntry("README.md");
+        Assert.NotNull(readmeEntry);
+        Assert.True(readmeEntry.Length > 0, "README.md in release archive must not be empty.");
+
+        var placeholderEntry = zip.GetEntry("Logs/placeholder.log");
+        Assert.NotNull(placeholderEntry);
+        Assert.True(placeholderEntry.Length > 0, "Logs/placeholder.log in release archive must not be empty.");
 
         // Ensure zero .pdb files
         var pdbEntries = entries.Where(e => e.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -173,14 +212,12 @@ public class DistributionAndPackagingTests
                 string.Join("\n", langEntries.Select(l => " - " + l)));
         }
 
-        // Ensure no loose dll files dumped into root
-        var looseDlls = entries
-            .Where(e => !e.Contains('/') && e.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        // Ensure no loose dll files anywhere in the single-file archive
+        var allDllEntries = entries.Where(e => e.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)).ToList();
         Assert.True(
-            looseDlls.Count == 0,
-            $"Release archive must not dump loose DLLs into the root folder. Found {looseDlls.Count} loose DLLs:\n" +
-            string.Join("\n", looseDlls.Take(20).Select(d => " - " + d)));
+            allDllEntries.Count == 0,
+            $"Release archive must not contain loose DLLs. Found {allDllEntries.Count} loose DLL(s):\n" +
+            string.Join("\n", allDllEntries.Take(20).Select(d => " - " + d)));
 
         // Ensure root contains only approved entries (iToolKit.exe, README.md, Logs/)
         var unexpectedRootEntries = entries
@@ -190,6 +227,15 @@ public class DistributionAndPackagingTests
             unexpectedRootEntries.Count == 0,
             $"Release archive contains unexpected loose files at root:\n" +
             string.Join("\n", unexpectedRootEntries.Select(f => " - " + f)));
+
+        // Ensure all nested paths are strictly under Logs/
+        var unexpectedDirectoryEntries = entries
+            .Where(e => e.Contains('/') && !e.StartsWith("Logs/", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.True(
+            unexpectedDirectoryEntries.Count == 0,
+            $"Release archive contains unexpected subdirectories:\n" +
+            string.Join("\n", unexpectedDirectoryEntries.Select(d => " - " + d)));
     }
 
     [Fact]
@@ -254,6 +300,32 @@ public class DistributionAndPackagingTests
         Assert.Contains("Software", coreServiceSubDirs);
         Assert.Contains("Connectivity", coreServiceSubDirs);
 
+        var allowedRootAppFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IToolkit.App.csproj",
+            "App.xaml",
+            "App.xaml.cs",
+            "MainWindow.xaml",
+            "MainWindow.xaml.cs",
+            "ServiceRegistration.cs",
+            "app.manifest"
+        };
+        var actualAppFiles = Directory.GetFiles(appDir).Select(Path.GetFileName).ToList();
+        var unexpectedAppFiles = actualAppFiles.Where(f => !allowedRootAppFiles.Contains(f!)).ToList();
+        Assert.True(
+            unexpectedAppFiles.Count == 0,
+            $"Found unexpected loose files at root of 'src/IToolkit.App/': {string.Join(", ", unexpectedAppFiles)}");
+
+        var allowedRootCoreFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IToolkit.Core.csproj"
+        };
+        var actualCoreFiles = Directory.GetFiles(coreDir).Select(Path.GetFileName).ToList();
+        var unexpectedCoreFiles = actualCoreFiles.Where(f => !allowedRootCoreFiles.Contains(f!)).ToList();
+        Assert.True(
+            unexpectedCoreFiles.Count == 0,
+            $"Found unexpected loose files at root of 'src/IToolkit.Core/': {string.Join(", ", unexpectedCoreFiles)}");
+
         // tests/IToolkit.Tests must be structured into test categories with zero loose test files
         string testProjectDir = Path.Combine(testsDir, "IToolkit.Tests");
         var testSubDirs = Directory.GetDirectories(testProjectDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -277,6 +349,37 @@ public class DistributionAndPackagingTests
         Assert.True(
             unexpectedTestFiles.Count == 0,
             $"Found loose files at root of 'tests/IToolkit.Tests/': {string.Join(", ", unexpectedTestFiles)}");
+    }
+
+    [Fact]
+    public void BuildOutputs_InSrcAndTests_ContainZeroNet8DirectoriesOrFiles()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        var searchRoots = new[]
+        {
+            Path.Combine(repoRoot, "src"),
+            Path.Combine(repoRoot, "tests")
+        };
+
+        var violations = new List<string>();
+
+        foreach (var root in searchRoots)
+        {
+            if (!Directory.Exists(root))
+            {
+                continue;
+            }
+
+            foreach (var dir in Directory.EnumerateDirectories(root, "*net8.0*", SearchOption.AllDirectories))
+            {
+                violations.Add(Path.GetRelativePath(repoRoot, dir));
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            $"Found obsolete net8.0 build or cache directories in repository:\n" +
+            string.Join("\n", violations.Select(v => " - " + v)));
     }
 
     [Fact]
