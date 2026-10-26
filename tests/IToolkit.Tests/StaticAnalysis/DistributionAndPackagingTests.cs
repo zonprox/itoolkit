@@ -125,6 +125,14 @@ public class DistributionAndPackagingTests
             Assert.NotNull(genDocElement);
             Assert.Equal("false", genDocElement.Value.Trim(), ignoreCase: true);
 
+            var treatWarningsElement = doc.Descendants("TreatWarningsAsErrors").FirstOrDefault();
+            Assert.NotNull(treatWarningsElement);
+            Assert.Equal("true", treatWarningsElement.Value.Trim(), ignoreCase: true);
+
+            var invariantElement = doc.Descendants("InvariantGlobalization").FirstOrDefault();
+            Assert.NotNull(invariantElement);
+            Assert.Equal("true", invariantElement.Value.Trim(), ignoreCase: true);
+
             var debugTypeElement = doc.Descendants("DebugType")
                 .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Release") == true);
             Assert.NotNull(debugTypeElement);
@@ -156,6 +164,14 @@ public class DistributionAndPackagingTests
         var allContentElement = doc.Descendants("IncludeAllContentForSelfExtract").FirstOrDefault();
         Assert.NotNull(allContentElement);
         Assert.Equal("true", allContentElement.Value.Trim(), ignoreCase: true);
+
+        var selfContainedElement = doc.Descendants("SelfContained").FirstOrDefault();
+        Assert.NotNull(selfContainedElement);
+        Assert.Equal("true", selfContainedElement.Value.Trim(), ignoreCase: true);
+
+        var runtimeIdElement = doc.Descendants("RuntimeIdentifier").FirstOrDefault();
+        Assert.NotNull(runtimeIdElement);
+        Assert.Equal("win-x64", runtimeIdElement.Value.Trim(), ignoreCase: true);
     }
 
     [Fact]
@@ -164,12 +180,51 @@ public class DistributionAndPackagingTests
         string repoRoot = StaticAnalysisHelper.GetRepoRoot();
         string zipPath = Path.Combine(repoRoot, "iToolKit.zip");
 
+        // Self-heal on clean clones if archive has not yet been packaged
+        if (!File.Exists(zipPath))
+        {
+            string scriptPath = Path.Combine(repoRoot, "scripts", "package-and-upload.sh");
+            if (File.Exists(scriptPath))
+            {
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo("bash", $"\"{scriptPath}\" --skip-upload")
+                    {
+                        WorkingDirectory = repoRoot,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false
+                    };
+                    using var proc = System.Diagnostics.Process.Start(psi);
+                    proc?.WaitForExit(60000);
+                }
+                catch
+                {
+                    // Fall through to file existence assertion
+                }
+            }
+        }
+
         Assert.True(
             File.Exists(zipPath),
             "Release archive 'iToolKit.zip' was not found at repository root. Run 'scripts/package-and-upload.sh' to generate it.");
 
         using var zip = ZipFile.OpenRead(zipPath);
         var entries = zip.Entries.Select(e => e.FullName.Replace('\\', '/')).ToList();
+
+        // Strict archive entry whitelist: exactly approved files/directories and zero extraneous files anywhere
+        var allowedEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "iToolKit.exe",
+            "README.md",
+            "Logs/",
+            "Logs/placeholder.log"
+        };
+        var unauthorizedEntries = entries.Where(e => !allowedEntries.Contains(e)).ToList();
+        Assert.True(
+            unauthorizedEntries.Count == 0,
+            $"Release archive contains unauthorized extra entries:\n" +
+            string.Join("\n", unauthorizedEntries.Select(e => " - " + e)));
 
         Assert.Contains(entries, e => e.Equals("iToolKit.exe", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(entries, e => e.Equals("README.md", StringComparison.OrdinalIgnoreCase));
@@ -218,24 +273,6 @@ public class DistributionAndPackagingTests
             allDllEntries.Count == 0,
             $"Release archive must not contain loose DLLs. Found {allDllEntries.Count} loose DLL(s):\n" +
             string.Join("\n", allDllEntries.Take(20).Select(d => " - " + d)));
-
-        // Ensure root contains only approved entries (iToolKit.exe, README.md, Logs/)
-        var unexpectedRootEntries = entries
-            .Where(e => !e.Contains('/') && !e.Equals("iToolKit.exe", StringComparison.OrdinalIgnoreCase) && !e.Equals("README.md", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        Assert.True(
-            unexpectedRootEntries.Count == 0,
-            $"Release archive contains unexpected loose files at root:\n" +
-            string.Join("\n", unexpectedRootEntries.Select(f => " - " + f)));
-
-        // Ensure all nested paths are strictly under Logs/
-        var unexpectedDirectoryEntries = entries
-            .Where(e => e.Contains('/') && !e.StartsWith("Logs/", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        Assert.True(
-            unexpectedDirectoryEntries.Count == 0,
-            $"Release archive contains unexpected subdirectories:\n" +
-            string.Join("\n", unexpectedDirectoryEntries.Select(d => " - " + d)));
     }
 
     [Fact]
@@ -370,15 +407,55 @@ public class DistributionAndPackagingTests
                 continue;
             }
 
-            foreach (var dir in Directory.EnumerateDirectories(root, "*net8.0*", SearchOption.AllDirectories))
+            foreach (var dir in Directory.EnumerateDirectories(root, "*net8*", SearchOption.AllDirectories))
             {
-                violations.Add(Path.GetRelativePath(repoRoot, dir));
+                violations.Add("Dir: " + Path.GetRelativePath(repoRoot, dir));
+            }
+
+            foreach (var file in Directory.EnumerateFiles(root, "*net8*", SearchOption.AllDirectories))
+            {
+                violations.Add("File: " + Path.GetRelativePath(repoRoot, file));
             }
         }
 
         Assert.True(
             violations.Count == 0,
-            $"Found obsolete net8.0 build or cache directories in repository:\n" +
+            $"Found obsolete net8 build or cache directories/files in repository:\n" +
+            string.Join("\n", violations.Select(v => " - " + v)));
+    }
+
+    [Fact]
+    public void ReleaseBuildOutputs_InSrc_ContainZeroPdbOrXmlFiles()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string srcDir = Path.Combine(repoRoot, "src");
+        if (!Directory.Exists(srcDir))
+        {
+            return;
+        }
+
+        var releaseDirs = Directory.EnumerateDirectories(srcDir, "Release", SearchOption.AllDirectories)
+            .Where(d => d.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains("bin"))
+            .ToList();
+
+        var violations = new List<string>();
+        foreach (var releaseDir in releaseDirs)
+        {
+            var files = Directory.EnumerateFiles(releaseDir, "*", SearchOption.AllDirectories);
+            foreach (var file in files)
+            {
+                string ext = Path.GetExtension(file);
+                if (ext.Equals(".pdb", StringComparison.OrdinalIgnoreCase) ||
+                    ext.Equals(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    violations.Add(Path.GetRelativePath(repoRoot, file));
+                }
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            $"Release build outputs under src/ contain prohibited debug symbols or XML doc files:\n" +
             string.Join("\n", violations.Select(v => " - " + v)));
     }
 
