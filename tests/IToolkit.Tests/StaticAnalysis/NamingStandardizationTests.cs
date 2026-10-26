@@ -8,6 +8,7 @@ using System.Xml.Linq;
 using IToolkit.App.Native;
 using Xunit;
 
+[Collection("ActivityLoggerDiskFile")]
 public class NamingStandardizationTests
 {
     private const string ExpectedCasing = "iToolKit";
@@ -112,8 +113,10 @@ public class NamingStandardizationTests
 
         // Act & Assert Source Code Pattern
         string content = File.ReadAllText(loggerSrcPath);
-        Assert.Contains($"\"{ExpectedCasing}\", \"Logs\"", content);
         Assert.Contains($"\"{ExpectedCasing}_", content);
+        Assert.DoesNotContain("\"IToolkit_", content);
+        Assert.DoesNotContain("\"itoolkit_", content);
+        Assert.DoesNotContain("\"IToolKit_", content);
 
         // Act & Assert Runtime Instantiation
         var logger = new ActivityLogger();

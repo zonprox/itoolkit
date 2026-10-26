@@ -2,7 +2,7 @@
 # ==============================================================================
 # package-and-upload.sh
 # Release packaging and public cloud upload helper for iToolKit.
-# Compiles native C# .NET 8 win-x64 standalone single-file executable,
+# Compiles native C# .NET 8 win-x64 multi-file portable application,
 # packages clean iToolKit.zip, and uploads to storage.to.
 # ==============================================================================
 set -euo pipefail
@@ -60,6 +60,16 @@ while [ $# -gt 0 ]; do
 done
 
 ZIP_PATH="${ZIP_PATH:-$REPO_ROOT/iToolKit.zip}"
+if command -v realpath >/dev/null 2>&1; then
+    ZIP_PATH="$(realpath -m "$ZIP_PATH")"
+else
+    ZIP_PATH="$(python3 -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "$ZIP_PATH")"
+fi
+
+if [ "$PROVIDER" != "storage.to" ]; then
+    echo "[Error] Unsupported provider '$PROVIDER'. Currently only 'storage.to' is supported." >&2
+    exit 1
+fi
 
 echo "================================================================================"
 echo "          iToolKit Bash Release Packaging & Public Cloud Distribution           "
@@ -85,9 +95,6 @@ dotnet publish "$REPO_ROOT/src/IToolkit.App/IToolkit.App.csproj" \
     -c Release \
     -r win-x64 \
     --self-contained true \
-    -p:PublishSingleFile=true \
-    -p:IncludeNativeLibrariesForSelfExtract=true \
-    -p:IncludeAllContentForSelfExtract=true \
     -p:EnableWindowsTargeting=true \
     -o "$STAGE_DIR"
 
@@ -97,31 +104,41 @@ if [ ! -f "$STAGE_DIR/iToolKit.exe" ]; then
 fi
 
 # Sanitize stage directory: remove PDB debug files and stage README.md
-rm -f "$STAGE_DIR"/*.pdb
+find "$STAGE_DIR" -type f -name "*.pdb" -delete
 if [ -f "$REPO_ROOT/README.md" ]; then
     cp "$REPO_ROOT/README.md" "$STAGE_DIR/README.md"
 fi
 
-# Step 2: Standalone ZIP Archive Packaging
-echo "[2/4] Packaging standalone ZIP archive: $ZIP_PATH..."
+# Pre-create Logs directory with initial placeholder file for portable runtime logs
+mkdir -p "$STAGE_DIR/Logs"
+echo "# iToolKit Portable Runtime Logs" > "$STAGE_DIR/Logs/placeholder.log"
+
+# Step 2: Multi-File Portable ZIP Archive Packaging
+echo "[2/4] Packaging multi-file portable ZIP archive: $ZIP_PATH..."
 rm -f "$ZIP_PATH"
 mkdir -p "$(dirname "$ZIP_PATH")"
 
-if command -v zip >/dev/null 2>&1; then
-    (cd "$STAGE_DIR" && zip -qr "$ZIP_PATH" .)
-elif command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1; then
     (cd "$STAGE_DIR" && python3 -c '
 import zipfile, os, sys
 dest = sys.argv[1]
 with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
     for root, dirs, files in os.walk("."):
+        for d in dirs:
+            dir_path = os.path.join(root, d)
+            arcname = os.path.relpath(dir_path, ".").replace(os.sep, "/") + "/"
+            zf.write(dir_path, arcname)
         for file in files:
             full_path = os.path.join(root, file)
-            arcname = os.path.relpath(full_path, ".")
+            if os.path.abspath(full_path) == os.path.abspath(dest):
+                continue
+            arcname = os.path.relpath(full_path, ".").replace(os.sep, "/")
             zf.write(full_path, arcname)
 ' "$ZIP_PATH")
+elif command -v zip >/dev/null 2>&1; then
+    (cd "$STAGE_DIR" && zip -qr "$ZIP_PATH" *)
 else
-    echo "[Error] Neither zip nor python3 is available to create ZIP archive." >&2
+    echo "[Error] Neither python3 nor zip is available to create ZIP archive." >&2
     exit 1
 fi
 
@@ -250,7 +267,7 @@ echo "  SHA-256 Hash : $SHA256"
 if [ "$SKIP_UPLOAD" = true ]; then
     echo "  Upload       : Skipped (Local package build only)"
     echo "================================================================================"
-    echo "  Distribution Ready: Standalone package created at $ZIP_PATH."
+    echo "  Distribution Ready: Multi-file portable package created at $ZIP_PATH."
 elif [ -n "${STORAGE_TO_URL:-}" ]; then
     echo "  Download URL (Storage.to) : $STORAGE_TO_URL"
     echo "================================================================================"

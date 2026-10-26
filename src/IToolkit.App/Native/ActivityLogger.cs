@@ -8,25 +8,22 @@ using IToolkit.Core.Models;
 public class ActivityLogger : IActivityLogger
 {
     private static readonly object _lock = new();
-    private readonly string _logFilePath;
 
-    public string LogFilePath => _logFilePath;
+    public string LogFilePath => Path.Combine(AppContext.BaseDirectory, "Logs", $"iToolKit_{DateTime.Now:yyyyMMdd}.log");
 
     public event Action<ActivityLogEntry>? EntryLogged;
 
     public ActivityLogger()
     {
-        string logsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "iToolKit", "Logs");
         try
         {
+            string logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
             Directory.CreateDirectory(logsDir);
         }
         catch
         {
             // Ignore directory creation failure in restricted environments
         }
-        string dateStamp = DateTime.Now.ToString("yyyyMMdd");
-        _logFilePath = Path.Combine(logsDir, $"iToolKit_{dateStamp}.log");
     }
 
     public void Log(LogLevel level, string component, string message)
@@ -37,8 +34,15 @@ public class ActivityLogger : IActivityLogger
         {
             try
             {
+                string targetPath = Path.Combine(AppContext.BaseDirectory, "Logs", $"iToolKit_{entry.Timestamp:yyyyMMdd}.log");
+                string? targetDir = Path.GetDirectoryName(targetPath);
+                if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
+                {
+                    Directory.CreateDirectory(targetDir);
+                }
+
                 string line = $"[{entry.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{entry.Level.ToString().ToUpperInvariant(),-7}] [{entry.Component}] {entry.Message}{Environment.NewLine}";
-                using var stream = new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                using var stream = new FileStream(targetPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                 using var writer = new StreamWriter(stream);
                 writer.Write(line);
             }
