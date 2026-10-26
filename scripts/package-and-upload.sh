@@ -109,6 +109,7 @@ fi
 # Sanitize stage directory: remove PDB debug files, XML docs, and non-English directories
 find "$STAGE_DIR" -type f -name "*.pdb" -delete
 find "$STAGE_DIR" -type f -name "*.xml" -delete
+find "$STAGE_DIR" -depth -type d \( -name cs -o -name de -o -name es -o -name fr -o -name it -o -name ja -o -name ko -o -name pl -o -name pt-BR -o -name ru -o -name tr -o -name zh-Hans -o -name zh-Hant \) -exec rm -rf {} + 2>/dev/null || true
 for lang in cs de es fr it ja ko pl pt-BR ru tr zh-Hans zh-Hant; do
     rm -rf "$STAGE_DIR/$lang"
 done

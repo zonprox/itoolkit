@@ -133,10 +133,9 @@ public class DistributionAndPackagingTests
         string repoRoot = StaticAnalysisHelper.GetRepoRoot();
         string zipPath = Path.Combine(repoRoot, "iToolKit.zip");
 
-        if (!File.Exists(zipPath))
-        {
-            return;
-        }
+        Assert.True(
+            File.Exists(zipPath),
+            "Release archive 'iToolKit.zip' was not found at repository root. Run 'scripts/package-and-upload.sh' to generate it.");
 
         using var zip = ZipFile.OpenRead(zipPath);
         var entries = zip.Entries.Select(e => e.FullName.Replace('\\', '/')).ToList();
@@ -144,6 +143,10 @@ public class DistributionAndPackagingTests
         Assert.Contains(entries, e => e.Equals("iToolKit.exe", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(entries, e => e.Equals("README.md", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(entries, e => e.StartsWith("Logs/", StringComparison.OrdinalIgnoreCase));
+
+        var exeEntry = zip.GetEntry("iToolKit.exe");
+        Assert.NotNull(exeEntry);
+        Assert.True(exeEntry.Length > 0, "iToolKit.exe in release archive must not be empty.");
 
         // Ensure zero .pdb files
         var pdbEntries = entries.Where(e => e.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -178,6 +181,102 @@ public class DistributionAndPackagingTests
             looseDlls.Count == 0,
             $"Release archive must not dump loose DLLs into the root folder. Found {looseDlls.Count} loose DLLs:\n" +
             string.Join("\n", looseDlls.Take(20).Select(d => " - " + d)));
+
+        // Ensure root contains only approved entries (iToolKit.exe, README.md, Logs/)
+        var unexpectedRootEntries = entries
+            .Where(e => !e.Contains('/') && !e.Equals("iToolKit.exe", StringComparison.OrdinalIgnoreCase) && !e.Equals("README.md", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.True(
+            unexpectedRootEntries.Count == 0,
+            $"Release archive contains unexpected loose files at root:\n" +
+            string.Join("\n", unexpectedRootEntries.Select(f => " - " + f)));
+    }
+
+    [Fact]
+    public void SourceAndTestDirectoryTrees_AdhereToCleanArchitecturalStructure_WithZeroFlatDumps()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string srcDir = Path.Combine(repoRoot, "src");
+        string testsDir = Path.Combine(repoRoot, "tests");
+
+        Assert.True(Directory.Exists(srcDir), "The 'src/' directory must exist.");
+        Assert.True(Directory.Exists(testsDir), "The 'tests/' directory must exist.");
+
+        // src/ must contain only designated projects and zero loose files
+        var srcLooseFiles = Directory.GetFiles(srcDir);
+        Assert.True(
+            srcLooseFiles.Length == 0,
+            $"Found loose files in 'src/': {string.Join(", ", srcLooseFiles.Select(Path.GetFileName))}");
+
+        var srcProjects = Directory.GetDirectories(srcDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IToolkit.App", srcProjects);
+        Assert.Contains("IToolkit.Core", srcProjects);
+
+        // tests/ must contain only designated test project and zero loose files
+        var testsLooseFiles = Directory.GetFiles(testsDir);
+        Assert.True(
+            testsLooseFiles.Length == 0,
+            $"Found loose files in 'tests/': {string.Join(", ", testsLooseFiles.Select(Path.GetFileName))}");
+
+        var testProjects = Directory.GetDirectories(testsDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IToolkit.Tests", testProjects);
+
+        // src/IToolkit.App must be structured by architectural role
+        string appDir = Path.Combine(srcDir, "IToolkit.App");
+        var appSubDirs = Directory.GetDirectories(appDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("Views", appSubDirs);
+        Assert.Contains("ViewModels", appSubDirs);
+        Assert.Contains("Native", appSubDirs);
+        Assert.Contains("Services", appSubDirs);
+        Assert.Contains("Converters", appSubDirs);
+        Assert.Contains("Assets", appSubDirs);
+
+        // src/IToolkit.Core must be structured by architectural role
+        string coreDir = Path.Combine(srcDir, "IToolkit.Core");
+        var coreSubDirs = Directory.GetDirectories(coreDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("Abstractions", coreSubDirs);
+        Assert.Contains("Models", coreSubDirs);
+        Assert.Contains("Safety", coreSubDirs);
+        Assert.Contains("Services", coreSubDirs);
+        Assert.Contains("Utilities", coreSubDirs);
+
+        // src/IToolkit.Core/Services must be organized by domain pillar and contain zero loose files
+        string coreServicesDir = Path.Combine(coreDir, "Services");
+        var coreServicesLooseFiles = Directory.GetFiles(coreServicesDir);
+        Assert.True(
+            coreServicesLooseFiles.Length == 0,
+            $"Found loose files in 'src/IToolkit.Core/Services/': {string.Join(", ", coreServicesLooseFiles.Select(Path.GetFileName))}");
+
+        var coreServiceSubDirs = Directory.GetDirectories(coreServicesDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("SystemHealth", coreServiceSubDirs);
+        Assert.Contains("Identity", coreServiceSubDirs);
+        Assert.Contains("Office", coreServiceSubDirs);
+        Assert.Contains("Software", coreServiceSubDirs);
+        Assert.Contains("Connectivity", coreServiceSubDirs);
+
+        // tests/IToolkit.Tests must be structured into test categories with zero loose test files
+        string testProjectDir = Path.Combine(testsDir, "IToolkit.Tests");
+        var testSubDirs = Directory.GetDirectories(testProjectDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("PillarTests", testSubDirs);
+        Assert.Contains("Services", testSubDirs);
+        Assert.Contains("StaticAnalysis", testSubDirs);
+        Assert.Contains("UI", testSubDirs);
+        Assert.Contains("SafetyTests", testSubDirs);
+        Assert.Contains("TestDoubles", testSubDirs);
+        Assert.Contains("ViewModels", testSubDirs);
+        Assert.Contains("Integration", testSubDirs);
+
+        var allowedRootTestFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IToolkit.Tests.csproj",
+            "AssemblyInfo.cs",
+            "xunit.runner.json"
+        };
+        var actualTestProjectFiles = Directory.GetFiles(testProjectDir).Select(Path.GetFileName).ToList();
+        var unexpectedTestFiles = actualTestProjectFiles.Where(f => !allowedRootTestFiles.Contains(f!)).ToList();
+        Assert.True(
+            unexpectedTestFiles.Count == 0,
+            $"Found loose files at root of 'tests/IToolkit.Tests/': {string.Join(", ", unexpectedTestFiles)}");
     }
 
     [Fact]

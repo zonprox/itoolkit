@@ -88,13 +88,17 @@
 │       ├── Services/ (SystemHealthServiceTests, OfficeSuiteServiceTests, ConnectivityServiceTests, IdentityServiceTests, AppInstallerServiceTests)
 │       ├── ViewModels/ (MainViewModelTests, TelemetryViewModelTests, LiveLogViewModelTests)
 │       └── StaticAnalysis/ (ZeroLegacyResidueTests, ZeroLegacyShimsTests, EnglishLocalizationTests)
+├── docs/
+│   ├── PROJECT.md
+│   ├── TEST_INFRA.md
+│   └── TEST_READY.md
 ├── scripts/
 │   └── package-and-upload.sh (modernized bash script for dotnet publish & upload)
 ├── .planning/
 │   └── codebase/ (ARCHITECTURE.md, CONVENTIONS.md, STACK.md, STRUCTURE.md, TESTING.md, ROADMAP.md, CONCERNS.md, INTEGRATIONS.md)
-├── PROJECT.md
 ├── README.md
 ├── AGENTS.md
-├── TEST_INFRA.md
-└── TEST_READY.md
+├── .gitignore
+├── .gitattributes
+└── IToolkit.sln
 ```

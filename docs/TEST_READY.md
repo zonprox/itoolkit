@@ -114,7 +114,7 @@ echo "================================================================="
 echo "  iToolKit Master Test Verification Harness (Release win-x64)    "
 echo "================================================================="
 
-echo "[1/3] Validating .NET SDK 8.0+..."
+echo "[1/3] Validating .NET SDK 10.0+..."
 dotnet --version
 
 echo "[2/3] Building solution in Release configuration..."
