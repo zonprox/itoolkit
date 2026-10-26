@@ -131,7 +131,10 @@ public class DistributionAndPackagingTests
 
             var invariantElement = doc.Descendants("InvariantGlobalization").FirstOrDefault();
             Assert.NotNull(invariantElement);
-            Assert.Equal("true", invariantElement.Value.Trim(), ignoreCase: true);
+            string expectedInvariant = relativePath.StartsWith("tests", StringComparison.OrdinalIgnoreCase)
+                ? "true"
+                : "false";
+            Assert.Equal(expectedInvariant, invariantElement.Value.Trim(), ignoreCase: true);
 
             var debugTypeElement = doc.Descendants("DebugType")
                 .FirstOrDefault(e => e.Attribute("Condition")?.Value.Contains("Release") == true);
@@ -470,10 +473,29 @@ public class DistributionAndPackagingTests
         Assert.Contains("PublishSingleFile=true", content);
         Assert.Contains("IncludeNativeLibrariesForSelfExtract=true", content);
         Assert.Contains("IncludeAllContentForSelfExtract=true", content);
+        Assert.Contains("InvariantGlobalization=false", content);
         Assert.Contains("*.pdb", content);
         Assert.Contains("*.xml", content);
         Assert.Contains("placeholder.log", content);
         Assert.Contains(".NET 10", content);
+    }
+
+    [Fact]
+    public void WpfRuntimeConfig_DisablesInvariantGlobalization_ToPreventXmlLanguageCrash()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string appBinDir = Path.Combine(repoRoot, "src", "IToolkit.App", "bin");
+        Assert.True(Directory.Exists(appBinDir), $"App bin directory not found: {appBinDir}");
+
+        var runtimeConfigs = Directory.EnumerateFiles(appBinDir, "iToolKit.runtimeconfig.json", SearchOption.AllDirectories).ToList();
+        Assert.NotEmpty(runtimeConfigs);
+
+        foreach (var rcPath in runtimeConfigs)
+        {
+            string rcJson = File.ReadAllText(rcPath);
+            Assert.DoesNotContain("\"System.Globalization.Invariant\": true", rcJson, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("\"System.Globalization.PredefinedCulturesOnly\": true", rcJson, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]

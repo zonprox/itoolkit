@@ -21,6 +21,7 @@ using IToolkit.Core.Services.SystemHealth;
 public partial class App : Application
 {
     private static readonly IActivityLogger _earlyLogger = new ActivityLogger();
+    private bool _isFatalStartupError;
 
     /// <summary>
     /// Global application service provider.
@@ -60,6 +61,12 @@ public partial class App : Application
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs args)
     {
+        if (_isFatalStartupError)
+        {
+            args.Handled = true;
+            return;
+        }
+
         var logger = ResolveLogger();
         logger.LogError("Application", "Unhandled UI dispatcher exception", args.Exception);
         logger.LogError("DialogService", "Displayed unhandled exception error dialog.", args.Exception);
@@ -128,6 +135,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            _isFatalStartupError = true;
             var logger = ResolveLogger();
             logger.LogError("Application", "Fatal startup exception", ex);
             logger.LogError("DialogService", "Displayed fatal startup error dialog.", ex);

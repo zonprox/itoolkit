@@ -98,6 +98,7 @@ dotnet publish "$REPO_ROOT/src/IToolkit.App/IToolkit.App.csproj" \
     -p:PublishSingleFile=true \
     -p:IncludeNativeLibrariesForSelfExtract=true \
     -p:IncludeAllContentForSelfExtract=true \
+    -p:InvariantGlobalization=false \
     -p:EnableWindowsTargeting=true \
     -o "$STAGE_DIR"
 
