@@ -8,6 +8,17 @@ using IToolkit.Core.Abstractions;
 /// </summary>
 public class MockDialogService : IDialogService, ISafetyConfirmationService
 {
+    private readonly IActivityLogger? _logger;
+
+    public MockDialogService() : this(null)
+    {
+    }
+
+    public MockDialogService(IActivityLogger? logger = null)
+    {
+        _logger = logger;
+    }
+
     /// <summary>
     /// Default boolean result returned by Confirm and ConfirmAsync. Defaults to true.
     /// </summary>
@@ -54,6 +65,15 @@ public class MockDialogService : IDialogService, ISafetyConfirmationService
     public string? ShowOpenFileDialog(string title, string filter, string? defaultPath = null)
     {
         ShowOpenFileDialogCallCount++;
+        _logger?.LogInfo("DialogService", $"Showing OpenFileDialog: Title='{title}', Filter='{filter}', DefaultPath='{defaultPath}'.");
+        if (SelectedOpenFilePath != null)
+        {
+            _logger?.LogInfo("DialogService", $"OpenFileDialog selected: '{SelectedOpenFilePath}' (Title='{title}').");
+        }
+        else
+        {
+            _logger?.LogInfo("DialogService", $"OpenFileDialog cancelled by user (Title='{title}').");
+        }
         return SelectedOpenFilePath;
     }
 
@@ -61,6 +81,15 @@ public class MockDialogService : IDialogService, ISafetyConfirmationService
     public string? ShowSaveFileDialog(string title, string filter, string? defaultFileName = null, string? defaultPath = null)
     {
         ShowSaveFileDialogCallCount++;
+        _logger?.LogInfo("DialogService", $"Showing SaveFileDialog: Title='{title}', Filter='{filter}', DefaultFileName='{defaultFileName}', DefaultPath='{defaultPath}'.");
+        if (SelectedSaveFilePath != null)
+        {
+            _logger?.LogInfo("DialogService", $"SaveFileDialog selected: '{SelectedSaveFilePath}' (Title='{title}').");
+        }
+        else
+        {
+            _logger?.LogInfo("DialogService", $"SaveFileDialog cancelled by user (Title='{title}').");
+        }
         return SelectedSaveFilePath;
     }
 
@@ -68,6 +97,15 @@ public class MockDialogService : IDialogService, ISafetyConfirmationService
     public string? ShowOpenFolderDialog(string title, string? defaultPath = null)
     {
         ShowOpenFolderDialogCallCount++;
+        _logger?.LogInfo("DialogService", $"Showing OpenFolderDialog: Title='{title}', DefaultPath='{defaultPath}'.");
+        if (SelectedFolderPath != null)
+        {
+            _logger?.LogInfo("DialogService", $"OpenFolderDialog selected: '{SelectedFolderPath}' (Title='{title}').");
+        }
+        else
+        {
+            _logger?.LogInfo("DialogService", $"OpenFolderDialog cancelled by user (Title='{title}').");
+        }
         return SelectedFolderPath;
     }
 
@@ -76,6 +114,16 @@ public class MockDialogService : IDialogService, ISafetyConfirmationService
     {
         OpenFolderInExplorerCallCount++;
         OpenedInExplorerPaths.Add(folderPath);
+
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            _logger?.LogWarning("DialogService", "OpenFolderInExplorer called with null or empty path.");
+        }
+        else
+        {
+            _logger?.LogInfo("DialogService", $"Launching Windows Explorer for folder: '{folderPath}'.");
+        }
+
         return OpenFolderInExplorerResult;
     }
 
@@ -85,12 +133,26 @@ public class MockDialogService : IDialogService, ISafetyConfirmationService
         ConfirmCallCount++;
         ConfirmationRequests.Add((title, message, warningDetails));
 
-        if (ConfirmationFunc != null)
+        string fullMessage = string.IsNullOrWhiteSpace(warningDetails)
+            ? message
+            : $"{message}\n\nWARNING:\n{warningDetails}";
+
+        _logger?.LogWarning("SafetyConfirmation", $"Safety confirmation prompt displayed: '{title}' - '{fullMessage}'.");
+
+        bool result = ConfirmationFunc != null
+            ? ConfirmationFunc(title, message, warningDetails)
+            : ConfirmationResult;
+
+        if (result)
         {
-            return ConfirmationFunc(title, message, warningDetails);
+            _logger?.LogInfo("SafetyConfirmation", $"Safety confirmation '{title}' result: Confirmed (Yes).");
+        }
+        else
+        {
+            _logger?.LogWarning("SafetyConfirmation", $"Safety confirmation '{title}' result: Dismissed (No).");
         }
 
-        return ConfirmationResult;
+        return result;
     }
 
     /// <inheritdoc />

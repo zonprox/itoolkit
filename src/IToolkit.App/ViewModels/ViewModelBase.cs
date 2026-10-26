@@ -110,7 +110,7 @@ public abstract class ViewModelBase : INotifyPropertyChanged
         catch (Exception ex)
         {
             StatusMessage = $"{operationName} failed: {ex.Message}";
-            Logger?.LogError(GetType().Name, $"Operation '{operationName}' failed: {ex.Message}");
+            Logger?.LogError(GetType().Name, $"Operation '{operationName}' failed: {ex.Message} | Diagnostics: {IToolkit.Core.Utilities.ExceptionFormatter.FormatException(ex)}");
             RaiseOperationFinished(operationName, false, 1);
         }
         finally

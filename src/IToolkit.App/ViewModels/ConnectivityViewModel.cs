@@ -154,6 +154,7 @@ public class ConnectivityViewModel : ViewModelBase
 
         try
         {
+            Logger?.LogInfo(nameof(ConnectivityViewModel), "Scanning network adapters...");
             var adapters = await Task.Run(() => _networkService.GetAdapters()?.ToList() ?? new List<NetworkAdapterInfo>());
             AvailableAdapters.Clear();
             foreach (var adapter in adapters)
@@ -168,6 +169,7 @@ public class ConnectivityViewModel : ViewModelBase
             }
 
             LastNetworkStatus = $"Discovered {AvailableAdapters.Count} network adapter(s). Active: {NetworkAdapterName}";
+            Logger?.LogInfo(nameof(ConnectivityViewModel), LastNetworkStatus);
         }
         catch (Exception ex)
         {

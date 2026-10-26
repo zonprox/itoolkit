@@ -12,6 +12,23 @@ using Microsoft.Win32;
 /// </summary>
 public class WpfDialogService : IDialogService, ISafetyConfirmationService
 {
+    private readonly IActivityLogger? _logger;
+
+    /// <summary>
+    /// Parameterless constructor preserved for reflection-based instantiation in tests.
+    /// </summary>
+    public WpfDialogService() : this(null)
+    {
+    }
+
+    /// <summary>
+    /// Primary constructor supporting optional dependency-injected activity logger.
+    /// </summary>
+    public WpfDialogService(IActivityLogger? logger = null)
+    {
+        _logger = logger;
+    }
+
     /// <inheritdoc />
     public string? ShowOpenFileDialog(string title, string filter, string? defaultPath = null)
     {
@@ -19,6 +36,8 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
         {
             return Application.Current.Dispatcher.Invoke(() => ShowOpenFileDialog(title, filter, defaultPath));
         }
+
+        _logger?.LogInfo("DialogService", $"Showing OpenFileDialog: Title='{title}', Filter='{filter}', DefaultPath='{defaultPath}'.");
 
         var dialog = new OpenFileDialog
         {
@@ -43,8 +62,23 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
             }
         }
 
-        bool? result = dialog.ShowDialog();
-        return result == true ? dialog.FileName : null;
+        try
+        {
+            bool? result = dialog.ShowDialog();
+            if (result == true)
+            {
+                _logger?.LogInfo("DialogService", $"OpenFileDialog selected: '{dialog.FileName}' (Title='{title}').");
+                return dialog.FileName;
+            }
+
+            _logger?.LogInfo("DialogService", $"OpenFileDialog cancelled by user (Title='{title}').");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("DialogService", $"OpenFileDialog failed (Title='{title}')", ex);
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -54,6 +88,8 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
         {
             return Application.Current.Dispatcher.Invoke(() => ShowSaveFileDialog(title, filter, defaultFileName, defaultPath));
         }
+
+        _logger?.LogInfo("DialogService", $"Showing SaveFileDialog: Title='{title}', Filter='{filter}', DefaultFileName='{defaultFileName}', DefaultPath='{defaultPath}'.");
 
         var dialog = new SaveFileDialog
         {
@@ -78,8 +114,23 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
             }
         }
 
-        bool? result = dialog.ShowDialog();
-        return result == true ? dialog.FileName : null;
+        try
+        {
+            bool? result = dialog.ShowDialog();
+            if (result == true)
+            {
+                _logger?.LogInfo("DialogService", $"SaveFileDialog selected: '{dialog.FileName}' (Title='{title}').");
+                return dialog.FileName;
+            }
+
+            _logger?.LogInfo("DialogService", $"SaveFileDialog cancelled by user (Title='{title}').");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("DialogService", $"SaveFileDialog failed (Title='{title}')", ex);
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -89,6 +140,8 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
         {
             return Application.Current.Dispatcher.Invoke(() => ShowOpenFolderDialog(title, defaultPath));
         }
+
+        _logger?.LogInfo("DialogService", $"Showing OpenFolderDialog: Title='{title}', DefaultPath='{defaultPath}'.");
 
         var dialog = new OpenFolderDialog
         {
@@ -100,8 +153,23 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
             dialog.InitialDirectory = defaultPath;
         }
 
-        bool? result = dialog.ShowDialog();
-        return result == true ? dialog.FolderName : null;
+        try
+        {
+            bool? result = dialog.ShowDialog();
+            if (result == true)
+            {
+                _logger?.LogInfo("DialogService", $"OpenFolderDialog selected: '{dialog.FolderName}' (Title='{title}').");
+                return dialog.FolderName;
+            }
+
+            _logger?.LogInfo("DialogService", $"OpenFolderDialog cancelled by user (Title='{title}').");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("DialogService", $"OpenFolderDialog failed (Title='{title}')", ex);
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -109,6 +177,7 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
     {
         if (string.IsNullOrWhiteSpace(folderPath))
         {
+            _logger?.LogWarning("DialogService", "OpenFolderInExplorer called with null or empty path.");
             return false;
         }
 
@@ -125,8 +194,11 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
             }
             else
             {
+                _logger?.LogWarning("DialogService", $"Directory does not exist for Explorer launch: '{folderPath}'.");
                 return false;
             }
+
+            _logger?.LogInfo("DialogService", $"Launching Windows Explorer for folder: '{folderPath}'.");
 
             var startInfo = new ProcessStartInfo
             {
@@ -138,8 +210,9 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
             using var process = Process.Start(startInfo);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger?.LogError("DialogService", $"Failed to launch Windows Explorer for folder '{folderPath}'", ex);
             return false;
         }
     }
@@ -156,8 +229,28 @@ public class WpfDialogService : IDialogService, ISafetyConfirmationService
             ? message
             : $"{message}\n\nWARNING:\n{warningDetails}";
 
-        MessageBoxResult result = MessageBox.Show(fullMessage, title, MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        return result == MessageBoxResult.Yes;
+        _logger?.LogWarning("SafetyConfirmation", $"Safety confirmation prompt displayed: '{title}' - '{fullMessage}'.");
+
+        try
+        {
+            MessageBoxResult result = MessageBox.Show(fullMessage, title, MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            bool confirmed = result == MessageBoxResult.Yes;
+            if (confirmed)
+            {
+                _logger?.LogInfo("SafetyConfirmation", $"Safety confirmation '{title}' result: Confirmed (Yes).");
+            }
+            else
+            {
+                _logger?.LogWarning("SafetyConfirmation", $"Safety confirmation '{title}' result: Dismissed (No).");
+            }
+
+            return confirmed;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError("SafetyConfirmation", $"Safety confirmation dialog '{title}' failed", ex);
+            throw;
+        }
     }
 
     /// <inheritdoc />

@@ -8,16 +8,18 @@ using IToolkit.Core.Models;
 public class ActivityLogger : IActivityLogger
 {
     private static readonly object _lock = new();
+    private readonly string _baseDirectory;
 
-    public string LogFilePath => Path.Combine(AppContext.BaseDirectory, "Logs", $"iToolKit_{DateTime.Now:yyyyMMdd}.log");
+    public string LogFilePath => Path.Combine(_baseDirectory, "Logs", $"iToolKit_{DateTime.Now:yyyyMMdd}.log");
 
     public event Action<ActivityLogEntry>? EntryLogged;
 
-    public ActivityLogger()
+    public ActivityLogger(string? customBaseDirectory = null)
     {
+        _baseDirectory = ResolveBaseDirectory(customBaseDirectory);
         try
         {
-            string logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
+            string logsDir = Path.Combine(_baseDirectory, "Logs");
             Directory.CreateDirectory(logsDir);
         }
         catch
@@ -34,7 +36,7 @@ public class ActivityLogger : IActivityLogger
         {
             try
             {
-                string targetPath = Path.Combine(AppContext.BaseDirectory, "Logs", $"iToolKit_{entry.Timestamp:yyyyMMdd}.log");
+                string targetPath = Path.Combine(_baseDirectory, "Logs", $"iToolKit_{entry.Timestamp:yyyyMMdd}.log");
                 string? targetDir = Path.GetDirectoryName(targetPath);
                 if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
                 {
@@ -53,5 +55,39 @@ public class ActivityLogger : IActivityLogger
         }
 
         EntryLogged?.Invoke(entry);
+    }
+
+    private static string ResolveBaseDirectory(string? customBaseDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(customBaseDirectory))
+        {
+            return customBaseDirectory;
+        }
+
+        try
+        {
+            string? processPath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(processPath))
+            {
+                string fileName = Path.GetFileName(processPath);
+                string fileNameWithoutExt = Path.GetFileNameWithoutExtension(processPath);
+
+                if (fileName.StartsWith("iToolKit", StringComparison.OrdinalIgnoreCase) ||
+                    fileNameWithoutExt.StartsWith("iToolKit", StringComparison.OrdinalIgnoreCase))
+                {
+                    string? dir = Path.GetDirectoryName(processPath);
+                    if (!string.IsNullOrEmpty(dir))
+                    {
+                        return dir;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to AppContext.BaseDirectory in restricted environments
+        }
+
+        return AppContext.BaseDirectory;
     }
 }

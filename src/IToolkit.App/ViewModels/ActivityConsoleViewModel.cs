@@ -63,13 +63,22 @@ public class ActivityConsoleViewModel : ViewModelBase, IDisposable
     public ActivityConsoleViewModel(
         IActivityLogger logger,
         IClipboardService? clipboardService = null)
+        : base(logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _clipboardService = clipboardService ?? new DefaultClipboardService();
         _uiContext = SynchronizationContext.Current;
 
-        ClearLogCommand = new RelayCommand(ClearLog);
-        CopyLogCommand = new RelayCommand(CopyLog);
+        ClearLogCommand = new RelayCommand(() =>
+        {
+            Logger?.LogInfo(nameof(ActivityConsoleViewModel), "Activity Log cleared by user.");
+            ClearLog();
+        });
+        CopyLogCommand = new RelayCommand(() =>
+        {
+            CopyLog();
+            Logger?.LogInfo(nameof(ActivityConsoleViewModel), "Activity Log copied to clipboard.");
+        });
         ToggleAutoScrollCommand = new RelayCommand(() => AutoScroll = !AutoScroll);
         ToggleExpandedCommand = new RelayCommand(ToggleExpanded);
         DismissCompletionCommand = new RelayCommand(() => ShowCompletionBanner = false);
@@ -77,11 +86,13 @@ public class ActivityConsoleViewModel : ViewModelBase, IDisposable
         CloseCommand = new RelayCommand(() =>
         {
             IsOpen = false;
+            Logger?.LogInfo(nameof(ActivityConsoleViewModel), "Activity Log window closed.");
             RequestClose?.Invoke();
         });
         OpenCommand = new RelayCommand(() =>
         {
             IsOpen = true;
+            Logger?.LogInfo(nameof(ActivityConsoleViewModel), "Activity Log window opened.");
             RequestOpen?.Invoke();
         });
 

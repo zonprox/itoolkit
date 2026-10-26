@@ -350,6 +350,7 @@ public class IdentityBackupViewModel : ViewModelBase
         {
             IsBusy = true;
             StatusMessage = "Scanning local user accounts, Built-in Administrator, and profile paths...";
+            Logger?.LogInfo(nameof(IdentityBackupViewModel), "Scanning local user accounts, Built-in Administrator, and profile paths...");
             var (accounts, admin, profileMap) = await Task.Run(() =>
             {
                 var accs = _identityService.GetLocalAccounts() ?? Array.Empty<LocalAccountItem>();
@@ -393,6 +394,7 @@ public class IdentityBackupViewModel : ViewModelBase
                 LastBackupStatus = $"Active profile mapped: {profileMap.Username} ({profileMap.ProfilePath})";
             }
             StatusMessage = LastIdentityStatus;
+            Logger?.LogInfo(nameof(IdentityBackupViewModel), LastIdentityStatus);
         }
         catch (Exception ex)
         {

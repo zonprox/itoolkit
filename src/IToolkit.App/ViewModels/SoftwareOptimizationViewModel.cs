@@ -275,12 +275,14 @@ public class SoftwareOptimizationViewModel : ViewModelBase
         {
             IsBusy = true;
             StatusMessage = "Checking Windows Package Manager (Winget) status...";
+            Logger?.LogInfo(nameof(SoftwareOptimizationViewModel), "Checking Windows Package Manager (Winget) status...");
             var status = await Task.Run(() => _optimizationService.GetWingetStatus());
             if (status != null)
             {
                 WingetVersionText = FormatWingetStatus(status);
                 LastSoftwareStatus = status.Message;
                 StatusMessage = $"Winget {WingetVersionText} - {CatalogApps.Count} catalog applications ready.";
+                Logger?.LogInfo(nameof(SoftwareOptimizationViewModel), StatusMessage);
             }
         }
         catch (Exception ex)

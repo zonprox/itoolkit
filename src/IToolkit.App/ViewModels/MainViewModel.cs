@@ -53,7 +53,11 @@ public class MainViewModel : ViewModelBase
         _currentPageViewModel = _dashboardViewModel;
 
         NavigateCommand = new RelayCommand<string>(NavigateToPillar);
-        ToggleNavRailCommand = new RelayCommand(() => IsNavRailExpanded = !IsNavRailExpanded);
+        ToggleNavRailCommand = new RelayCommand(() =>
+        {
+            IsNavRailExpanded = !IsNavRailExpanded;
+            Logger?.LogInfo(nameof(MainViewModel), $"Navigation rail toggled. Expanded={IsNavRailExpanded}.");
+        });
         ScanSystemCommand = new AsyncRelayCommand(RunSystemScanAsync, () => !IsScanning);
     }
 
@@ -194,6 +198,7 @@ public class MainViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(pillarName)) return;
 
+        string previousPillar = CurrentPillarName;
         CurrentPillarName = pillarName;
         CurrentPageViewModel = pillarName switch
         {
@@ -205,5 +210,7 @@ public class MainViewModel : ViewModelBase
             "SoftwareOptimization" => _softwareOptimizationViewModel,
             _ => _dashboardViewModel
         };
+
+        Logger?.LogInfo(nameof(MainViewModel), $"Navigated from tab '{previousPillar}' to '{CurrentPillarName}'.");
     }
 }

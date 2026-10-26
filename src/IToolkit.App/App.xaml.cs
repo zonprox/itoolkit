@@ -1,7 +1,9 @@
 namespace IToolkit.App;
 
 using System;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using IToolkit.App.Native;
 using IToolkit.App.ViewModels;
@@ -18,44 +20,77 @@ using IToolkit.Core.Services.SystemHealth;
 /// </summary>
 public partial class App : Application
 {
+    private static readonly IActivityLogger _earlyLogger = new ActivityLogger();
+
     /// <summary>
     /// Global application service provider.
     /// </summary>
     public static IServiceProvider Services { get; private set; } = null!;
 
+    public App()
+    {
+        AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+    }
+
+    private static IActivityLogger ResolveLogger()
+    {
+        try
+        {
+            return Services?.GetService<IActivityLogger>() ?? _earlyLogger;
+        }
+        catch
+        {
+            return _earlyLogger;
+        }
+    }
+
+    private static void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception ex)
+        {
+            ResolveLogger().LogError("Application", "Unhandled domain exception", ex);
+        }
+        else
+        {
+            ResolveLogger().LogError("Application", $"Unhandled domain non-exception object: {e.ExceptionObject}");
+        }
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs args)
+    {
+        var logger = ResolveLogger();
+        logger.LogError("Application", "Unhandled UI dispatcher exception", args.Exception);
+        logger.LogError("DialogService", "Displayed unhandled exception error dialog.", args.Exception);
+        MessageBox.Show(
+            $"An unexpected error occurred:\n\n{args.Exception.Message}",
+            "iToolKit Error",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
+        logger.LogInfo("DialogService", "User dismissed unhandled exception error dialog: [iToolKit Error] Result=OK");
+        args.Handled = true;
+
+        if (MainWindow == null || !MainWindow.IsVisible)
+        {
+            Environment.Exit(1);
+        }
+    }
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs args)
+    {
+        ResolveLogger().LogError("TaskScheduler", "Unobserved task exception", args.Exception);
+        args.SetObserved();
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         System.Threading.SynchronizationContext.SetSynchronizationContext(
-            new System.Windows.Threading.DispatcherSynchronizationContext(Dispatcher));
+            new DispatcherSynchronizationContext(Dispatcher));
         ShutdownMode = ShutdownMode.OnMainWindowClose;
 
-        // Configure global unhandled exception handling to fail loud and capture crashes
-        AppDomain.CurrentDomain.UnhandledException += (s, args) =>
-        {
-            if (args.ExceptionObject is Exception ex)
-            {
-                var logger = Services?.GetService<IActivityLogger>();
-                logger?.LogError("Application", $"Unhandled domain exception: {ex.Message}");
-            }
-        };
-
-        DispatcherUnhandledException += (s, args) =>
-        {
-            var logger = Services?.GetService<IActivityLogger>();
-            logger?.LogError("Application", $"Unhandled UI dispatcher exception: {args.Exception.Message}");
-            MessageBox.Show(
-                $"An unexpected error occurred:\n\n{args.Exception.Message}",
-                "iToolKit Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            args.Handled = true;
-
-            if (MainWindow == null || !MainWindow.IsVisible)
-            {
-                Environment.Exit(1);
-            }
-        };
+        ResolveLogger().LogInfo("Application", "iToolKit starting up.");
 
         try
         {
@@ -65,15 +100,18 @@ public partial class App : Application
 
             // Enforce mandatory Administrator elevation at startup
             var elevation = Services.GetRequiredService<IElevationService>();
-            var appLogger = Services.GetRequiredService<IActivityLogger>();
+            var appLogger = ResolveLogger();
             if (!elevation.IsElevated())
             {
+                appLogger.LogWarning("Application", "Administrator privileges required. Prompting user to elevate.");
                 appLogger.LogError("Security", "Administrator privileges are required to run iToolKit.");
+                appLogger.LogWarning("DialogService", "Displayed elevation required dialog prompt.");
                 MessageBox.Show(
                     "iToolKit requires Administrator privileges to run.\nPlease launch iToolKit as Administrator.",
                     "iToolKit Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
+                appLogger.LogInfo("DialogService", "User dismissed elevation required dialog prompt: [iToolKit Error] Result=OK");
                 Environment.Exit(1);
                 return;
             }
@@ -90,19 +128,22 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            var logger = Services?.GetService<IActivityLogger>();
-            logger?.LogError("Application", $"Fatal startup exception: {ex.Message}");
+            var logger = ResolveLogger();
+            logger.LogError("Application", "Fatal startup exception", ex);
+            logger.LogError("DialogService", "Displayed fatal startup error dialog.", ex);
             MessageBox.Show(
                 $"Failed to initialize iToolKit:\n\n{ex.Message}",
                 "iToolKit Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+            logger.LogInfo("DialogService", "User dismissed fatal startup error dialog: [iToolKit Error] Result=OK");
             Environment.Exit(1);
         }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        ResolveLogger().LogInfo("Application", "iToolKit exiting.");
         try
         {
             Services?.GetService<TelemetryHeaderViewModel>()?.StopPolling();

@@ -348,8 +348,10 @@ public class OfficeOutlookViewModel : ViewModelBase
         {
             IsBusy = true;
             StatusMessage = "Scanning MAPI profiles for Outlook PST/OST data files...";
+            Logger?.LogInfo(nameof(OfficeOutlookViewModel), "Scanning MAPI profiles for Outlook PST/OST data files...");
             var files = await Task.Run(() => _outlookService.DiscoverDataFiles() ?? Array.Empty<MapiDataFileInfo>());
             ApplyDiscoveredDataFiles(files);
+            Logger?.LogInfo(nameof(OfficeOutlookViewModel), LastOutlookSummary);
         }
         catch (Exception ex)
         {
