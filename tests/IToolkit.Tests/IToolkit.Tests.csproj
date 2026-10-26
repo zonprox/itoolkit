@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -9,6 +9,10 @@
     <NoWarn>$(NoWarn);NETSDK1188;CA1416</NoWarn>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,8 +23,8 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Moq" Version="4.20.72" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -41,5 +45,19 @@
   <ItemGroup>
     <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Target Name="FilterNonEnglishSatelliteResources" BeforeTargets="_CopyFilesMarkedCopyLocal">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+        Condition="'%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != '' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en\' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en/'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="PurgeNonEnglishSatelliteDirectories" AfterTargets="Build">
+    <ItemGroup>
+      <NonEnglishDirs Include="$(TargetDir)cs;$(TargetDir)de;$(TargetDir)es;$(TargetDir)fr;$(TargetDir)it;$(TargetDir)ja;$(TargetDir)ko;$(TargetDir)pl;$(TargetDir)pt-BR;$(TargetDir)ru;$(TargetDir)tr;$(TargetDir)zh-Hans;$(TargetDir)zh-Hant" />
+    </ItemGroup>
+    <RemoveDir Directories="@(NonEnglishDirs)" />
+  </Target>
 
 </Project>

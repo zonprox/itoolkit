@@ -1,5 +1,5 @@
 # ==============================================================================
-# iToolKit .gitignore - Native C# .NET 8 WPF IT Administration Toolkit
+# iToolKit .gitignore - Native C# .NET 10 WPF IT Administration Toolkit
 # ==============================================================================
 
 # --- Codebase Memory & AI Agent Tooling ---------------------------------------
@@ -16,10 +16,6 @@ scratch/
 # --- Planning, Specification & AI Handoff Documents ---------------------------
 ORIGINAL_REQUEST.md
 .continue-here.md
-PROJECT.md
-TEST_INFRA.md
-TEST_READY.md
-TEST_*.md
 *.handoff.md
 .planning/
 

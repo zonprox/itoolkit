@@ -115,3 +115,12 @@ Never simplify away or cut corners on:
 - **Winget Support Verification**: Whenever adding, removing, or updating an application in the catalog (`AppInstallerService`, `InstallApplicationAsync`, `GetInstalledApplications`, `ResolveDownloadUrl`), always verify whether the application has a valid, officially maintained Winget package ID before choosing its installation mode:
   - **Winget-Supported Apps**: Configure `WingetId` as the primary installation method with direct-download URL fallback.
   - **Non-Winget Apps (e.g., `UniKey`, `VCRedistAIO`, `Zalo`, `UltraVNC`)**: Set `WingetId = null` to bypass Winget, download the official installer or archive directly to `%TEMP%`, execute silent installation or archive extraction, and always clean up (`IFileSystemService.DeleteFile`) temporary downloaded files upon completion.
+
+---
+
+## 8. Target Framework & Runtime Standard (.NET 10 Latest Stable)
+
+- **Mandatory .NET 10 Baseline**: All projects (`IToolkit.Core`, `IToolkit.App`, `IToolkit.Tests`), build scripts (`scripts/package-and-upload.sh`), and NuGet dependencies must target **.NET 10 latest stable** (`net10.0` / `net10.0-windows`, SDK `10.0.x`).
+- **Strict Prohibition Against Downgrading**: **NEVER downgrade** any project, target framework (`<TargetFramework>`), runtime identifier, or Microsoft.Extensions / System.* package back to `.NET 8` (`net8.0` / `net8.0-windows`) or earlier versions under any circumstances.
+- **Modern Clean Code**: Leverage modern .NET 10 / C# idioms (collection expressions, primary constructors where appropriate, `Lock` / `TimeProvider` / modern BCL APIs, and clean zero-warning code) rather than legacy workarounds.
+

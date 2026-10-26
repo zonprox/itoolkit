@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <ResourceDictionary>
-            <!-- Fluent Theme Brushes (.NET 8 WPF Compatible) -->
+            <!-- Fluent Theme Brushes (.NET 10 WPF Compatible) -->
             <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#F8FAFC" />
             <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#E2E8F0" />

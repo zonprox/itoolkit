@@ -2,7 +2,7 @@
 # ==============================================================================
 # package-and-upload.sh
 # Release packaging and public cloud upload helper for iToolKit.
-# Compiles native C# .NET 8 win-x64 multi-file portable application,
+# Compiles native C# .NET 10 win-x64 portable application,
 # packages clean iToolKit.zip, and uploads to storage.to.
 # ==============================================================================
 set -euo pipefail
@@ -95,6 +95,9 @@ dotnet publish "$REPO_ROOT/src/IToolkit.App/IToolkit.App.csproj" \
     -c Release \
     -r win-x64 \
     --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
+    -p:IncludeAllContentForSelfExtract=true \
     -p:EnableWindowsTargeting=true \
     -o "$STAGE_DIR"
 
@@ -103,8 +106,13 @@ if [ ! -f "$STAGE_DIR/iToolKit.exe" ]; then
     exit 1
 fi
 
-# Sanitize stage directory: remove PDB debug files and stage README.md
+# Sanitize stage directory: remove PDB debug files, XML docs, and non-English directories
 find "$STAGE_DIR" -type f -name "*.pdb" -delete
+find "$STAGE_DIR" -type f -name "*.xml" -delete
+for lang in cs de es fr it ja ko pl pt-BR ru tr zh-Hans zh-Hant; do
+    rm -rf "$STAGE_DIR/$lang"
+done
+
 if [ -f "$REPO_ROOT/README.md" ]; then
     cp "$REPO_ROOT/README.md" "$STAGE_DIR/README.md"
 fi
@@ -113,8 +121,8 @@ fi
 mkdir -p "$STAGE_DIR/Logs"
 echo "# iToolKit Portable Runtime Logs" > "$STAGE_DIR/Logs/placeholder.log"
 
-# Step 2: Multi-File Portable ZIP Archive Packaging
-echo "[2/4] Packaging multi-file portable ZIP archive: $ZIP_PATH..."
+# Step 2: Portable ZIP Archive Packaging
+echo "[2/4] Packaging portable ZIP archive: $ZIP_PATH..."
 rm -f "$ZIP_PATH"
 mkdir -p "$(dirname "$ZIP_PATH")"
 
@@ -267,7 +275,7 @@ echo "  SHA-256 Hash : $SHA256"
 if [ "$SKIP_UPLOAD" = true ]; then
     echo "  Upload       : Skipped (Local package build only)"
     echo "================================================================================"
-    echo "  Distribution Ready: Multi-file portable package created at $ZIP_PATH."
+    echo "  Distribution Ready: Portable package created at $ZIP_PATH."
 elif [ -n "${STORAGE_TO_URL:-}" ]; then
     echo "  Download URL (Storage.to) : $STORAGE_TO_URL"
     echo "================================================================================"

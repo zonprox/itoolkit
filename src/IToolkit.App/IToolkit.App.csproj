@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -17,11 +17,15 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);NETSDK1188;CA1416;WPF0001</NoWarn>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,5 +35,28 @@
   <ItemGroup>
     <ProjectReference Include="..\IToolkit.Core\IToolkit.Core.csproj" />
   </ItemGroup>
+
+  <Target Name="FilterNonEnglishSatelliteResources" BeforeTargets="_CopyFilesMarkedCopyLocal">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+        Condition="'%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != '' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en\' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en/'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="FilterNonEnglishPublishFiles" BeforeTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(ResolvedFileToPublish.DestinationSubDirectory)' != '' and '%(ResolvedFileToPublish.DestinationSubDirectory)' != 'en\' and '%(ResolvedFileToPublish.DestinationSubDirectory)' != 'en/'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="PurgeNonEnglishSatelliteDirectories" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <NonEnglishDirs Include="$(TargetDir)cs;$(TargetDir)de;$(TargetDir)es;$(TargetDir)fr;$(TargetDir)it;$(TargetDir)ja;$(TargetDir)ko;$(TargetDir)pl;$(TargetDir)pt-BR;$(TargetDir)ru;$(TargetDir)tr;$(TargetDir)zh-Hans;$(TargetDir)zh-Hant" />
+      <NonEnglishPublishDirs Include="$(PublishDir)cs;$(PublishDir)de;$(PublishDir)es;$(PublishDir)fr;$(PublishDir)it;$(PublishDir)ja;$(PublishDir)ko;$(PublishDir)pl;$(PublishDir)pt-BR;$(PublishDir)ru;$(PublishDir)tr;$(PublishDir)zh-Hans;$(PublishDir)zh-Hant" Condition="'$(PublishDir)' != ''" />
+    </ItemGroup>
+    <RemoveDir Directories="@(NonEnglishDirs)" />
+    <RemoveDir Directories="@(NonEnglishPublishDirs)" />
+  </Target>
 
 </Project>
