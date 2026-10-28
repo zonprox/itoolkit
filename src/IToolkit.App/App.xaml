@@ -14,13 +14,110 @@
             <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#0067C0" />
             <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#005FB8" />
 
-            <Style x:Key="AccentButtonStyle" TargetType="Button">
-                <Setter Property="Background" Value="#0067C0" />
+            <!-- Fluent Button Styles (Windows 10/11 Rounded Fluent Design) -->
+            <Style x:Key="FluentButtonStyle" TargetType="Button">
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="12,5" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="Normal" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="SnapsToDevicePixels" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Focusable="False"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  RecognizesAccessKey="True"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#CBD5E1" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#E2E8F0" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#94A3B8" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="AccentButtonStyle" TargetType="Button" BasedOn="{StaticResource FluentButtonStyle}">
+                <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
                 <Setter Property="Foreground" Value="#FFFFFF" />
-                <Setter Property="BorderBrush" Value="#005FB8" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="SnapsToDevicePixels" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Focusable="False"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  RecognizesAccessKey="True"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#004578" />
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#1879CD" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#005A9E" />
+                                    <Setter Property="Foreground" Value="#FFFFFF" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#005A9E" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#004578" />
+                                    <Setter Property="Foreground" Value="#FFFFFF" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
+
 
             <!-- High-Density Fluent Card Surface -->
             <Style x:Key="FluentCardStyle" TargetType="Border">
@@ -69,6 +166,7 @@
                                         Margin="0,0,0,6"
                                         Background="Transparent">
                                     <TabPanel IsItemsHost="True"
+                                              HorizontalAlignment="Left"
                                               KeyboardNavigation.TabIndex="1"
                                               Background="Transparent" />
                                 </Border>
@@ -81,6 +179,8 @@
                                         KeyboardNavigation.TabNavigation="Local">
                                     <ContentPresenter x:Name="PART_SelectedContentHost"
                                                       ContentSource="SelectedContent"
+                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                                       Margin="{TemplateBinding Padding}"
                                                       SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
                                 </Border>
@@ -146,7 +246,8 @@
                 </Setter>
             </Style>
 
-            <!-- Default Styles for TabControl and TabItem -->
+            <!-- Default Styles for Controls -->
+            <Style TargetType="Button" BasedOn="{StaticResource FluentButtonStyle}" />
             <Style TargetType="TabControl" BasedOn="{StaticResource FluentTabControlStyle}" />
             <Style TargetType="TabItem" BasedOn="{StaticResource FluentTabItemStyle}" />
         </ResourceDictionary>

@@ -58,6 +58,16 @@ public record SpoolerQueueResult(
     string Message = "");
 
 /// <summary>
+/// Operational role targeting for Print Spooler and connectivity remediation.
+/// </summary>
+public enum PrinterRemediationRole
+{
+    Client,
+    Server,
+    Both
+}
+
+/// <summary>
 /// Result of specific printer error remediation from the 12-item catalog.
 /// </summary>
 public record PrinterRemediationResult(
@@ -66,4 +76,81 @@ public record PrinterRemediationResult(
     bool PolicyApplied,
     bool ServicesRestarted,
     bool Success,
-    string Message = "");
+    string Message = "",
+    string? BackupPath = null,
+    IReadOnlyList<string>? BackupPaths = null)
+{
+    public string? BackupPath { get; init; } = BackupPath ?? BackupPaths?.FirstOrDefault();
+    public IReadOnlyList<string> BackupPaths { get; init; } =
+        BackupPaths ?? (BackupPath != null ? new[] { BackupPath } : Array.Empty<string>());
+}
+
+/// <summary>
+/// Result of role-based batch printer remediation pipeline.
+/// </summary>
+public record BatchPrinterRemediationResult(
+    PrinterRemediationRole Role,
+    IReadOnlyList<string> ActionsExecuted,
+    IReadOnlyList<PrinterRemediationResult> Results,
+    IReadOnlyList<string> BackupPaths,
+    bool SpoolerRestarted,
+    bool Success,
+    string Message = "",
+    int QueuePurgedCount = 0,
+    int CleanedNePortsCount = 0,
+    int RefreshedConnections = 0,
+    int StaleRemoved = 0)
+{
+    public IReadOnlyList<string> FixesApplied => ActionsExecuted;
+}
+
+/// <summary>
+/// Result of Point and Print policy audit, checking PrintNightmare CVE-2021-1678 posture and driver installation elevation requirements.
+/// </summary>
+public record PointAndPrintPolicyAuditResult(
+    bool RpcAuthnLevelPrivacyEnabled,
+    bool RestrictDriverInstallationToAdministrators,
+    bool NoWarningNoElevationOnInstall,
+    int UpdatePromptSettings,
+    bool IsVulnerableToCVE20211678,
+    string PostureDescription,
+    IReadOnlyList<string> Recommendations)
+{
+    public bool IsVulnerable => IsVulnerableToCVE20211678 || !RestrictDriverInstallationToAdministrators;
+    public IReadOnlyList<string> Vulnerabilities => Recommendations;
+    public string Summary => PostureDescription;
+}
+
+/// <summary>
+/// Status and health metrics of the Windows Print Spooler service and queue directory.
+/// </summary>
+public record SpoolerServiceStatus(
+    bool IsRunning,
+    string ServiceStatus,
+    string SpoolDirectory,
+    int PendingJobFileCount,
+    long TotalQueueSizeBytes,
+    bool HasStalledJobs,
+    int? Pid = null,
+    string StartupType = "Automatic",
+    string Summary = "")
+{
+    public int QueueFileCount => PendingJobFileCount;
+    public long QueueSizeBytes => TotalQueueSizeBytes;
+    public string DefaultSpoolDirectory => SpoolDirectory;
+}
+
+/// <summary>
+/// Result of network printer connection discovery, reachability verification, and stale connection cleanup.
+/// </summary>
+public record PrinterConnectionResetResult(
+    int DiscoveredPrinters,
+    int ReconnectedPrinters,
+    int RemovedStalePrinters,
+    IReadOnlyList<string> Details,
+    bool Success,
+    string Message = "")
+{
+    public int RefreshedConnections => ReconnectedPrinters;
+    public int StaleRemoved => RemovedStalePrinters;
+}

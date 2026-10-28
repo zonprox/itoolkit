@@ -12,7 +12,7 @@
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
+        <StackPanel Margin="10" HorizontalAlignment="Stretch">
             <!-- Quick Actions Grid -->
             <UniformGrid Columns="3" Margin="0,0,0,8">
                 <!-- Card 1: System Integrity -->

@@ -11,7 +11,7 @@
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
         <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Enterprise 8-App Catalog -->

@@ -13,4 +13,12 @@ public interface IPrinterService
     bool ApplyPointAndPrintPreset(PointAndPrintPreset preset);
     PrinterRemediationResult RemediatePrinterError(string errorCode);
     IReadOnlyList<string> GetSupportedErrorCodes();
+
+    // Upgraded role-based batch and granular remediation methods
+    BatchPrinterRemediationResult RemediateRole(PrinterRemediationRole role);
+    BatchPrinterRemediationResult RemediateAll();
+    PointAndPrintPolicyAuditResult AuditPointAndPrintPolicy();
+    SpoolerServiceStatus GetSpoolerStatus();
+    PrinterConnectionResetResult ResetPrinterConnections(bool all = true, string? printerName = null);
+    IReadOnlyList<string> GetSupportedGranularTokens();
 }

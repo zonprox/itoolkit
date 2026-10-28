@@ -216,7 +216,9 @@
                     </Grid>
                 </Border>
 
-                <ContentControl Content="{Binding CurrentPageViewModel}" />
+                <ContentControl Content="{Binding CurrentPageViewModel}"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch" />
             </DockPanel>
         </Grid>
     </Grid>

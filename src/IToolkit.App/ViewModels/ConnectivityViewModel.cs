@@ -60,6 +60,13 @@ public class ConnectivityViewModel : ViewModelBase
         ApplyPointAndPrintCommand = new AsyncRelayCommand(ApplyPointAndPrintAsync, () => IsNotBusy);
         RemediatePrinterErrorCommand = new AsyncRelayCommand(RemediatePrinterErrorAsync, () => IsNotBusy && !string.IsNullOrEmpty(SelectedErrorCode));
         DiagnosePrinterHostCommand = new AsyncRelayCommand(DiagnosePrinterHostAsync, () => IsNotBusy && !string.IsNullOrEmpty(PrinterDiagnosticsHost));
+
+        RemediateAllPrintersCommand = new AsyncRelayCommand(RemediateAllPrintersAsync, () => IsNotBusy);
+        RemediateClientBatchCommand = new AsyncRelayCommand(RemediateClientBatchAsync, () => IsNotBusy);
+        RemediateServerBatchCommand = new AsyncRelayCommand(RemediateServerBatchAsync, () => IsNotBusy);
+        AuditPointAndPrintPolicyCommand = new AsyncRelayCommand(AuditPointAndPrintPolicyAsync, () => IsNotBusy);
+        RefreshPrinterConnectionsCommand = new AsyncRelayCommand(RefreshPrinterConnectionsAsync, () => IsNotBusy);
+        InspectSpoolerStatusCommand = new AsyncRelayCommand(InspectSpoolerStatusAsync, () => IsNotBusy);
     }
 
     public IReadOnlyList<PointAndPrintPreset> AvailablePresets { get; }
@@ -147,6 +154,13 @@ public class ConnectivityViewModel : ViewModelBase
     public IAsyncRelayCommand ApplyPointAndPrintCommand { get; }
     public IAsyncRelayCommand RemediatePrinterErrorCommand { get; }
     public IAsyncRelayCommand DiagnosePrinterHostCommand { get; }
+
+    public IAsyncRelayCommand RemediateAllPrintersCommand { get; }
+    public IAsyncRelayCommand RemediateClientBatchCommand { get; }
+    public IAsyncRelayCommand RemediateServerBatchCommand { get; }
+    public IAsyncRelayCommand AuditPointAndPrintPolicyCommand { get; }
+    public IAsyncRelayCommand RefreshPrinterConnectionsCommand { get; }
+    public IAsyncRelayCommand InspectSpoolerStatusCommand { get; }
 
     public async Task RefreshAdaptersAsync()
     {
@@ -344,6 +358,130 @@ public class ConnectivityViewModel : ViewModelBase
     {
         var res = _connectivityService.DiagnosePrinterPortConnectivity(PrinterDiagnosticsHost);
         LastPrinterStatus = $"Host {res.Host}: Ping={(res.IsPingSuccessful ? "OK" : "Fail")}, SMB445={(res.IsSmbPortOpen ? "Open" : "Closed")}, RPC135={(res.IsRpcPortOpen ? "Open" : "Closed")}, RAW9100={(res.IsRawPortOpen ? "Open" : "Closed")}";
+        return Task.CompletedTask;
+    });
+
+    private async Task RemediateAllPrintersAsync()
+    {
+        if (_confirmationService != null)
+        {
+            bool confirmed = await _confirmationService.ConfirmAsync(
+                "Confirm Full Printer Remediation",
+                "Full Printer Remediation will apply both Client and Server policies, reset RPC/named pipes, purge queues, and restart Print Spooler.",
+                "Active print jobs will be lost. Do you wish to continue?");
+            if (!confirmed)
+            {
+                LastPrinterStatus = "Full printer remediation cancelled by user.";
+                Logger?.LogWarning(nameof(ConnectivityViewModel), "Full printer remediation cancelled by user.");
+                return;
+            }
+        }
+
+        await ExecuteAsync("Remediate All Printers (Client + Server)", () =>
+        {
+            var res = _printerService.RemediateAll();
+            int backupCount = res.BackupPaths?.Count ?? 0;
+            LastPrinterStatus = res.Success
+                ? $"Remediate All completed: {res.ActionsExecuted.Count} action(s) executed, {backupCount} backup(s) saved, {res.QueuePurgedCount} queue job(s) purged, {res.CleanedNePortsCount} Ne port(s) cleaned."
+                : $"Remediate All failed: {res.Message}";
+
+            if (res.Success)
+            {
+                Logger?.LogSuccess(nameof(ConnectivityViewModel), LastPrinterStatus);
+            }
+            else
+            {
+                Logger?.LogError(nameof(ConnectivityViewModel), LastPrinterStatus);
+            }
+
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task RemediateClientBatchAsync() => await ExecuteAsync("Remediate Client Printers", () =>
+    {
+        var res = _printerService.RemediateRole(PrinterRemediationRole.Client);
+        int backupCount = res.BackupPaths?.Count ?? 0;
+        LastPrinterStatus = res.Success
+            ? $"Client Batch completed: {res.ActionsExecuted.Count} action(s) executed ({string.Join(", ", res.ActionsExecuted)}), {backupCount} backup(s) saved."
+            : $"Client Batch failed: {res.Message}";
+
+        if (res.Success)
+        {
+            Logger?.LogSuccess(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+        else
+        {
+            Logger?.LogError(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+
+        return Task.CompletedTask;
+    });
+
+    private async Task RemediateServerBatchAsync() => await ExecuteAsync("Remediate Server Printers", () =>
+    {
+        var res = _printerService.RemediateRole(PrinterRemediationRole.Server);
+        int backupCount = res.BackupPaths?.Count ?? 0;
+        LastPrinterStatus = res.Success
+            ? $"Server Batch completed: {res.ActionsExecuted.Count} action(s) executed ({string.Join(", ", res.ActionsExecuted)}), {backupCount} backup(s) saved."
+            : $"Server Batch failed: {res.Message}";
+
+        if (res.Success)
+        {
+            Logger?.LogSuccess(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+        else
+        {
+            Logger?.LogError(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+
+        return Task.CompletedTask;
+    });
+
+    private async Task AuditPointAndPrintPolicyAsync() => await ExecuteAsync("Audit Point & Print Policy", () =>
+    {
+        var res = _printerService.AuditPointAndPrintPolicy();
+        string cveStatus = res.IsVulnerableToCVE20211678 ? "Vulnerable" : "Secured";
+        string posture = res.IsVulnerable ? "Vulnerable" : "Hardened";
+        LastPrinterStatus = $"Point & Print Policy Audit: Posture={posture}, CVE-2021-1678={cveStatus}, RpcAuthn={(res.RpcAuthnLevelPrivacyEnabled ? "Enabled" : "Disabled")}, RestrictAdmin={(res.RestrictDriverInstallationToAdministrators ? "Enabled" : "Disabled")}. {res.PostureDescription}";
+
+        if (res.IsVulnerable)
+        {
+            Logger?.LogWarning(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+        else
+        {
+            Logger?.LogSuccess(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+
+        return Task.CompletedTask;
+    });
+
+    private async Task RefreshPrinterConnectionsAsync() => await ExecuteAsync("Refresh Printer Connections", () =>
+    {
+        var res = _printerService.ResetPrinterConnections();
+        LastPrinterStatus = res.Success
+            ? $"Printer connections refreshed: {res.ReconnectedPrinters} reconnected, {res.RemovedStalePrinters} stale removed out of {res.DiscoveredPrinters} discovered."
+            : $"Printer connection refresh failed: {res.Message}";
+
+        if (res.Success)
+        {
+            Logger?.LogSuccess(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+        else
+        {
+            Logger?.LogError(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+
+        return Task.CompletedTask;
+    });
+
+    private async Task InspectSpoolerStatusAsync() => await ExecuteAsync("Inspect Spooler Status", () =>
+    {
+        var res = _printerService.GetSpoolerStatus();
+        string pidInfo = res.Pid.HasValue ? $" (PID {res.Pid.Value})" : string.Empty;
+        LastPrinterStatus = $"Spooler Status: {res.ServiceStatus}{pidInfo}, Queue: {res.PendingJobFileCount} file(s) ({res.TotalQueueSizeBytes} bytes), Directory: {res.SpoolDirectory}. {(res.HasStalledJobs ? "[Stalled Jobs Detected]" : "[Queue Clean]")}";
+        Logger?.LogInfo(nameof(ConnectivityViewModel), LastPrinterStatus);
         return Task.CompletedTask;
     });
 }

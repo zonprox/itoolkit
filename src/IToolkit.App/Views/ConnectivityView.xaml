@@ -11,7 +11,7 @@
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
         <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Network Stack & Adapter Control -->
@@ -111,6 +111,10 @@
                                                 IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,6,6" />
                                         <Button Content="Reset NeXX: Ports" Command="{Binding ResetNePortsCommand}"
                                                 IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,6,6" />
+                                        <Button Content="Refresh Connections" Command="{Binding RefreshPrinterConnectionsCommand}"
+                                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,6" />
+                                        <Button Content="Inspect Queue" Command="{Binding InspectSpoolerStatusCommand}"
+                                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,6" />
                                     </WrapPanel>
                                     <TextBlock Text="{Binding LastPrinterStatus, StringFormat='Spooler: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
                                 </StackPanel>
@@ -124,6 +128,32 @@
             <TabItem Header="Point &amp; Print Policies &amp; Diagnostics">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,8,0,16">
+                        <!-- One-Click Batch Printer Remediation Card -->
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="One-Click Batch Printer Remediation" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <WrapPanel Margin="0,0,0,10">
+                                    <Button Content="Remediate All (Client + Server)"
+                                            Command="{Binding RemediateAllPrintersCommand}"
+                                            IsEnabled="{Binding IsNotBusy}"
+                                            Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Client Fix Batch"
+                                            Command="{Binding RemediateClientBatchCommand}"
+                                            IsEnabled="{Binding IsNotBusy}"
+                                            Padding="12,7" Margin="0,0,8,6" />
+                                    <Button Content="Server Fix Batch"
+                                            Command="{Binding RemediateServerBatchCommand}"
+                                            IsEnabled="{Binding IsNotBusy}"
+                                            Padding="12,7" Margin="0,0,8,6" />
+                                    <Button Content="Audit Point &amp; Print Policy"
+                                            Command="{Binding AuditPointAndPrintPolicyCommand}"
+                                            IsEnabled="{Binding IsNotBusy}"
+                                            Padding="12,7" Margin="0,0,8,6" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Point &amp; Print Policy, Error Codes &amp; Port Diagnostics" Style="{StaticResource FluentSectionTitleStyle}" />
@@ -138,7 +168,7 @@
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="170" />
-                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="12" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>

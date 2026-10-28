@@ -31,7 +31,7 @@ public class ConnectivityAndPrinterServiceTests
         _wmi = new MockWmiService();
 
         _connectivityService = new ConnectivityService(_network, _processRunner, _registry, _atomicRegistry);
-        _printerService = new PrinterService(_processRunner, _fileSystem, _registry, _atomicRegistry, _lockGuard, _wmi);
+        _printerService = new PrinterService(_processRunner, _fileSystem, _registry, _atomicRegistry, _lockGuard, _wmi, network: _network);
     }
 
     [Fact]
@@ -190,5 +190,293 @@ public class ConnectivityAndPrinterServiceTests
         Assert.True(result.Success);
         Assert.True(result.PolicyApplied);
         Assert.Equal(errorCode, result.ErrorCode);
+    }
+
+    [Fact]
+    public void ApplyPointAndPrintPreset_CreatesPreMutationRegistryBackups()
+    {
+        // Act
+        bool result = _printerService.ApplyPointAndPrintPreset(PointAndPrintPreset.Compatibility);
+
+        // Assert
+        Assert.True(result);
+
+        var backupFiles = _fileSystem.EnumerateFiles(
+            Path.Combine(AppContext.BaseDirectory, "Backups", "Registry"),
+            "*.reg",
+            SearchOption.AllDirectories).ToList();
+
+        Assert.NotEmpty(backupFiles);
+        Assert.True(backupFiles.Count >= 2);
+    }
+
+    [Fact]
+    public void ResetNePortBindings_CreatesPreMutationRegistryBackup()
+    {
+        // Arrange
+        string portsKey = @"HKCU\Software\Microsoft\Windows NT\CurrentVersion\PrinterPorts";
+        _registry.CreateKey(portsKey);
+        _registry.SetValue(portsKey, "ActiveLaserJet", "Ne01:", RegistryValueKind.String);
+        _registry.SetValue(portsKey, "GhostPrinter", "Ne02:", RegistryValueKind.String);
+
+        _wmi.SetQueryResult("SELECT Name FROM Win32_Printer", new[]
+        {
+            new Dictionary<string, object?> { { "Name", "ActiveLaserJet" } }
+        });
+
+        // Act
+        int removed = _printerService.ResetNePortBindings();
+
+        // Assert
+        Assert.Equal(1, removed);
+        var backupFiles = _fileSystem.EnumerateFiles(
+            Path.Combine(AppContext.BaseDirectory, "Backups", "Registry"),
+            "*.reg",
+            SearchOption.AllDirectories).ToList();
+
+        Assert.NotEmpty(backupFiles);
+        Assert.Contains(backupFiles, f => f.Contains("PrinterPorts"));
+    }
+
+    [Fact]
+    public void RemediatePrinterError_CreatesBackups_AndSurfacesBackupPaths_ForRegistryCodes()
+    {
+        // 1. Registry-mutating code: 0x0000011b
+        var res11b = _printerService.RemediatePrinterError("0x0000011b");
+
+        Assert.True(res11b.Success);
+        Assert.NotNull(res11b.BackupPath);
+        Assert.NotEmpty(res11b.BackupPaths);
+        Assert.Equal(2, res11b.BackupPaths.Count);
+        Assert.True(_fileSystem.FileExists(res11b.BackupPath));
+
+        // 2. Non-registry code: 0x0000007e (DLLs / MOF only)
+        var res7e = _printerService.RemediatePrinterError("0x0000007e");
+
+        Assert.True(res7e.Success);
+        Assert.Null(res7e.BackupPath);
+        Assert.Empty(res7e.BackupPaths);
+    }
+
+    [Fact]
+    public void RemediateRole_Server_Executes9Actions_AggregatesBackups_AndRestartsSpooler()
+    {
+        var result = _printerService.RemediateRole(PrinterRemediationRole.Server);
+
+        Assert.Equal(PrinterRemediationRole.Server, result.Role);
+        Assert.True(result.Success);
+        Assert.True(result.SpoolerRestarted);
+        Assert.Equal(9, result.ActionsExecuted.Count);
+        Assert.Equal(9, result.Results.Count);
+        Assert.True(result.Results.All(r => r.Success));
+        Assert.NotEmpty(result.BackupPaths);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("net start spooler"));
+    }
+
+    [Fact]
+    public void RemediateRole_Client_Executes13Actions_AggregatesBackups_AndRestartsSpooler()
+    {
+        var result = _printerService.RemediateRole(PrinterRemediationRole.Client);
+
+        Assert.Equal(PrinterRemediationRole.Client, result.Role);
+        Assert.True(result.Success);
+        Assert.True(result.SpoolerRestarted);
+        Assert.Equal(13, result.ActionsExecuted.Count);
+        Assert.Equal(13, result.Results.Count);
+        Assert.True(result.Results.All(r => r.Success));
+        Assert.NotEmpty(result.BackupPaths);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("net start spooler"));
+    }
+
+    [Fact]
+    public void RemediateRole_Both_And_RemediateAll_Execute17Actions_DeduplicatingBackups()
+    {
+        var resultBoth = _printerService.RemediateRole(PrinterRemediationRole.Both);
+        var resultAll = _printerService.RemediateAll();
+
+        Assert.Equal(PrinterRemediationRole.Both, resultBoth.Role);
+        Assert.Equal(PrinterRemediationRole.Both, resultAll.Role);
+        Assert.True(resultBoth.Success);
+        Assert.True(resultAll.Success);
+        Assert.Equal(17, resultBoth.ActionsExecuted.Count);
+        Assert.Equal(17, resultAll.ActionsExecuted.Count);
+        Assert.Equal(17, resultBoth.Results.Count);
+        Assert.Equal(17, resultAll.Results.Count);
+        Assert.True(resultBoth.Results.All(r => r.Success));
+        Assert.True(resultAll.Results.All(r => r.Success));
+        Assert.NotEmpty(resultBoth.BackupPaths);
+    }
+
+    [Fact]
+    public void RemediatePrinterError_RoutesToGranularTokens()
+    {
+        var resRpc = _printerService.RemediatePrinterError("RpcAuthnLevel");
+        Assert.True(resRpc.Success);
+        Assert.Equal("RpcAuthnLevel", resRpc.ErrorCode);
+        Assert.Equal(0, _registry.GetValue<int>(@"HKLM\SYSTEM\CurrentControlSet\Control\Print", "RpcAuthnLevelPrivacyEnabled"));
+
+        var resAdmin = _printerService.RemediatePrinterError("PointAndPrintAdmin");
+        Assert.True(resAdmin.Success);
+        Assert.Equal("PointAndPrintAdmin", resAdmin.ErrorCode);
+        Assert.Equal(0, _registry.GetValue<int>(@"HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint", "RestrictDriverInstallationToAdministrators"));
+
+        var resPorts = _printerService.RemediatePrinterError("NePorts");
+        Assert.True(resPorts.Success);
+        Assert.Equal("NePorts", resPorts.ErrorCode);
+    }
+
+    [Fact]
+    public void RemediatePrinterError_RoutesRoleAliases_Correctly()
+    {
+        var resServer = _printerService.RemediatePrinterError("AllServer");
+        Assert.True(resServer.Success);
+        Assert.Contains("9 actions", resServer.RemediationAction);
+
+        var resClient = _printerService.RemediatePrinterError("AllClient");
+        Assert.True(resClient.Success);
+        Assert.Contains("13 actions", resClient.RemediationAction);
+
+        var resAll = _printerService.RemediatePrinterError("AllBoth");
+        Assert.True(resAll.Success);
+        Assert.Contains("17 actions", resAll.RemediationAction);
+    }
+
+    [Fact]
+    public void GetSupportedGranularTokens_ReturnsAllExpectedTokens()
+    {
+        var tokens = _printerService.GetSupportedGranularTokens();
+
+        Assert.NotNull(tokens);
+        Assert.True(tokens.Count >= 16);
+        Assert.Contains("RpcAuthnLevel", tokens);
+        Assert.Contains("RemoteRpcEndPoint", tokens);
+        Assert.Contains("RpcProtocols", tokens);
+        Assert.Contains("SpoolerHealth", tokens);
+        Assert.Contains("PointAndPrintAdmin", tokens);
+        Assert.Contains("PointAndPrintPrompts", tokens);
+        Assert.Contains("RpcNamedPipe", tokens);
+        Assert.Contains("DefaultPrinterKey", tokens);
+        Assert.Contains("CopyFilesPolicy", tokens);
+        Assert.Contains("SpoolerDLLs", tokens);
+        Assert.Contains("DriverStoreRepair", tokens);
+        Assert.Contains("SpoolerHandles", tokens);
+        Assert.Contains("DriverConfig", tokens);
+        Assert.Contains("ClearStalledJobs", tokens);
+        Assert.Contains("SpoolerCrash", tokens);
+        Assert.Contains("SpoolerQueue", tokens);
+        Assert.Contains("NePorts", tokens);
+        Assert.Contains("RefreshConnections", tokens);
+    }
+
+    [Fact]
+    public void AuditPointAndPrintPolicy_CorrectlyIdentifies_Secure_Vs_Vulnerable_Posture()
+    {
+        // 1. Setup vulnerable posture
+        string printKey = @"HKLM\SYSTEM\CurrentControlSet\Control\Print";
+        _registry.CreateKey(printKey);
+        _registry.SetValue(printKey, "RpcAuthnLevelPrivacyEnabled", 0, RegistryValueKind.DWord);
+
+        string pnpKey = @"HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint";
+        _registry.CreateKey(pnpKey);
+        _registry.SetValue(pnpKey, "RestrictDriverInstallationToAdministrators", 0, RegistryValueKind.DWord);
+        _registry.SetValue(pnpKey, "NoWarningNoElevationOnInstall", 1, RegistryValueKind.DWord);
+
+        var auditVuln = _printerService.AuditPointAndPrintPolicy();
+
+        Assert.False(auditVuln.RpcAuthnLevelPrivacyEnabled);
+        Assert.False(auditVuln.RestrictDriverInstallationToAdministrators);
+        Assert.True(auditVuln.NoWarningNoElevationOnInstall);
+        Assert.True(auditVuln.IsVulnerableToCVE20211678);
+        Assert.True(auditVuln.IsVulnerable);
+        Assert.Contains("Vulnerable", auditVuln.PostureDescription);
+        Assert.True(auditVuln.Recommendations.Count >= 2);
+
+        // 2. Setup secure posture via StrictAdminOnly preset
+        _printerService.ApplyPointAndPrintPreset(PointAndPrintPreset.StrictAdminOnly);
+        _registry.DeleteValue(pnpKey, "NoWarningNoElevationOnInstall");
+
+        var auditSec = _printerService.AuditPointAndPrintPolicy();
+
+        Assert.True(auditSec.RpcAuthnLevelPrivacyEnabled);
+        Assert.True(auditSec.RestrictDriverInstallationToAdministrators);
+        Assert.False(auditSec.NoWarningNoElevationOnInstall);
+        Assert.False(auditSec.IsVulnerableToCVE20211678);
+        Assert.False(auditSec.IsVulnerable);
+        Assert.Contains("Secure", auditSec.PostureDescription);
+        Assert.Empty(auditSec.Recommendations);
+    }
+
+    [Fact]
+    public void GetSpoolerStatus_ReturnsCorrectDirectory_QueueMetrics_AndServiceState()
+    {
+        // 1. Setup simulated Spooler service via WMI
+        _wmi.SetQueryResult("SELECT State, StartMode, ProcessId FROM Win32_Service WHERE Name='Spooler'", new[]
+        {
+            new Dictionary<string, object?>
+            {
+                { "State", "Running" },
+                { "StartMode", "Auto" },
+                { "ProcessId", 4321 }
+            }
+        });
+
+        // 2. Setup spool queue directory with test files
+        string sysRoot = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
+        string spoolDir = Path.Combine(sysRoot, "System32", "spool", "PRINTERS");
+        _fileSystem.CreateDirectory(spoolDir);
+
+        string f1 = Path.Combine(spoolDir, "job01.spl");
+        string f2 = Path.Combine(spoolDir, "job01.shd");
+        string f3 = Path.Combine(spoolDir, "temp.tmp");
+        string ignore = Path.Combine(spoolDir, "readme.txt");
+
+        _fileSystem.WriteAllBytes(f1, new byte[1000]);
+        _fileSystem.WriteAllBytes(f2, new byte[200]);
+        _fileSystem.WriteAllBytes(f3, new byte[100]);
+        _fileSystem.WriteAllBytes(ignore, new byte[50]);
+
+        // Act
+        var status = _printerService.GetSpoolerStatus();
+
+        // Assert
+        Assert.True(status.IsRunning);
+        Assert.Equal("Running", status.ServiceStatus);
+        Assert.Equal(4321, status.Pid);
+        Assert.Equal(3, status.PendingJobFileCount);
+        Assert.Equal(1300, status.TotalQueueSizeBytes);
+        Assert.True(status.HasStalledJobs);
+        Assert.Equal(spoolDir, status.SpoolDirectory);
+    }
+
+    [Fact]
+    public void ResetPrinterConnections_HandlesReachableAndUnreachablePrinters_Correctly()
+    {
+        // 1. Setup discovered printers
+        _wmi.SetQueryResult("SELECT Name FROM Win32_Printer", new[]
+        {
+            new Dictionary<string, object?> { { "Name", @"\\LiveServer\ColorLaserJet" } },
+            new Dictionary<string, object?> { { "Name", @"\\DeadServer\OldDotMatrix" } },
+            new Dictionary<string, object?> { { "Name", "Microsoft XPS Document Writer" } }
+        });
+
+        string connKey = @"HKCU\Printers\Connections";
+        _registry.CreateKey(connKey);
+        _registry.CreateKey($@"{connKey}\,,LiveServer,MonoLaserJet");
+        _registry.CreateKey($@"{connKey}\,,DeadServer,OldDotMatrix");
+
+        // 2. Setup reachability
+        _network.SetHostReachable("LiveServer", true);
+        _network.SetHostReachable("DeadServer", false);
+        _network.SetPortOpen("DeadServer", 445, false);
+
+        // Act
+        var result = _printerService.ResetPrinterConnections();
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(3, result.DiscoveredPrinters); // LiveServer\ColorLaserJet, DeadServer\OldDotMatrix, LiveServer\MonoLaserJet
+        Assert.Equal(2, result.ReconnectedPrinters); // ColorLaserJet and MonoLaserJet
+        Assert.Equal(1, result.RemovedStalePrinters); // OldDotMatrix
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("net start spooler"));
     }
 }

@@ -91,7 +91,7 @@
                 Visibility="{Binding ShowCompletionBanner, Converter={StaticResource BoolToVisConverter}}">
             <DockPanel>
                 <Button DockPanel.Dock="Right" Command="{Binding DismissCompletionCommand}"
-                        Content="Dismiss" Padding="8,2" FontSize="11" />
+                        Content="Dismiss" Height="22" Padding="8,2" Margin="8,0,0,0" FontSize="11" />
                 <TextBlock Text="{Binding CompletionMessage}" FontSize="11" FontWeight="SemiBold"
                            Foreground="#FFFFFF" VerticalAlignment="Center" />
             </DockPanel>

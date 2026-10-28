@@ -273,6 +273,34 @@ public class Pillars123EmpiricalChallengeTests
         }
     }
 
+    [Theory]
+    [InlineData("rpcauthnlevel", true)]
+    [InlineData("remoterpcendpoint", true)]
+    [InlineData("rpcprotocols", true)]
+    [InlineData("spoolerhealth", true)]
+    [InlineData("pointandprintadmin", true)]
+    [InlineData("pointandprintprompts", true)]
+    [InlineData("rpcnamedpipe", true)]
+    [InlineData("defaultprinterkey", true)]
+    [InlineData("copyfilespolicy", true)]
+    [InlineData("spoolerdlls", true)]
+    [InlineData("driverstorerepair", true)]
+    [InlineData("spoolerhandles", true)]
+    [InlineData("driverconfig", true)]
+    [InlineData("clearstalledjobs", true)]
+    [InlineData("spoolerqueue", true)]
+    [InlineData("neports", true)]
+    [InlineData("ALLSERVER", true)]
+    [InlineData("allclient", true)]
+    [InlineData("AllBoth", true)]
+    public void RemediatePrinterError_SupportsGranularTokensAndRoleAliasesCaseInsensitively(string token, bool expectedSuccess)
+    {
+        var result = _printerService.RemediatePrinterError(token);
+
+        Assert.Equal(expectedSuccess, result.Success);
+        Assert.Equal(expectedSuccess, result.PolicyApplied);
+    }
+
     [Fact]
     public void RemediatePrinterError_ThrowsArgumentException_OnNullOrWhitespace()
     {

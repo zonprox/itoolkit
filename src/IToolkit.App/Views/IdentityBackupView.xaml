@@ -11,7 +11,7 @@
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" MaxWidth="1040" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
         <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
             <!-- Tab 1: Local Accounts & Built-in Admin -->
@@ -89,7 +89,7 @@
                                              VerticalContentAlignment="Center" />
 
                                     <!-- Admin Privilege CheckBox & Create Button -->
-                                    <CheckBox Grid.Row="4" Grid.Column="1" Content="Grant Administrator Privileges (Administrators Group)"
+                                    <CheckBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Content="Grant Administrator Privileges (Administrators Group)"
                                               IsChecked="{Binding NewAccountIsAdmin, Mode=TwoWay}" VerticalAlignment="Center" FontSize="12" />
                                     <Button Grid.Row="4" Grid.Column="3" Content="Create Local Account" Command="{Binding CreateAccountCommand}"
                                             IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
