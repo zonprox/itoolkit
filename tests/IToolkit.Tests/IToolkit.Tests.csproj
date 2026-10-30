@@ -49,7 +49,7 @@
   <Target Name="FilterNonEnglishSatelliteResources" BeforeTargets="_CopyFilesMarkedCopyLocal">
     <ItemGroup>
       <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
-        Condition="'%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != '' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en\' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en/'" />
+        Condition="'%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != '' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en\' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' != 'en/' and !$([System.String]::Copy('%(ReferenceCopyLocalPaths.DestinationSubDirectory)').StartsWith('runtimes'))" />
     </ItemGroup>
   </Target>
 

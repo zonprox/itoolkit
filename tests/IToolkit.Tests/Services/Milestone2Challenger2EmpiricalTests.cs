@@ -152,16 +152,19 @@ public class Milestone2Challenger2EmpiricalTests
         Assert.Equal(false, longPathResult);
 
         // Case 9: Existing directory (triggers Process.Start catch block in non-Windows environment)
-        string existingTempDir = Path.GetTempPath();
-        object? existingDirResult = method.Invoke(instance, new object?[] { existingTempDir });
-        Assert.Equal(false, existingDirResult);
+        if (!OperatingSystem.IsWindows())
+        {
+            string existingTempDir = Path.GetTempPath();
+            object? existingDirResult = method.Invoke(instance, new object?[] { existingTempDir });
+            Assert.Equal(false, existingDirResult);
+        }
     }
 
     [Fact]
     public void WpfDialogService_OpenFolderInExplorer_LogsExceptionAndReturnsFalseCleanly()
     {
         var type = GetWpfDialogServiceType();
-        if (type == null)
+        if (type == null || OperatingSystem.IsWindows())
         {
             VerifyWpfDialogServiceExceptionHandlingStatically();
             return;

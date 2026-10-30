@@ -234,6 +234,13 @@ public class BackupService : IBackupService
         string args = $"\"{source}\" \"{destination}\" {syncMode} /MT:16 /COPY:DAT /R:2 /W:2 /XJ /ZB /NP";
 
         var res = _processRunner.Run("robocopy.exe", args);
+        if (res.ExitCode == 16 &&
+            (res.StandardOutput.Contains("Backup and Restore Files", StringComparison.OrdinalIgnoreCase) ||
+             res.StandardError.Contains("Backup and Restore Files", StringComparison.OrdinalIgnoreCase)))
+        {
+            string fallbackArgs = $"\"{source}\" \"{destination}\" {syncMode} /MT:16 /COPY:DAT /R:2 /W:2 /XJ /NP";
+            res = _processRunner.Run("robocopy.exe", fallbackArgs);
+        }
 
         // Bitmask evaluation: Exit code < 8 is SUCCESS (0=no change, 1=copied, 2=extra files, 4=mismatches)
         bool isSuccess = res.ExitCode < 8;
