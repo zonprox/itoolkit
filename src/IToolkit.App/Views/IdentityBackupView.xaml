@@ -6,17 +6,20 @@
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:IdentityBackupViewModel}"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             HorizontalContentAlignment="Stretch"
+             VerticalContentAlignment="Stretch">
     <UserControl.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <!-- Tab 1: Local Accounts & Built-in Admin -->
             <TabItem Header="Local Accounts &amp; Built-in Admin">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- Built-in Administrator Card -->
                         <Border Style="{StaticResource FluentCardStyle}">
@@ -115,7 +118,7 @@
                                 </WrapPanel>
 
                                 <DataGrid ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
-                                          AutoGenerateColumns="False" CanUserAddRows="False" Height="160" Margin="0,0,0,8">
+                                          AutoGenerateColumns="False" CanUserAddRows="False" MinHeight="160" Margin="0,0,0,8">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="180" />
                                         <DataGridTextColumn Header="Enabled" Binding="{Binding IsEnabled}" Width="90" />
@@ -134,7 +137,8 @@
 
             <!-- Tab 2: Active Directory Domain Reachability -->
             <TabItem Header="Active Directory Domain Reachability">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- AD Reachability Diagnostic Card -->
                         <Border Style="{StaticResource FluentCardStyle}">
@@ -185,7 +189,8 @@
 
             <!-- Tab 3: User Profile Backup & Restore -->
             <TabItem Header="User Profile Backup &amp; Restore">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- Profile Backup Card -->
                         <Border Style="{StaticResource FluentCardStyle}">

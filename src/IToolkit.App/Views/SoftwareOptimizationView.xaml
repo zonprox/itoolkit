@@ -6,17 +6,20 @@
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:SoftwareOptimizationViewModel}"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             HorizontalContentAlignment="Stretch"
+             VerticalContentAlignment="Stretch">
     <UserControl.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <!-- Tab 1: Enterprise 8-App Catalog -->
             <TabItem Header="Enterprise 8-App Catalog">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
@@ -77,7 +80,8 @@
 
             <!-- Tab 2: Default App Associations & Winget Subsystem -->
             <TabItem Header="Default App Associations &amp; Winget Subsystem">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <UniformGrid Columns="2">
                             <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,12">
@@ -117,7 +121,8 @@
 
             <!-- Tab 3: Verified Debloat & Tweaking Suites -->
             <TabItem Header="Verified Debloat &amp; Tweaking Suites">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- Community Tools Card -->
                         <Border Style="{StaticResource FluentCardStyle}">

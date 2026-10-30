@@ -6,17 +6,20 @@
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:OfficeOutlookViewModel}"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             HorizontalContentAlignment="Stretch"
+             VerticalContentAlignment="Stretch">
     <UserControl.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <!-- Tab 1: Click-to-Run & App Quick Repairs -->
             <TabItem Header="Click-to-Run &amp; App Quick Repairs">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- Office Suite & Click-to-Run Maintenance Card -->
                         <Border Style="{StaticResource FluentCardStyle}">
@@ -71,7 +74,8 @@
 
             <!-- Tab 2: Outlook MAPI Data Files -->
             <TabItem Header="Outlook MAPI Data Files">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
@@ -90,7 +94,7 @@
                                 </WrapPanel>
 
                                 <DataGrid ItemsSource="{Binding DataFiles}" SelectedItem="{Binding SelectedDataFile, Mode=TwoWay}"
-                                          AutoGenerateColumns="False" CanUserAddRows="False" Height="180" Margin="0,0,0,14">
+                                          AutoGenerateColumns="False" CanUserAddRows="False" MinHeight="180" Margin="0,0,0,14">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}" Width="180" />
                                         <DataGridTextColumn Header="Format" Binding="{Binding Format}" Width="80" />
@@ -158,7 +162,8 @@
 
             <!-- Tab 3: Automated New Default PST Pipeline -->
             <TabItem Header="Automated New Default PST Pipeline">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>

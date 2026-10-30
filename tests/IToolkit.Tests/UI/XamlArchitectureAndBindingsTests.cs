@@ -764,8 +764,8 @@ public class XamlArchitectureAndBindingsTests
         Assert.Equal("Stretch", contentControl.Attribute("HorizontalContentAlignment")?.Value);
         Assert.Equal("Stretch", contentControl.Attribute("VerticalContentAlignment")?.Value);
 
-        // Find the main workspace grid in Grid.Row="1" that splits navigation rail (Column 0, width 175) and workspace (Column 1, width *)
-        var mainWorkspaceGrid = doc.Descendants().FirstOrDefault(d => d.Name.LocalName == "Grid" && (string?)d.Attribute("Grid.Row") == "1");
+        // Find the main workspace grid that splits navigation rail (Column 0, width 175) and workspace (Column 1, width *)
+        var mainWorkspaceGrid = doc.Descendants().FirstOrDefault(d => d.Name.LocalName == "Grid" && d.Element(d.Name.Namespace + "Grid.ColumnDefinitions") != null);
         Assert.NotNull(mainWorkspaceGrid);
         var colDefs = mainWorkspaceGrid.Element(mainWorkspaceGrid.Name.Namespace + "Grid.ColumnDefinitions")?.Elements().ToList();
         Assert.NotNull(colDefs);
@@ -797,6 +797,23 @@ public class XamlArchitectureAndBindingsTests
     }
 
     [Fact]
+    public void DashboardView_ContainsDetailedTelemetryBindings()
+    {
+        string path = Path.Combine(SolutionRoot, "src", "IToolkit.App", "Views", "DashboardView.xaml");
+        Assert.True(File.Exists(path));
+
+        string xaml = File.ReadAllText(path);
+
+        Assert.Contains("CpuUsagePercentage", xaml);
+        Assert.Contains("MemoryPercentage", xaml);
+        Assert.Contains("DiskFreeSpaceText", xaml);
+        Assert.Contains("OsDescription", xaml);
+        Assert.Contains("OsBuild", xaml);
+        Assert.Contains("ElevationBadgeText", xaml);
+        Assert.Contains("NetworkStatusText", xaml);
+    }
+
+    [Fact]
     public void MainWindow_ActivityConsole_IsNotDockedInMainWindow()
     {
         string path = Path.Combine(SolutionRoot, "src", "IToolkit.App", "MainWindow.xaml");
@@ -805,6 +822,7 @@ public class XamlArchitectureAndBindingsTests
         string xaml = File.ReadAllText(path);
         Assert.DoesNotContain("ActivityConsoleView", xaml);
         Assert.DoesNotContain("GridSplitter", xaml);
+        Assert.DoesNotContain("TelemetryHeaderView", xaml);
 
         XDocument doc = XDocument.Parse(xaml);
         var rootGrid = doc.Root!.Elements().FirstOrDefault(e => e.Name.LocalName == "Grid");
@@ -816,8 +834,8 @@ public class XamlArchitectureAndBindingsTests
             .Where(e => e.Name.LocalName == "RowDefinition")
             .ToList();
 
-        Assert.NotNull(rowDefs);
-        Assert.Equal(2, rowDefs.Count);
+        // RowDefinitions for telemetry header and split rows are removed; root Grid spans full height
+        Assert.True(rowDefs == null || rowDefs.Count == 0);
     }
 
     [Fact]

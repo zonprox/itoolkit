@@ -328,4 +328,181 @@ public class DashboardAndNavigationTests
         Assert.Contains("1 PST/OST", dashboardVm.OfficeStatus);
         Assert.Contains("v1.9.25200 (Healthy)", dashboardVm.SoftwareStatus);
     }
+
+    [Fact]
+    public async Task DashboardViewModel_TelemetryInitialization_PullsSnapshotAndUpdatesProperties()
+    {
+        var healthMock = new Mock<ISystemHealthService>();
+        var officeMock = new Mock<IOfficeSuiteService>();
+        var outlookMock = new Mock<IOutlookService>();
+        var netMock = new Mock<IConnectivityService>();
+        var backupMock = new Mock<IBackupService>();
+        var optMock = new Mock<IOptimizationService>();
+        var telemetryMock = new Mock<ISystemTelemetryService>();
+        var loggerMock = new Mock<IActivityLogger>();
+
+        var snapshot = new TelemetrySnapshot(
+            "Windows 11 Enterprise",
+            "26100.1742",
+            true,
+            25.5,
+            8L * 1024 * 1024 * 1024,
+            16L * 1024 * 1024 * 1024,
+            120L * 1024 * 1024 * 1024,
+            256L * 1024 * 1024 * 1024,
+            true,
+            "Running Scan");
+
+        telemetryMock.Setup(t => t.GetSnapshotAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshot);
+
+        using var vm = new DashboardViewModel(
+            healthMock.Object,
+            officeMock.Object,
+            outlookMock.Object,
+            netMock.Object,
+            backupMock.Object,
+            optMock.Object,
+            telemetryMock.Object,
+            loggerMock.Object);
+
+        await vm.RefreshTelemetryAsync();
+
+        Assert.Equal("Windows 11 Enterprise", vm.OsDescription);
+        Assert.Equal("26100.1742", vm.OsBuild);
+        Assert.True(vm.IsElevated);
+        Assert.Equal("Administrator", vm.ElevationBadgeText);
+        Assert.Equal("#22C55E", vm.ElevationBadgeBrush);
+        Assert.Equal(25.5, vm.CpuUsagePercentage);
+        Assert.Equal("26%", vm.CpuUsageText);
+        Assert.Equal("#22C55E", vm.CpuBrush);
+        Assert.Equal("8.0 / 16.0 GB", vm.MemoryUsageText);
+        Assert.Equal(50.0, vm.MemoryPercentage);
+        Assert.Equal("50%", vm.MemoryPercentageText);
+        Assert.Equal("#22C55E", vm.MemoryBrush);
+        Assert.Contains("120.0 GB Free", vm.DiskFreeSpaceText);
+        Assert.Equal("#22C55E", vm.DiskHealthBrush);
+        Assert.Equal("Healthy", vm.DiskHealthStatus);
+        Assert.True(vm.IsNetworkConnected);
+        Assert.Equal("Connected", vm.NetworkStatusText);
+        Assert.Equal("#22C55E", vm.NetworkStatusBrush);
+        Assert.Equal("Running Scan", vm.ActiveTaskDescription);
+        Assert.False(string.IsNullOrEmpty(vm.LastUpdatedText));
+    }
+
+    [Fact]
+    public async Task DashboardViewModel_RefreshTelemetryCommand_ExecutesAndRefreshesMetrics()
+    {
+        var healthMock = new Mock<ISystemHealthService>();
+        var officeMock = new Mock<IOfficeSuiteService>();
+        var outlookMock = new Mock<IOutlookService>();
+        var netMock = new Mock<IConnectivityService>();
+        var backupMock = new Mock<IBackupService>();
+        var optMock = new Mock<IOptimizationService>();
+        var telemetryMock = new Mock<ISystemTelemetryService>();
+
+        var snapshot = new TelemetrySnapshot(
+            "Windows 10 Pro",
+            "19045.4291",
+            false,
+            75.0,
+            12L * 1024 * 1024 * 1024,
+            16L * 1024 * 1024 * 1024,
+            15L * 1024 * 1024 * 1024,
+            256L * 1024 * 1024 * 1024,
+            false,
+            "Idle");
+
+        telemetryMock.Setup(t => t.GetSnapshotAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshot);
+
+        using var vm = new DashboardViewModel(
+            healthMock.Object,
+            officeMock.Object,
+            outlookMock.Object,
+            netMock.Object,
+            backupMock.Object,
+            optMock.Object,
+            telemetryMock.Object);
+
+        await vm.RefreshTelemetryCommand.ExecuteAsync(null);
+
+        telemetryMock.Verify(t => t.GetSnapshotAsync(It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        Assert.Equal("Windows 10 Pro", vm.OsDescription);
+        Assert.Equal("Standard User", vm.ElevationBadgeText);
+        Assert.Equal("#EAB308", vm.ElevationBadgeBrush);
+        Assert.Equal("75%", vm.CpuUsageText);
+        Assert.Equal("#EAB308", vm.CpuBrush);
+        Assert.Equal(75.0, vm.MemoryPercentage);
+        Assert.Equal("#EAB308", vm.MemoryBrush);
+        Assert.Equal("Warning", vm.DiskHealthStatus);
+        Assert.Equal("#EAB308", vm.DiskHealthBrush);
+        Assert.False(vm.IsNetworkConnected);
+        Assert.Equal("Offline", vm.NetworkStatusText);
+        Assert.Equal("#EF4444", vm.NetworkStatusBrush);
+    }
+
+    [Fact]
+    public void DashboardViewModel_UpdateFromSnapshot_ThresholdBrushes_AreCorrect()
+    {
+        var healthMock = new Mock<ISystemHealthService>();
+        var officeMock = new Mock<IOfficeSuiteService>();
+        var outlookMock = new Mock<IOutlookService>();
+        var netMock = new Mock<IConnectivityService>();
+        var backupMock = new Mock<IBackupService>();
+        var optMock = new Mock<IOptimizationService>();
+
+        using var vm = new DashboardViewModel(
+            healthMock.Object,
+            officeMock.Object,
+            outlookMock.Object,
+            netMock.Object,
+            backupMock.Object,
+            optMock.Object);
+
+        // Test Critical Thresholds: High CPU (>85), High RAM (>85), Low Disk (<10 GB)
+        var criticalSnapshot = new TelemetrySnapshot(
+            "Windows 11",
+            "26100",
+            true,
+            92.0,
+            15L * 1024 * 1024 * 1024,
+            16L * 1024 * 1024 * 1024,
+            5L * 1024 * 1024 * 1024,
+            256L * 1024 * 1024 * 1024,
+            true,
+            "Busy");
+
+        vm.UpdateFromSnapshot(criticalSnapshot);
+
+        Assert.Equal("#EF4444", vm.CpuBrush);
+        Assert.Equal("#EF4444", vm.MemoryBrush);
+        Assert.Equal("Critical", vm.DiskHealthStatus);
+        Assert.Equal("#EF4444", vm.DiskHealthBrush);
+    }
+
+    [Fact]
+    public void DashboardViewModel_Dispose_DisposesTimerSafely()
+    {
+        var healthMock = new Mock<ISystemHealthService>();
+        var officeMock = new Mock<IOfficeSuiteService>();
+        var outlookMock = new Mock<IOutlookService>();
+        var netMock = new Mock<IConnectivityService>();
+        var backupMock = new Mock<IBackupService>();
+        var optMock = new Mock<IOptimizationService>();
+        var telemetryMock = new Mock<ISystemTelemetryService>();
+
+        var vm = new DashboardViewModel(
+            healthMock.Object,
+            officeMock.Object,
+            outlookMock.Object,
+            netMock.Object,
+            backupMock.Object,
+            optMock.Object,
+            telemetryMock.Object);
+
+        // Should not throw
+        vm.StopPolling();
+        vm.Dispose();
+    }
 }

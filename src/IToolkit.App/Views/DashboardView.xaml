@@ -6,16 +6,107 @@
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:DashboardViewModel}"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             HorizontalContentAlignment="Stretch"
+             VerticalContentAlignment="Stretch">
     <UserControl.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  HorizontalContentAlignment="Stretch"
+                  VerticalContentAlignment="Stretch">
         <StackPanel Margin="10" HorizontalAlignment="Stretch">
-            <!-- Quick Actions Grid -->
+
+            <!-- Tier 1: System Specifications & Identity Overview Card -->
+            <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,0,6">
+                <DockPanel LastChildFill="True">
+                    <!-- Right: Network Status, Active Task & Refresh -->
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8" Fill="{Binding NetworkStatusBrush}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding NetworkStatusText}" FontSize="11" FontWeight="Medium"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+
+                        <Border CornerRadius="3" Padding="6,2"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                VerticalAlignment="Center" Margin="0,0,8,0">
+                            <TextBlock Text="{Binding ActiveTaskDescription}" FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       ToolTip="{Binding ActiveTaskDescription}" />
+                        </Border>
+
+                        <Button Content="Refresh"
+                                Command="{Binding RefreshTelemetryCommand}"
+                                Style="{StaticResource FluentButtonStyle}"
+                                Padding="8,3" FontSize="11" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Left: OS Description, Build, and Elevation Badge -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                        <TextBlock Text="{Binding OsDescription}" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding OsBuild}" FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <Border CornerRadius="3" Padding="6,2" Background="{Binding ElevationBadgeBrush}" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ElevationBadgeText}" FontSize="11" FontWeight="SemiBold" Foreground="#FFFFFF" />
+                        </Border>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Tier 2: Real-Time Hardware Telemetry Metrics -->
+            <UniformGrid Columns="3" Margin="0,0,0,6">
+                <!-- Metric Card 1: Processor (CPU) -->
+                <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,0">
+                    <StackPanel>
+                        <DockPanel LastChildFill="False" Margin="0,0,0,4">
+                            <TextBlock DockPanel.Dock="Left" Text="Processor (CPU)" Style="{StaticResource FluentSectionTitleStyle}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding CpuUsageText}" FontWeight="Bold" FontSize="13"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        </DockPanel>
+                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding CpuUsagePercentage}"
+                                     Height="5" Margin="0,0,0,4" Foreground="{Binding CpuBrush}" />
+                        <TextBlock Text="Live utilization percentage" Style="{StaticResource FluentCaptionStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Metric Card 2: Memory (RAM) -->
+                <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,0">
+                    <StackPanel>
+                        <DockPanel LastChildFill="False" Margin="0,0,0,4">
+                            <TextBlock DockPanel.Dock="Left" Text="Memory (RAM)" Style="{StaticResource FluentSectionTitleStyle}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding MemoryPercentageText}" FontWeight="Bold" FontSize="13"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        </DockPanel>
+                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding MemoryPercentage}"
+                                     Height="5" Margin="0,0,0,4" Foreground="{Binding MemoryBrush}" />
+                        <TextBlock Text="{Binding MemoryUsageText}" Style="{StaticResource FluentCaptionStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Metric Card 3: Storage (C:) -->
+                <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,0,0">
+                    <StackPanel>
+                        <DockPanel LastChildFill="False" Margin="0,0,0,4">
+                            <TextBlock DockPanel.Dock="Left" Text="System Storage (C:)" Style="{StaticResource FluentSectionTitleStyle}" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding DiskHealthStatus}" FontWeight="Bold" FontSize="13"
+                                       Foreground="{Binding DiskHealthBrush}" />
+                        </DockPanel>
+                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding DiskFreePercentage}"
+                                     Height="5" Margin="0,0,0,4" Foreground="{Binding DiskHealthBrush}" />
+                        <TextBlock Text="{Binding DiskFreeSpaceText}" Style="{StaticResource FluentCaptionStyle}" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Tier 3: Section Divider Header -->
+            <TextBlock Text="Quick Actions" Style="{StaticResource FluentSectionTitleStyle}" Margin="0,2,0,4" />
+
+            <!-- Tier 3: Quick Actions Grid (All 6 Existing Cards Preserved) -->
             <UniformGrid Columns="3" Margin="0,0,0,8">
-                <!-- Card 1: System Integrity -->
+                <!-- Card 1: System Integrity Repair -->
                 <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,6">
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
@@ -32,7 +123,7 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Card 2: Outlook & Mail -->
+                <!-- Card 2: Outlook & Mail Repair -->
                 <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,6">
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">
@@ -48,7 +139,7 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Card 3: Network Stack -->
+                <!-- Card 3: Network Stack Reset -->
                 <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,0,6">
                     <DockPanel LastChildFill="False">
                         <StackPanel DockPanel.Dock="Top">

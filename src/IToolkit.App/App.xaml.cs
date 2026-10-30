@@ -155,6 +155,7 @@ public partial class App : Application
         try
         {
             Services?.GetService<TelemetryHeaderViewModel>()?.StopPolling();
+            Services?.GetService<DashboardViewModel>()?.StopPolling();
             if (Services is IDisposable disposable)
             {
                 disposable.Dispose();

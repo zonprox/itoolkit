@@ -6,17 +6,20 @@
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:ConnectivityViewModel}"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             HorizontalContentAlignment="Stretch"
+             VerticalContentAlignment="Stretch">
     <UserControl.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <!-- Tab 1: Network Stack & Adapter Control -->
             <TabItem Header="Network Stack &amp; Adapter Control">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- Adapter Control Card -->
                         <Border Style="{StaticResource FluentCardStyle}">
@@ -85,7 +88,8 @@
 
             <!-- Tab 2: SMB & Print Spooler Subsystem -->
             <TabItem Header="SMB &amp; Print Spooler Subsystem">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <UniformGrid Columns="2">
                             <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,12">
@@ -126,7 +130,8 @@
 
             <!-- Tab 3: Point & Print Policies & Diagnostics -->
             <TabItem Header="Point &amp; Print Policies &amp; Diagnostics">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- One-Click Batch Printer Remediation Card -->
                         <Border Style="{StaticResource FluentCardStyle}">

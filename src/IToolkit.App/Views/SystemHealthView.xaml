@@ -6,17 +6,20 @@
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:SystemHealthViewModel}"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             HorizontalContentAlignment="Stretch"
+             VerticalContentAlignment="Stretch">
     <UserControl.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
-    <Grid Margin="10" HorizontalAlignment="Stretch">
+    <Grid Margin="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
         <!-- Structured 3-Tab Sub-Views -->
-        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0">
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <!-- Tab 1: Image & File Integrity -->
             <TabItem Header="Image &amp; File Integrity">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <!-- DISM & SFC Execution Card -->
                         <Border Style="{StaticResource FluentCardStyle}">
@@ -83,7 +86,8 @@
 
             <!-- Tab 2: Windows Update & WMI Salvage -->
             <TabItem Header="Windows Update &amp; WMI Salvage">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <UniformGrid Columns="2">
                             <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,12">
@@ -150,7 +154,8 @@
 
             <!-- Tab 3: Storage & WinSxS Cleanup -->
             <TabItem Header="Storage &amp; WinSxS Cleanup">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>

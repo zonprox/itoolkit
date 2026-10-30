@@ -80,22 +80,12 @@
     </Window.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <!-- Row 0: Compact System Telemetry Bar -->
-            <RowDefinition Height="Auto" />
-            <!-- Row 1: Main Workspace (Left Slim Nav Rail + Active Page) -->
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- Row 0: System Telemetry Status Header -->
-        <views:TelemetryHeaderView Grid.Row="0" DataContext="{Binding TelemetryHeader}" />
-
-        <!-- Row 1: Navigation Rail + Page Content -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="175" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+        <Grid.ColumnDefinitions>
+            <!-- Column 0: Left Slim Navigation Rail (Full Window Height) -->
+            <ColumnDefinition Width="175" />
+            <!-- Column 1: Active Content Workspace (Full Window Height) -->
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
             <!-- Left Slim Navigation Rail -->
             <Border Grid.Column="0"
@@ -220,6 +210,5 @@
                                 HorizontalContentAlignment="Stretch"
                                 VerticalContentAlignment="Stretch" />
             </DockPanel>
-        </Grid>
     </Grid>
 </Window>
