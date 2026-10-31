@@ -121,17 +121,22 @@ public class XamlArchitectureAndBindingsTests
         string xaml = File.ReadAllText(path);
         XDocument doc = XDocument.Parse(xaml);
 
-        // Verify 3 tabs
+        // Verify 2 tabs (Automated New Default PST Pipeline is integrated into the per-user Edit Popup)
         Assert.Contains("Header=\"Click-to-Run &amp; App Quick Repairs\"", xaml);
         Assert.Contains("Header=\"Outlook MAPI Data Files\"", xaml);
-        Assert.Contains("Header=\"Automated New Default PST Pipeline\"", xaml);
+        Assert.DoesNotContain("Header=\"Automated New Default PST Pipeline\"", xaml);
 
         // Verify inner ScrollViewers
         Assert.True(xaml.IndexOf("<ScrollViewer", xaml.IndexOf("Click-to-Run &amp; App Quick Repairs", StringComparison.Ordinal), StringComparison.Ordinal) > 0);
         Assert.True(xaml.IndexOf("<ScrollViewer", xaml.IndexOf("Outlook MAPI Data Files", StringComparison.Ordinal), StringComparison.Ordinal) > 0);
-        Assert.True(xaml.IndexOf("<ScrollViewer", xaml.IndexOf("Automated New Default PST Pipeline", StringComparison.Ordinal), StringComparison.Ordinal) > 0);
 
-        // Verify required bindings
+        // Verify per-user Edit Popup & required bindings
+        Assert.Contains("IsUserEditPopupOpen", xaml);
+        Assert.Contains("OpenUserEditPopupCommand", xaml);
+        Assert.Contains("OpenUserEditPopupForItemCommand", xaml);
+        Assert.Contains("CloseUserEditPopupCommand", xaml);
+        Assert.Contains("EditingUserHeaderSummary", xaml);
+        Assert.Contains("EditingUserFilePath", xaml);
         Assert.Contains("RepairC2RCommand", xaml);
         Assert.Contains("ScrubOfficeSuiteCommand", xaml);
         Assert.Contains("RelocationDestinationDir", xaml);
@@ -811,6 +816,22 @@ public class XamlArchitectureAndBindingsTests
         Assert.Contains("OsBuild", xaml);
         Assert.Contains("ElevationBadgeText", xaml);
         Assert.Contains("NetworkStatusText", xaml);
+        Assert.Contains("ComputerName", xaml);
+        Assert.Contains("DomainOrWorkgroup", xaml);
+        Assert.Contains("CurrentUser", xaml);
+        Assert.Contains("UserProfilePath", xaml);
+        Assert.Contains("OsArchitecture", xaml);
+        Assert.Contains("SystemUptime", xaml);
+        Assert.Contains("SystemManufacturerModel", xaml);
+        Assert.Contains("CpuModelName", xaml);
+        Assert.Contains("GpuModelName", xaml);
+        Assert.Contains("BiosAndSerial", xaml);
+        Assert.Contains("AllDrivesSummary", xaml);
+        Assert.Contains("PrimaryNetworkAdapter", xaml);
+        Assert.Contains("Ipv4Address", xaml);
+        Assert.Contains("DefaultGateway", xaml);
+        Assert.Contains("DnsServers", xaml);
+        Assert.Contains("MacAddress", xaml);
     }
 
     [Fact]

@@ -25,6 +25,12 @@ public class MockNetworkService : INetworkService
     public List<string> TestedHosts { get; } = new();
     public List<string> TestedPorts { get; } = new();
     public List<string> RestartedAdapters { get; } = new();
+    public List<string> EnabledAdapters { get; } = new();
+    public List<string> DisabledAdapters { get; } = new();
+    public List<string> RenewedDhcpAdapters { get; } = new();
+    public Dictionary<string, AdapterIpConfig> ConfiguredIpAdapters { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, AdapterDnsConfig> ConfiguredDnsAdapters { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int> ConfiguredMtuAdapters { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool DnsFlushed { get; private set; }
     public bool WinsockReset { get; private set; }
     public bool TcpIpReset { get; private set; }
@@ -94,6 +100,42 @@ public class MockNetworkService : INetworkService
     public bool RestartAdapter(string adapterName)
     {
         RestartedAdapters.Add(adapterName);
+        return true;
+    }
+
+    public bool EnableAdapter(string adapterName)
+    {
+        EnabledAdapters.Add(adapterName);
+        return true;
+    }
+
+    public bool DisableAdapter(string adapterName)
+    {
+        DisabledAdapters.Add(adapterName);
+        return true;
+    }
+
+    public bool ReleaseRenewAdapterDhcp(string adapterName)
+    {
+        RenewedDhcpAdapters.Add(adapterName);
+        return true;
+    }
+
+    public bool SetAdapterIpConfiguration(string adapterName, AdapterIpConfig config)
+    {
+        ConfiguredIpAdapters[adapterName] = config;
+        return true;
+    }
+
+    public bool SetAdapterDnsConfiguration(string adapterName, AdapterDnsConfig config)
+    {
+        ConfiguredDnsAdapters[adapterName] = config;
+        return true;
+    }
+
+    public bool SetAdapterMtu(string adapterName, int mtu)
+    {
+        ConfiguredMtuAdapters[adapterName] = mtu;
         return true;
     }
 

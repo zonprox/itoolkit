@@ -207,4 +207,117 @@ public class OutlookServiceTests
         var corruptedRestore = _service.RestoreDataFile(backupRes.BackupPath!, @"C:\Outlook\fail.pst", "BAD_HASH_12345");
         Assert.False(corruptedRestore.Success);
     }
+
+    [Fact]
+    public void RepairGlobalMailSettings_SetsSendMailImmediately_WithoutDeletingSrsOrNavPane()
+    {
+        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string appDataOutlook = Path.Combine(appData, "Microsoft", "Outlook");
+        _fileSystem.CreateDirectory(appDataOutlook);
+
+        string srsFile = Path.Combine(appDataOutlook, "ProfileA.srs");
+        string navXml = Path.Combine(appDataOutlook, "ProfileA.xml");
+        _fileSystem.WriteAllText(srsFile, "SRS content");
+        _fileSystem.WriteAllText(navXml, "<NavPaneXml/>");
+
+        string profKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\ProfileA";
+        _registry.CreateKey(profKey);
+        _registry.SetValue(profKey, "NavPane", new byte[] { 1, 2, 3 }, RegistryValueKind.Binary);
+
+        var result = _service.RepairGlobalMailSettings();
+
+        Assert.True(result.Success);
+        Assert.Equal(1, _registry.GetValue<int>(@"HKCU\Software\Microsoft\Office\16.0\Outlook\Options\Mail", "Send Mail Immediately"));
+
+        // Crucial non-interference: profile SRS, XML, and registry NavPane MUST NOT be deleted
+        Assert.True(_fileSystem.FileExists(srsFile), "Profile SRS must be preserved during global mail repair");
+        Assert.True(_fileSystem.FileExists(navXml), "Profile NavPane XML must be preserved during global mail repair");
+        Assert.True(_registry.ValueExists(profKey, "NavPane"), "Profile registry NavPane must be preserved during global mail repair");
+    }
+
+    [Fact]
+    public void QuickMailAndCacheRepair_WhenProfileSpecified_OnlyDeletesTargetProfileSrsAndNavPane_LeavesSiblingUntouched()
+    {
+        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string appDataOutlook = Path.Combine(appData, "Microsoft", "Outlook");
+        _fileSystem.CreateDirectory(appDataOutlook);
+
+        string srsA = Path.Combine(appDataOutlook, "ProfileA.srs");
+        string srsB = Path.Combine(appDataOutlook, "ProfileB.srs");
+        string xmlA = Path.Combine(appDataOutlook, "ProfileA.xml");
+        string xmlB = Path.Combine(appDataOutlook, "ProfileB.xml");
+
+        _fileSystem.WriteAllText(srsA, "SRS A");
+        _fileSystem.WriteAllText(srsB, "SRS B");
+        _fileSystem.WriteAllText(xmlA, "<XmlA/>");
+        _fileSystem.WriteAllText(xmlB, "<XmlB/>");
+
+        string keyA = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\ProfileA";
+        string keyB = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\ProfileB";
+        _registry.CreateKey(keyA);
+        _registry.CreateKey(keyB);
+        _registry.SetValue(keyA, "NavPane", new byte[] { 1 }, RegistryValueKind.Binary);
+        _registry.SetValue(keyB, "NavPane", new byte[] { 2 }, RegistryValueKind.Binary);
+
+        var result = _service.QuickMailAndCacheRepair("ProfileA");
+
+        Assert.True(result.Success);
+        Assert.True(result.SrsReset);
+        Assert.True(result.NavPaneReset);
+
+        // Profile A targeted items deleted
+        Assert.False(_fileSystem.FileExists(srsA), "Profile A SRS should be deleted");
+        Assert.False(_fileSystem.FileExists(xmlA), "Profile A XML should be deleted");
+        Assert.False(_registry.ValueExists(keyA, "NavPane"), "Profile A NavPane should be deleted");
+
+        // Profile B sibling items MUST remain completely untouched
+        Assert.True(_fileSystem.FileExists(srsB), "Profile B SRS must not be deleted");
+        Assert.True(_fileSystem.FileExists(xmlB), "Profile B XML must not be deleted");
+        Assert.True(_registry.ValueExists(keyB, "NavPane"), "Profile B NavPane must not be deleted");
+    }
+
+    [Fact]
+    public void RelocateDataFile_WithRegistryPath_OnlyUpdatesTargetProfileKey_LeavesSiblingUntouched()
+    {
+        string storeA = @"C:\Mail\StoreA.pst";
+        string storeB = @"C:\Mail\StoreB.pst";
+        _fileSystem.CreateDirectory(@"C:\Mail");
+        _fileSystem.WriteAllText(storeA, "Store A payload");
+        _fileSystem.WriteAllText(storeB, "Store B payload");
+        _fileSystem.SetAvailableFreeSpace(100L * 1024 * 1024 * 1024);
+
+        string keyA = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\ProfileA\StoreKey";
+        string keyB = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\ProfileB\StoreKey";
+        _registry.CreateKey(keyA);
+        _registry.CreateKey(keyB);
+        _registry.SetValue(keyA, "001f6700", Encoding.Unicode.GetBytes(storeA + "\0"), RegistryValueKind.Binary);
+        _registry.SetValue(keyB, "001f6700", Encoding.Unicode.GetBytes(storeB + "\0"), RegistryValueKind.Binary);
+
+        var fileInfoA = new MapiDataFileInfo(
+            storeA,
+            "StoreA",
+            "PST Store",
+            IsOst: false,
+            IsPst: true,
+            FileSizeBytes: 1024,
+            RegistryPath: keyA,
+            ExistsOnDisk: true);
+
+        string destDir = @"D:\RelocatedStores";
+        var result = _service.RelocateDataFile(fileInfoA, destDir);
+
+        Assert.True(result.Success);
+        string relocatedA = Path.Combine(destDir, "StoreA.pst");
+        Assert.True(_fileSystem.FileExists(relocatedA));
+        Assert.False(_fileSystem.FileExists(storeA));
+
+        // Profile A key updated
+        byte[] bytesA = (byte[])_registry.GetValue(keyA, "001f6700")!;
+        Assert.Equal(relocatedA, OutlookService.DecodeMapiUnicode(bytesA));
+
+        // Profile B sibling key and store MUST be completely unchanged
+        Assert.True(_fileSystem.FileExists(storeB));
+        byte[] bytesB = (byte[])_registry.GetValue(keyB, "001f6700")!;
+        Assert.Equal(storeB, OutlookService.DecodeMapiUnicode(bytesB));
+    }
 }

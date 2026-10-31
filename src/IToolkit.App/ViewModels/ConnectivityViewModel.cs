@@ -25,6 +25,23 @@ public class ConnectivityViewModel : ViewModelBase
     private string _lastNetworkStatus = "Ready";
     private string _lastPrinterStatus = "Ready";
 
+    // Per-Adapter popup state
+    private bool _isAdapterEditPopupOpen;
+    private NetworkAdapterInfo? _selectedEditingAdapter;
+    private bool _adapterUseDhcpIp = true;
+    private string _adapterStaticIp = "";
+    private string _adapterSubnetMask = "255.255.255.0";
+    private string _adapterDefaultGateway = "";
+    private bool _adapterUseDhcpDns = true;
+    private string _adapterPreferredDns = "";
+    private string _adapterAlternateDns = "";
+    private int _adapterMtu = 1500;
+
+    // Per-Printer popup state
+    private bool _isPrinterEditPopupOpen;
+    private PrinterInfo? _selectedEditingPrinter;
+    private PrinterInfo? _selectedPrinter;
+
     public ConnectivityViewModel(
         IConnectivityService connectivityService,
         IPrinterService printerService,
@@ -43,7 +60,7 @@ public class ConnectivityViewModel : ViewModelBase
         AvailablePresets = new[] { PointAndPrintPreset.Compatibility, PointAndPrintPreset.StrictAdminOnly };
         SupportedErrorCodes = _printerService.GetSupportedErrorCodes();
 
-        // Commands
+        // Global Network Commands
         RemediateNetworkStackCommand = new AsyncRelayCommand(RemediateNetworkStackAsync, () => IsNotBusy);
         FlushDnsCommand = new AsyncRelayCommand(FlushDnsAsync, () => IsNotBusy);
         RenewDhcpCommand = new AsyncRelayCommand(RenewDhcpAsync, () => IsNotBusy);
@@ -54,6 +71,17 @@ public class ConnectivityViewModel : ViewModelBase
         RestartAdapterCommand = new AsyncRelayCommand(RestartAdapterAsync, () => IsNotBusy);
         RefreshAdaptersCommand = new AsyncRelayCommand(RefreshAdaptersAsync, () => IsNotBusy);
 
+        // Per-Adapter Popup Commands
+        OpenAdapterEditPopupCommand = new RelayCommand(OpenAdapterEditPopup, _ => IsNotBusy && (SelectedAdapter != null || AvailableAdapters.Count > 0));
+        OpenAdapterEditPopupForItemCommand = new RelayCommand(OpenAdapterEditPopup);
+        SaveAdapterIpConfigCommand = new AsyncRelayCommand(SaveAdapterIpConfigAsync, () => IsNotBusy && SelectedEditingAdapter != null);
+        SaveAdapterDnsConfigCommand = new AsyncRelayCommand(SaveAdapterDnsConfigAsync, () => IsNotBusy && SelectedEditingAdapter != null);
+        SetAdapterMtuCommand = new AsyncRelayCommand(SetAdapterMtuAsync, () => IsNotBusy && SelectedEditingAdapter != null);
+        ToggleAdapterEnableCommand = new AsyncRelayCommand(ToggleAdapterEnableAsync, () => IsNotBusy && SelectedEditingAdapter != null);
+        RenewAdapterDhcpCommand = new AsyncRelayCommand(RenewAdapterDhcpAsync, () => IsNotBusy && SelectedEditingAdapter != null);
+        CloseAdapterEditPopupCommand = new RelayCommand(CloseAdapterEditPopup);
+
+        // Global Printer Commands
         PurgeSpoolerCommand = new AsyncRelayCommand(PurgeSpoolerAsync, () => IsNotBusy);
         RegisterSpoolerCommand = new AsyncRelayCommand(RegisterSpoolerAsync, () => IsNotBusy);
         ResetNePortsCommand = new AsyncRelayCommand(ResetNePortsAsync, () => IsNotBusy);
@@ -67,6 +95,16 @@ public class ConnectivityViewModel : ViewModelBase
         AuditPointAndPrintPolicyCommand = new AsyncRelayCommand(AuditPointAndPrintPolicyAsync, () => IsNotBusy);
         RefreshPrinterConnectionsCommand = new AsyncRelayCommand(RefreshPrinterConnectionsAsync, () => IsNotBusy);
         InspectSpoolerStatusCommand = new AsyncRelayCommand(InspectSpoolerStatusAsync, () => IsNotBusy);
+
+        // Per-Printer Popup Commands
+        RefreshPrintersCommand = new AsyncRelayCommand(RefreshPrintersAsync, () => IsNotBusy);
+        OpenPrinterEditPopupCommand = new RelayCommand(OpenPrinterEditPopup, _ => IsNotBusy && (SelectedPrinter != null || AvailablePrinters.Count > 0));
+        OpenPrinterEditPopupForItemCommand = new RelayCommand(OpenPrinterEditPopup);
+        PrintTestPageCommand = new AsyncRelayCommand(PrintTestPageAsync, () => IsNotBusy && SelectedEditingPrinter != null);
+        PurgeTargetPrinterQueueCommand = new AsyncRelayCommand(PurgeTargetPrinterQueueAsync, () => IsNotBusy && SelectedEditingPrinter != null);
+        SetAsDefaultPrinterCommand = new AsyncRelayCommand(SetAsDefaultPrinterAsync, () => IsNotBusy && SelectedEditingPrinter != null);
+        ResetTargetPrinterConnectionCommand = new AsyncRelayCommand(ResetTargetPrinterConnectionAsync, () => IsNotBusy && SelectedEditingPrinter != null);
+        ClosePrinterEditPopupCommand = new RelayCommand(ClosePrinterEditPopup);
     }
 
     public IReadOnlyList<PointAndPrintPreset> AvailablePresets { get; }
@@ -161,6 +199,141 @@ public class ConnectivityViewModel : ViewModelBase
     public IAsyncRelayCommand AuditPointAndPrintPolicyCommand { get; }
     public IAsyncRelayCommand RefreshPrinterConnectionsCommand { get; }
     public IAsyncRelayCommand InspectSpoolerStatusCommand { get; }
+
+    // Per-Adapter Popup Commands
+    public IRelayCommand OpenAdapterEditPopupCommand { get; }
+    public IRelayCommand OpenAdapterEditPopupForItemCommand { get; }
+    public IAsyncRelayCommand SaveAdapterIpConfigCommand { get; }
+    public IAsyncRelayCommand SaveAdapterDnsConfigCommand { get; }
+    public IAsyncRelayCommand SetAdapterMtuCommand { get; }
+    public IAsyncRelayCommand ToggleAdapterEnableCommand { get; }
+    public IAsyncRelayCommand RenewAdapterDhcpCommand { get; }
+    public IRelayCommand CloseAdapterEditPopupCommand { get; }
+
+    // Per-Printer Popup Commands
+    public IAsyncRelayCommand RefreshPrintersCommand { get; }
+    public IRelayCommand OpenPrinterEditPopupCommand { get; }
+    public IRelayCommand OpenPrinterEditPopupForItemCommand { get; }
+    public IAsyncRelayCommand PrintTestPageCommand { get; }
+    public IAsyncRelayCommand PurgeTargetPrinterQueueCommand { get; }
+    public IAsyncRelayCommand SetAsDefaultPrinterCommand { get; }
+    public IAsyncRelayCommand ResetTargetPrinterConnectionCommand { get; }
+    public IRelayCommand ClosePrinterEditPopupCommand { get; }
+
+    public ObservableCollection<PrinterInfo> AvailablePrinters { get; } = new();
+
+    public PrinterInfo? SelectedPrinter
+    {
+        get => _selectedPrinter;
+        set
+        {
+            if (SetProperty(ref _selectedPrinter, value))
+            {
+                OpenPrinterEditPopupCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsAdapterEditPopupOpen
+    {
+        get => _isAdapterEditPopupOpen;
+        set => SetProperty(ref _isAdapterEditPopupOpen, value);
+    }
+
+    public NetworkAdapterInfo? SelectedEditingAdapter
+    {
+        get => _selectedEditingAdapter;
+        set
+        {
+            if (SetProperty(ref _selectedEditingAdapter, value))
+            {
+                SaveAdapterIpConfigCommand.RaiseCanExecuteChanged();
+                SaveAdapterDnsConfigCommand.RaiseCanExecuteChanged();
+                SetAdapterMtuCommand.RaiseCanExecuteChanged();
+                ToggleAdapterEnableCommand.RaiseCanExecuteChanged();
+                RenewAdapterDhcpCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(EditingAdapterHeaderSummary));
+            }
+        }
+    }
+
+    public string EditingAdapterHeaderSummary => SelectedEditingAdapter != null
+        ? $"{SelectedEditingAdapter.Name} ({SelectedEditingAdapter.Description})  |  Status: {SelectedEditingAdapter.Status}"
+        : "No Network Adapter Selected";
+
+    public bool AdapterUseDhcpIp
+    {
+        get => _adapterUseDhcpIp;
+        set => SetProperty(ref _adapterUseDhcpIp, value);
+    }
+
+    public string AdapterStaticIp
+    {
+        get => _adapterStaticIp;
+        set => SetProperty(ref _adapterStaticIp, value);
+    }
+
+    public string AdapterSubnetMask
+    {
+        get => _adapterSubnetMask;
+        set => SetProperty(ref _adapterSubnetMask, value);
+    }
+
+    public string AdapterDefaultGateway
+    {
+        get => _adapterDefaultGateway;
+        set => SetProperty(ref _adapterDefaultGateway, value);
+    }
+
+    public bool AdapterUseDhcpDns
+    {
+        get => _adapterUseDhcpDns;
+        set => SetProperty(ref _adapterUseDhcpDns, value);
+    }
+
+    public string AdapterPreferredDns
+    {
+        get => _adapterPreferredDns;
+        set => SetProperty(ref _adapterPreferredDns, value);
+    }
+
+    public string AdapterAlternateDns
+    {
+        get => _adapterAlternateDns;
+        set => SetProperty(ref _adapterAlternateDns, value);
+    }
+
+    public int AdapterMtu
+    {
+        get => _adapterMtu;
+        set => SetProperty(ref _adapterMtu, value);
+    }
+
+    public bool IsPrinterEditPopupOpen
+    {
+        get => _isPrinterEditPopupOpen;
+        set => SetProperty(ref _isPrinterEditPopupOpen, value);
+    }
+
+    public PrinterInfo? SelectedEditingPrinter
+    {
+        get => _selectedEditingPrinter;
+        set
+        {
+            if (SetProperty(ref _selectedEditingPrinter, value))
+            {
+                PrintTestPageCommand.RaiseCanExecuteChanged();
+                PurgeTargetPrinterQueueCommand.RaiseCanExecuteChanged();
+                SetAsDefaultPrinterCommand.RaiseCanExecuteChanged();
+                ResetTargetPrinterConnectionCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(EditingPrinterHeaderSummary));
+            }
+        }
+    }
+
+    public string EditingPrinterHeaderSummary => SelectedEditingPrinter != null
+        ? $"{SelectedEditingPrinter.Name}  |  Driver: {SelectedEditingPrinter.DriverName}  |  Port: {SelectedEditingPrinter.PortName} (Jobs: {SelectedEditingPrinter.PendingJobCount})"
+        : "No Printer Selected";
 
     public async Task RefreshAdaptersAsync()
     {
@@ -484,4 +657,219 @@ public class ConnectivityViewModel : ViewModelBase
         Logger?.LogInfo(nameof(ConnectivityViewModel), LastPrinterStatus);
         return Task.CompletedTask;
     });
+
+    private void OpenAdapterEditPopup(object? parameter)
+    {
+        if (parameter is NetworkAdapterInfo adapter)
+        {
+            SelectedAdapter = adapter;
+        }
+
+        var target = SelectedAdapter ?? AvailableAdapters.FirstOrDefault();
+        if (target != null)
+        {
+            SelectedAdapter = target;
+            SelectedEditingAdapter = target;
+            AdapterUseDhcpIp = target.DhcpEnabled;
+            AdapterStaticIp = target.IpAddresses.FirstOrDefault() ?? "192.168.1.100";
+            AdapterSubnetMask = target.SubnetMask ?? "255.255.255.0";
+            AdapterDefaultGateway = target.DefaultGateway ?? "192.168.1.1";
+            AdapterUseDhcpDns = target.DhcpEnabled;
+            AdapterPreferredDns = target.DnsServers?.FirstOrDefault() ?? "1.1.1.1";
+            AdapterAlternateDns = target.DnsServers?.Skip(1).FirstOrDefault() ?? "8.8.8.8";
+            AdapterMtu = target.Mtu ?? 1500;
+            IsAdapterEditPopupOpen = true;
+            Logger?.LogInfo(nameof(ConnectivityViewModel), $"Opened adapter edit popup for '{target.Name}'.");
+        }
+    }
+
+    private void CloseAdapterEditPopup()
+    {
+        IsAdapterEditPopupOpen = false;
+        SelectedEditingAdapter = null;
+        Logger?.LogInfo(nameof(ConnectivityViewModel), "Closed adapter edit popup.");
+    }
+
+    private async Task SaveAdapterIpConfigAsync()
+    {
+        if (SelectedEditingAdapter == null) return;
+        string name = SelectedEditingAdapter.Name;
+        await ExecuteAsync($"Configure IP for '{name}'", async () =>
+        {
+            var config = new AdapterIpConfig(AdapterUseDhcpIp, AdapterStaticIp, AdapterSubnetMask, AdapterDefaultGateway);
+            bool ok = _connectivityService.SetAdapterIpConfiguration(name, config);
+            await RefreshAdaptersAsync();
+            LastNetworkStatus = ok
+                ? $"IP configuration for '{name}' updated successfully (UseDhcp={config.UseDhcp})."
+                : $"Failed to update IP configuration for '{name}'.";
+        });
+    }
+
+    private async Task SaveAdapterDnsConfigAsync()
+    {
+        if (SelectedEditingAdapter == null) return;
+        string name = SelectedEditingAdapter.Name;
+        await ExecuteAsync($"Configure DNS for '{name}'", async () =>
+        {
+            var config = new AdapterDnsConfig(AdapterUseDhcpDns, AdapterPreferredDns, AdapterAlternateDns);
+            bool ok = _connectivityService.SetAdapterDnsConfiguration(name, config);
+            await RefreshAdaptersAsync();
+            LastNetworkStatus = ok
+                ? $"DNS configuration for '{name}' updated successfully (UseDhcp={config.UseDhcp})."
+                : $"Failed to update DNS configuration for '{name}'.";
+        });
+    }
+
+    private async Task SetAdapterMtuAsync()
+    {
+        if (SelectedEditingAdapter == null) return;
+        string name = SelectedEditingAdapter.Name;
+        await ExecuteAsync($"Set MTU for '{name}'", async () =>
+        {
+            bool ok = _connectivityService.SetAdapterMtu(name, AdapterMtu);
+            await RefreshAdaptersAsync();
+            LastNetworkStatus = ok
+                ? $"MTU for '{name}' set to {AdapterMtu} successfully."
+                : $"Failed to set MTU for '{name}'.";
+        });
+    }
+
+    private async Task ToggleAdapterEnableAsync()
+    {
+        if (SelectedEditingAdapter == null) return;
+        string name = SelectedEditingAdapter.Name;
+        bool isCurrentlyUp = string.Equals(SelectedEditingAdapter.Status, "Up", StringComparison.OrdinalIgnoreCase);
+        await ExecuteAsync($"{(isCurrentlyUp ? "Disable" : "Enable")} Adapter '{name}'", async () =>
+        {
+            bool ok = isCurrentlyUp
+                ? _connectivityService.DisableAdapter(name)
+                : _connectivityService.EnableAdapter(name);
+            await RefreshAdaptersAsync();
+            LastNetworkStatus = ok
+                ? $"Adapter '{name}' {(isCurrentlyUp ? "disabled" : "enabled")} successfully."
+                : $"Failed to {(isCurrentlyUp ? "disable" : "enable")} adapter '{name}'.";
+        });
+    }
+
+    private async Task RenewAdapterDhcpAsync()
+    {
+        if (SelectedEditingAdapter == null) return;
+        string name = SelectedEditingAdapter.Name;
+        await ExecuteAsync($"Renew DHCP for '{name}'", async () =>
+        {
+            bool ok = _connectivityService.ReleaseRenewAdapterDhcp(name);
+            await RefreshAdaptersAsync();
+            LastNetworkStatus = ok
+                ? $"DHCP lease for '{name}' renewed successfully."
+                : $"Failed to renew DHCP lease for '{name}'.";
+        });
+    }
+
+    public async Task RefreshPrintersAsync()
+    {
+        try
+        {
+            Logger?.LogInfo(nameof(ConnectivityViewModel), "Scanning installed printers...");
+            var printers = await Task.Run(() => _printerService.GetPrinters()?.ToList() ?? new List<PrinterInfo>());
+            AvailablePrinters.Clear();
+            foreach (var p in printers)
+            {
+                AvailablePrinters.Add(p);
+            }
+
+            if (SelectedPrinter == null && AvailablePrinters.Count > 0)
+            {
+                var def = AvailablePrinters.FirstOrDefault(p => p.IsDefault);
+                SelectedPrinter = def ?? AvailablePrinters[0];
+            }
+
+            LastPrinterStatus = $"Discovered {AvailablePrinters.Count} installed printer(s). Active: {SelectedPrinter?.Name ?? "None"}";
+            Logger?.LogInfo(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+        catch (Exception ex)
+        {
+            LastPrinterStatus = $"Printer discovery failed: {ex.Message}";
+            Logger?.LogError(nameof(ConnectivityViewModel), LastPrinterStatus);
+        }
+    }
+
+    private void OpenPrinterEditPopup(object? parameter)
+    {
+        if (parameter is PrinterInfo printer)
+        {
+            SelectedPrinter = printer;
+        }
+
+        var target = SelectedPrinter ?? AvailablePrinters.FirstOrDefault();
+        if (target != null)
+        {
+            SelectedPrinter = target;
+            SelectedEditingPrinter = target;
+            IsPrinterEditPopupOpen = true;
+            Logger?.LogInfo(nameof(ConnectivityViewModel), $"Opened printer edit popup for '{target.Name}'.");
+        }
+    }
+
+    private void ClosePrinterEditPopup()
+    {
+        IsPrinterEditPopupOpen = false;
+        SelectedEditingPrinter = null;
+        Logger?.LogInfo(nameof(ConnectivityViewModel), "Closed printer edit popup.");
+    }
+
+    private async Task PrintTestPageAsync()
+    {
+        if (SelectedEditingPrinter == null) return;
+        string name = SelectedEditingPrinter.Name;
+        await ExecuteAsync($"Print Test Page to '{name}'", () =>
+        {
+            bool ok = _printerService.PrintTestPage(name);
+            LastPrinterStatus = ok
+                ? $"Test page sent to printer '{name}' successfully."
+                : $"Failed to send test page to printer '{name}'.";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task PurgeTargetPrinterQueueAsync()
+    {
+        if (SelectedEditingPrinter == null) return;
+        string name = SelectedEditingPrinter.Name;
+        await ExecuteAsync($"Purge Queue for '{name}'", async () =>
+        {
+            bool ok = _printerService.PurgePrinterQueue(name);
+            await RefreshPrintersAsync();
+            LastPrinterStatus = ok
+                ? $"Print queue for printer '{name}' purged successfully."
+                : $"Failed to purge print queue for printer '{name}'.";
+        });
+    }
+
+    private async Task SetAsDefaultPrinterAsync()
+    {
+        if (SelectedEditingPrinter == null) return;
+        string name = SelectedEditingPrinter.Name;
+        await ExecuteAsync($"Set '{name}' as Default", async () =>
+        {
+            bool ok = _printerService.SetDefaultPrinter(name);
+            await RefreshPrintersAsync();
+            LastPrinterStatus = ok
+                ? $"Printer '{name}' set as default successfully."
+                : $"Failed to set printer '{name}' as default.";
+        });
+    }
+
+    private async Task ResetTargetPrinterConnectionAsync()
+    {
+        if (SelectedEditingPrinter == null) return;
+        string name = SelectedEditingPrinter.Name;
+        await ExecuteAsync($"Reset Connection for '{name}'", async () =>
+        {
+            var res = _printerService.ResetPrinterConnection(name);
+            await RefreshPrintersAsync();
+            LastPrinterStatus = res.Success
+                ? $"Reset connection for '{name}': {res.ReconnectedPrinters} reconnected, {res.RemovedStalePrinters} stale removed."
+                : $"Reset connection failed for '{name}': {res.Message}";
+        });
+    }
 }

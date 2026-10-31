@@ -169,8 +169,91 @@ public class ConnectivityService : IConnectivityService
 
     public bool RestartAdapter(string adapterName)
     {
+        if (string.IsNullOrWhiteSpace(adapterName)) return false;
         _logger?.LogInfo(nameof(ConnectivityService), $"Restarting network adapter '{adapterName}'...");
         return _network.RestartAdapter(adapterName);
+    }
+
+    public bool EnableAdapter(string adapterName)
+    {
+        if (string.IsNullOrWhiteSpace(adapterName)) return false;
+        _logger?.LogInfo(nameof(ConnectivityService), $"Enabling network adapter '{adapterName}'...");
+        var res = _processRunner.Run("netsh.exe", $"interface set interface \"{adapterName}\" enable");
+        bool netOk = _network.EnableAdapter(adapterName);
+        return netOk || res.ExitCode == 0;
+    }
+
+    public bool DisableAdapter(string adapterName)
+    {
+        if (string.IsNullOrWhiteSpace(adapterName)) return false;
+        _logger?.LogInfo(nameof(ConnectivityService), $"Disabling network adapter '{adapterName}'...");
+        var res = _processRunner.Run("netsh.exe", $"interface set interface \"{adapterName}\" disable");
+        bool netOk = _network.DisableAdapter(adapterName);
+        return netOk || res.ExitCode == 0;
+    }
+
+    public bool ReleaseRenewAdapterDhcp(string adapterName)
+    {
+        if (string.IsNullOrWhiteSpace(adapterName)) return false;
+        _logger?.LogInfo(nameof(ConnectivityService), $"Releasing and renewing DHCP lease for adapter '{adapterName}'...");
+        _processRunner.Run("ipconfig.exe", $"/release \"{adapterName}\"");
+        var ren = _processRunner.Run("ipconfig.exe", $"/renew \"{adapterName}\"");
+        bool netOk = _network.ReleaseRenewAdapterDhcp(adapterName);
+        return netOk || ren.ExitCode == 0;
+    }
+
+    public bool SetAdapterIpConfiguration(string adapterName, AdapterIpConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(adapterName) || config == null) return false;
+        _logger?.LogInfo(nameof(ConnectivityService), $"Configuring IP for adapter '{adapterName}' (UseDhcp={config.UseDhcp})...");
+        if (config.UseDhcp)
+        {
+            var res = _processRunner.Run("netsh.exe", $"interface ipv4 set address \"{adapterName}\" dhcp");
+            bool netOk = _network.SetAdapterIpConfiguration(adapterName, config);
+            return netOk || res.ExitCode == 0;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(config.IpAddress) || string.IsNullOrWhiteSpace(config.SubnetMask)) return false;
+            string gw = !string.IsNullOrWhiteSpace(config.DefaultGateway) ? $" {config.DefaultGateway}" : "";
+            var res = _processRunner.Run("netsh.exe", $"interface ipv4 set address \"{adapterName}\" static {config.IpAddress} {config.SubnetMask}{gw}");
+            bool netOk = _network.SetAdapterIpConfiguration(adapterName, config);
+            return netOk || res.ExitCode == 0;
+        }
+    }
+
+    public bool SetAdapterDnsConfiguration(string adapterName, AdapterDnsConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(adapterName) || config == null) return false;
+        _logger?.LogInfo(nameof(ConnectivityService), $"Configuring DNS for adapter '{adapterName}' (UseDhcp={config.UseDhcp})...");
+        if (config.UseDhcp)
+        {
+            var res = _processRunner.Run("netsh.exe", $"interface ipv4 set dnsservers \"{adapterName}\" dhcp");
+            bool netOk = _network.SetAdapterDnsConfiguration(adapterName, config);
+            return netOk || res.ExitCode == 0;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(config.PreferredDns)) return false;
+            var res1 = _processRunner.Run("netsh.exe", $"interface ipv4 set dnsservers \"{adapterName}\" static {config.PreferredDns} primary");
+            bool res2Ok = true;
+            if (!string.IsNullOrWhiteSpace(config.AlternateDns))
+            {
+                var res2 = _processRunner.Run("netsh.exe", $"interface ipv4 add dnsservers \"{adapterName}\" {config.AlternateDns} index=2");
+                res2Ok = res2.ExitCode == 0;
+            }
+            bool netOk = _network.SetAdapterDnsConfiguration(adapterName, config);
+            return netOk || (res1.ExitCode == 0 && res2Ok);
+        }
+    }
+
+    public bool SetAdapterMtu(string adapterName, int mtu)
+    {
+        if (string.IsNullOrWhiteSpace(adapterName) || mtu < 576 || mtu > 9000) return false;
+        _logger?.LogInfo(nameof(ConnectivityService), $"Setting MTU={mtu} for adapter '{adapterName}'...");
+        var res = _processRunner.Run("netsh.exe", $"interface ipv4 set subinterface \"{adapterName}\" mtu={mtu} store=persistent");
+        bool netOk = _network.SetAdapterMtu(adapterName, mtu);
+        return netOk || res.ExitCode == 0;
     }
 
     public PrinterPortDiagnosticResult DiagnosePrinterPortConnectivity(string host)

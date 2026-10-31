@@ -19,6 +19,15 @@ public interface IPrinterService
     BatchPrinterRemediationResult RemediateAll();
     PointAndPrintPolicyAuditResult AuditPointAndPrintPolicy();
     SpoolerServiceStatus GetSpoolerStatus();
+    PrinterConnectionResetResult ResetAllPrinterConnections();
     PrinterConnectionResetResult ResetPrinterConnections(bool all = true, string? printerName = null);
     IReadOnlyList<string> GetSupportedGranularTokens();
+
+    // Per-printer operations
+    IEnumerable<PrinterInfo> GetPrinters();
+    IEnumerable<PrinterJobInfo> GetPrinterJobs(string printerName);
+    bool PurgePrinterQueue(string printerName);
+    bool PrintTestPage(string printerName);
+    bool SetDefaultPrinter(string printerName);
+    PrinterConnectionResetResult ResetPrinterConnection(string printerName);
 }

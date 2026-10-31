@@ -93,7 +93,7 @@ public class DashboardAndNavigationTests
     }
 
     [Fact]
-    public async Task DashboardViewModel_QuickMailRepairCommand_InvokesQuickMailAndCacheRepair()
+    public async Task DashboardViewModel_QuickMailRepairCommand_InvokesRepairGlobalMailSettings()
     {
         var healthMock = new Mock<ISystemHealthService>();
         var officeMock = new Mock<IOfficeSuiteService>();
@@ -103,8 +103,8 @@ public class DashboardAndNavigationTests
         var optMock = new Mock<IOptimizationService>();
         var loggerMock = new Mock<IActivityLogger>();
 
-        outlookMock.Setup(o => o.QuickMailAndCacheRepair(It.IsAny<string?>()))
-            .Returns(new QuickMailRepairResult(true, true, true, true, true, true, "Mail repair OK"));
+        outlookMock.Setup(o => o.RepairGlobalMailSettings())
+            .Returns(OperationResult.Succeeded("Mail repair OK"));
 
         var vm = new DashboardViewModel(
             healthMock.Object,
@@ -117,7 +117,7 @@ public class DashboardAndNavigationTests
 
         await vm.QuickMailRepairCommand.ExecuteAsync(null);
 
-        outlookMock.Verify(o => o.QuickMailAndCacheRepair(It.IsAny<string?>()), Times.Once);
+        outlookMock.Verify(o => o.RepairGlobalMailSettings(), Times.Once);
         Assert.Contains("clean", vm.OfficeStatus);
     }
 

@@ -1,0 +1,153 @@
+<UserControl x:Class="IToolkit.App.Views.ManageMapiStoreDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:ManageMapiStoreViewModel}"
+             MinWidth="540" MaxWidth="720">
+    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="20">
+        <StackPanel>
+            <!-- Header -->
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Manage Outlook Data File (MAPI Store)" Style="{StaticResource FluentSectionTitleStyle}" FontSize="15" />
+                    <TextBlock Text="{Binding HeaderSummary}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,2,0,2" />
+                    <TextBlock Text="{Binding FilePath, StringFormat='Data File Path: {0}'}"
+                               Style="{StaticResource FluentCaptionStyle}" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding FilePath}" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="X" Command="{Binding CloseCommand}"
+                        Width="28" Height="28" Padding="0" VerticalAlignment="Top" HorizontalAlignment="Right" />
+            </Grid>
+
+            <!-- 1. Store Maintenance & Compaction Card -->
+            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Store Maintenance &amp; Compaction" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                    <WrapPanel>
+                        <Button Content="Quick Mail &amp; Cache Repair" Command="{Binding QuickMailRepairCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                Padding="14,7" Margin="0,0,8,0" />
+                        <Button Content="Compact Store" Command="{Binding CompactStoreCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="14,7" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 2. Automated New Default PST Pipeline Card -->
+            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Automated New Default PST Pipeline" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="130" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Source PST Path:" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                        <TextBox Grid.Column="1" Text="{Binding SourcePstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseSourcePstCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" />
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="130" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Target PST Path:" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                        <TextBox Grid.Column="1" Text="{Binding TargetPstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPstCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0" />
+                        <Button Grid.Column="3" Content="Execute Pipeline" Command="{Binding RunPipelineCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 3. Relocate MAPI Data File Card -->
+            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Relocate Data File (1.2x Headroom &amp; SHA-256)" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="130" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Destination Folder:" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                        <TextBox Grid.Column="1" Text="{Binding RelocationDestinationDir, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseRelocationDirCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0" />
+                        <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenRelocationDirCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0" />
+                        <Button Grid.Column="4" Content="Relocate Store" Command="{Binding RelocateStoreCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 4. Backup MAPI Data File Card -->
+            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Backup Data File (SHA-256 Verification)" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="130" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Backup Folder:" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                        <TextBox Grid.Column="1" Text="{Binding BackupDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseBackupDirCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0" />
+                        <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenBackupDirCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0" />
+                        <Button Grid.Column="4" Content="Backup Store" Command="{Binding BackupStoreCommand}"
+                                IsEnabled="{Binding IsNotBusy}" Padding="12,5" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Status -->
+            <TextBlock Text="{Binding OperationStatus, StringFormat='Store Operation Status: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+        </StackPanel>
+    </Border>
+</UserControl>

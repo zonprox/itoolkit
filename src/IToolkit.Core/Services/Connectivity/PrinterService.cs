@@ -1175,4 +1175,196 @@ public class PrinterService : IPrinterService
             startupType,
             summary);
     }
+
+    public PrinterConnectionResetResult ResetAllPrinterConnections() => ResetPrinterConnections(all: true, printerName: null);
+
+    public PrinterConnectionResetResult ResetPrinterConnection(string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName))
+        {
+            return new PrinterConnectionResetResult(0, 0, 0, new[] { "Printer name cannot be null or whitespace." }, false, "Invalid printer name.");
+        }
+        return ResetPrinterConnections(all: false, printerName: printerName.Trim());
+    }
+
+    public IEnumerable<PrinterInfo> GetPrinters()
+    {
+        _logger?.LogInfo(nameof(PrinterService), "Enumerating installed printers via WMI and registry...");
+        var printers = new List<PrinterInfo>();
+
+        if (_wmi != null)
+        {
+            try
+            {
+                var queryResults = _wmi.Query("SELECT Name, DriverName, PortName, Default, Network, Status, ServerName, ShareName FROM Win32_Printer").ToList();
+                if (queryResults.Count == 0)
+                {
+                    queryResults = _wmi.Query("SELECT Name FROM Win32_Printer").ToList();
+                }
+
+                foreach (var row in queryResults)
+                {
+                    if (row.TryGetValue("Name", out var nameObj) && nameObj != null)
+                    {
+                        string name = nameObj.ToString()!.Trim();
+                        string driver = row.TryGetValue("DriverName", out var drvObj) && drvObj != null ? drvObj.ToString()! : "Generic Windows Printer Driver";
+                        string port = row.TryGetValue("PortName", out var portObj) && portObj != null ? portObj.ToString()! : "LPT1:";
+                        bool isDefault = row.TryGetValue("Default", out var defObj) && defObj is bool bDef ? bDef : false;
+                        bool isNetwork = row.TryGetValue("Network", out var netObj) && netObj is bool bNet ? bNet : name.StartsWith(@"\\", StringComparison.Ordinal);
+                        string status = row.TryGetValue("Status", out var statObj) && statObj != null ? statObj.ToString()! : "Ready";
+                        string? server = row.TryGetValue("ServerName", out var srvObj) && srvObj != null ? srvObj.ToString() : null;
+                        string? share = row.TryGetValue("ShareName", out var shrObj) && shrObj != null ? shrObj.ToString() : null;
+
+                        int jobCount = 0;
+                        try
+                        {
+                            jobCount = GetPrinterJobs(name).Count();
+                        }
+                        catch { }
+
+                        printers.Add(new PrinterInfo(name, driver, port, isDefault, isNetwork, status, jobCount, server, share));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(nameof(PrinterService), $"WMI query for Win32_Printer failed: {ex.Message}");
+            }
+        }
+
+        if (printers.Count == 0)
+        {
+            string portsKey = @"HKCU\Software\Microsoft\Windows NT\CurrentVersion\PrinterPorts";
+            if (_registry.KeyExists(portsKey))
+            {
+                string defaultDevice = _registry.GetValue<string>(@"HKCU\Software\Microsoft\Windows NT\CurrentVersion\Windows", "Device") ?? "";
+                string defaultName = defaultDevice.Split(',')[0].Trim();
+
+                foreach (var name in _registry.GetValueNames(portsKey))
+                {
+                    string portVal = _registry.GetValue<string>(portsKey, name) ?? "";
+                    string portName = portVal.Split(',')[0].Trim();
+                    bool isDefault = string.Equals(name, defaultName, StringComparison.OrdinalIgnoreCase);
+                    bool isNetwork = name.StartsWith(@"\\", StringComparison.Ordinal);
+                    printers.Add(new PrinterInfo(name, "Generic Driver", portName, isDefault, isNetwork, "Ready", 0));
+                }
+            }
+        }
+
+        return printers;
+    }
+
+    public IEnumerable<PrinterJobInfo> GetPrinterJobs(string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName)) return Enumerable.Empty<PrinterJobInfo>();
+        var jobs = new List<PrinterJobInfo>();
+
+        if (_wmi != null)
+        {
+            try
+            {
+                var queryResults = _wmi.Query($"SELECT JobId, Document, Owner, Size, Status, TimeSubmitted FROM Win32_PrintJob WHERE Name LIKE '{printerName.Replace("'", "''")}%'");
+                foreach (var row in queryResults)
+                {
+                    int jobId = row.TryGetValue("JobId", out var idObj) && idObj is int id ? id : (int.TryParse(idObj?.ToString(), out int parsedId) ? parsedId : 0);
+                    string doc = row.TryGetValue("Document", out var docObj) && docObj != null ? docObj.ToString()! : "Document";
+                    string owner = row.TryGetValue("Owner", out var ownObj) && ownObj != null ? ownObj.ToString()! : "SYSTEM";
+                    long size = row.TryGetValue("Size", out var szObj) && szObj is long sz ? sz : (long.TryParse(szObj?.ToString(), out long parsedSz) ? parsedSz : 0);
+                    string status = row.TryGetValue("Status", out var stObj) && stObj != null ? stObj.ToString()! : "Spooling";
+                    DateTime submitted = DateTime.UtcNow;
+
+                    jobs.Add(new PrinterJobInfo(jobId, doc, owner, size, status, submitted));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(nameof(PrinterService), $"WMI query for Win32_PrintJob failed for '{printerName}': {ex.Message}");
+            }
+        }
+
+        return jobs;
+    }
+
+    [System.Runtime.InteropServices.DllImport("winspool.drv", CharSet = System.Runtime.InteropServices.CharSet.Auto, SetLastError = true)]
+    private static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+
+    [System.Runtime.InteropServices.DllImport("winspool.drv", SetLastError = true)]
+    private static extern bool SetPrinter(IntPtr hPrinter, int Level, IntPtr pPrinter, int Command);
+
+    [System.Runtime.InteropServices.DllImport("winspool.drv", SetLastError = true)]
+    private static extern bool ClosePrinter(IntPtr hPrinter);
+
+    private const int PRINTER_CONTROL_PURGE = 3;
+
+    public bool PurgePrinterQueue(string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName)) return false;
+        _logger?.LogInfo(nameof(PrinterService), $"Purging print jobs specifically for printer '{printerName}'...");
+
+        bool success = false;
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                if (OpenPrinter(printerName, out IntPtr hPrinter, IntPtr.Zero))
+                {
+                    try
+                    {
+                        success = SetPrinter(hPrinter, 0, IntPtr.Zero, PRINTER_CONTROL_PURGE);
+                    }
+                    finally
+                    {
+                        ClosePrinter(hPrinter);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(nameof(PrinterService), $"Win32 purge printer queue failed for '{printerName}': {ex.Message}");
+            }
+        }
+
+        if (_wmi != null)
+        {
+            try
+            {
+                int code = _wmi.ExecuteMethod("Win32_Printer", "CancelAllJobs");
+                if (code == 0)
+                {
+                    success = true;
+                }
+            }
+            catch { }
+        }
+
+        return success;
+    }
+
+    public bool PrintTestPage(string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName)) return false;
+        _logger?.LogInfo(nameof(PrinterService), $"Sending test page to printer '{printerName}'...");
+
+        var result = _processRunner.Run("rundll32.exe", $"printui.dll,PrintUIEntry /k /n \"{printerName}\"");
+        return result.ExitCode == 0;
+    }
+
+    public bool SetDefaultPrinter(string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName)) return false;
+        _logger?.LogInfo(nameof(PrinterService), $"Setting default printer to '{printerName}'...");
+
+        var result = _processRunner.Run("rundll32.exe", $"printui.dll,PrintUIEntry /y /n \"{printerName}\"");
+
+        string winKey = @"HKCU\Software\Microsoft\Windows NT\CurrentVersion\Windows";
+        if (_registry.KeyExists(winKey))
+        {
+            string existing = _registry.GetValue<string>(winKey, "Device") ?? "";
+            string[] parts = existing.Split(',');
+            string driverAndPort = parts.Length > 1 ? string.Join(",", parts.Skip(1)) : "winspool,Ne00:";
+            _registry.SetValue(winKey, "Device", $"{printerName},{driverAndPort}", RegistryValueKind.String);
+        }
+
+        return result.ExitCode == 0;
+    }
 }

@@ -127,4 +127,33 @@ public class IdentityBackupViewModelTests
         Assert.Contains("Profile backup completed successfully", vm.LastBackupStatus);
         _backupMock.Verify(s => s.RunRobocopySync(@"C:\Users\TestUser", @"D:\UserBackups", false), Times.Once);
     }
+
+    [Fact]
+    public void ManageAccountCommand_OpensDialogWithTargetEntityContext()
+    {
+        var target = new LocalAccountItem("TargetUser", "S-1-5-21-9999", true, false, false, false);
+        var vm = new IdentityBackupViewModel(_identityMock.Object, _backupMock.Object, _loggerMock.Object);
+
+        vm.ManageAccountCommand.Execute(target);
+
+        Assert.True(vm.IsManageAccountOpen);
+        Assert.NotNull(vm.CurrentManageAccount);
+        Assert.Equal("TargetUser", vm.CurrentManageAccount.Username);
+        Assert.Equal("S-1-5-21-9999", vm.CurrentManageAccount.Sid);
+    }
+
+    [Fact]
+    public void CloseManageAccountCommand_ClosesDialog()
+    {
+        var target = new LocalAccountItem("TargetUser", "S-1-5-21-9999", true, false, false, false);
+        var vm = new IdentityBackupViewModel(_identityMock.Object, _backupMock.Object, _loggerMock.Object);
+
+        vm.ManageAccountCommand.Execute(target);
+        Assert.True(vm.IsManageAccountOpen);
+
+        vm.CloseManageAccountCommand.Execute(null);
+
+        Assert.False(vm.IsManageAccountOpen);
+        Assert.Null(vm.CurrentManageAccount);
+    }
 }

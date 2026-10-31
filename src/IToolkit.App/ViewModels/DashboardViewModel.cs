@@ -56,6 +56,23 @@ public class DashboardViewModel : ViewModelBase, IDisposable
     private string _activeTaskDescription = "System Idle";
     private string _lastUpdatedText = "Just now";
 
+    private string _computerName = Environment.MachineName;
+    private string _domainOrWorkgroup = $"{Environment.UserDomainName} (Workgroup / Domain)";
+    private string _currentUser = $"{Environment.UserDomainName}\\{Environment.UserName}";
+    private string _userProfilePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    private string _systemUptime = "00h 00m 00s";
+    private string _osArchitecture = Environment.Is64BitOperatingSystem ? "X64 (64-bit OS)" : "X86 (32-bit OS)";
+    private string _cpuModelName = $"{Environment.ProcessorCount} Logical Processors";
+    private string _systemManufacturerModel = "Standard PC / Workstation";
+    private string _gpuModelName = "Standard Display Adapter";
+    private string _biosAndSerial = "UEFI / Standard BIOS";
+    private string _allDrivesSummary = "C: Storage Ready";
+    private string _primaryNetworkAdapter = "Detecting network adapter...";
+    private string _ipv4Address = "N/A";
+    private string _defaultGateway = "N/A";
+    private string _dnsServers = "N/A";
+    private string _macAddress = "N/A";
+
     public DashboardViewModel(
         ISystemHealthService systemHealth,
         IOfficeSuiteService officeSuite,
@@ -134,6 +151,23 @@ public class DashboardViewModel : ViewModelBase, IDisposable
     public string NetworkStatusBrush { get => _networkStatusBrush; set => SetProperty(ref _networkStatusBrush, value); }
     public string ActiveTaskDescription { get => _activeTaskDescription; set => SetProperty(ref _activeTaskDescription, value); }
     public string LastUpdatedText { get => _lastUpdatedText; set => SetProperty(ref _lastUpdatedText, value); }
+
+    public string ComputerName { get => _computerName; set => SetProperty(ref _computerName, value); }
+    public string DomainOrWorkgroup { get => _domainOrWorkgroup; set => SetProperty(ref _domainOrWorkgroup, value); }
+    public string CurrentUser { get => _currentUser; set => SetProperty(ref _currentUser, value); }
+    public string UserProfilePath { get => _userProfilePath; set => SetProperty(ref _userProfilePath, value); }
+    public string SystemUptime { get => _systemUptime; set => SetProperty(ref _systemUptime, value); }
+    public string OsArchitecture { get => _osArchitecture; set => SetProperty(ref _osArchitecture, value); }
+    public string CpuModelName { get => _cpuModelName; set => SetProperty(ref _cpuModelName, value); }
+    public string SystemManufacturerModel { get => _systemManufacturerModel; set => SetProperty(ref _systemManufacturerModel, value); }
+    public string GpuModelName { get => _gpuModelName; set => SetProperty(ref _gpuModelName, value); }
+    public string BiosAndSerial { get => _biosAndSerial; set => SetProperty(ref _biosAndSerial, value); }
+    public string AllDrivesSummary { get => _allDrivesSummary; set => SetProperty(ref _allDrivesSummary, value); }
+    public string PrimaryNetworkAdapter { get => _primaryNetworkAdapter; set => SetProperty(ref _primaryNetworkAdapter, value); }
+    public string Ipv4Address { get => _ipv4Address; set => SetProperty(ref _ipv4Address, value); }
+    public string DefaultGateway { get => _defaultGateway; set => SetProperty(ref _defaultGateway, value); }
+    public string DnsServers { get => _dnsServers; set => SetProperty(ref _dnsServers, value); }
+    public string MacAddress { get => _macAddress; set => SetProperty(ref _macAddress, value); }
 
     public IAsyncRelayCommand RefreshTelemetryCommand { get; }
 
@@ -229,6 +263,23 @@ public class DashboardViewModel : ViewModelBase, IDisposable
             NetworkStatusBrush = snapshot.NetworkConnected ? "#22C55E" : "#EF4444";
             ActiveTaskDescription = snapshot.ActiveTaskDescription;
             LastUpdatedText = DateTime.Now.ToString("HH:mm:ss");
+
+            if (!string.IsNullOrWhiteSpace(snapshot.ComputerName)) ComputerName = snapshot.ComputerName;
+            if (!string.IsNullOrWhiteSpace(snapshot.DomainOrWorkgroup)) DomainOrWorkgroup = snapshot.DomainOrWorkgroup;
+            if (!string.IsNullOrWhiteSpace(snapshot.CurrentUser)) CurrentUser = snapshot.CurrentUser;
+            if (!string.IsNullOrWhiteSpace(snapshot.UserProfilePath)) UserProfilePath = snapshot.UserProfilePath;
+            if (!string.IsNullOrWhiteSpace(snapshot.SystemUptime)) SystemUptime = snapshot.SystemUptime;
+            if (!string.IsNullOrWhiteSpace(snapshot.OsArchitecture)) OsArchitecture = snapshot.OsArchitecture;
+            if (!string.IsNullOrWhiteSpace(snapshot.CpuModelName)) CpuModelName = snapshot.CpuModelName;
+            if (!string.IsNullOrWhiteSpace(snapshot.SystemManufacturerModel)) SystemManufacturerModel = snapshot.SystemManufacturerModel;
+            if (!string.IsNullOrWhiteSpace(snapshot.GpuModelName)) GpuModelName = snapshot.GpuModelName;
+            if (!string.IsNullOrWhiteSpace(snapshot.BiosAndSerial)) BiosAndSerial = snapshot.BiosAndSerial;
+            if (!string.IsNullOrWhiteSpace(snapshot.AllDrivesSummary)) AllDrivesSummary = snapshot.AllDrivesSummary;
+            if (!string.IsNullOrWhiteSpace(snapshot.PrimaryNetworkAdapter)) PrimaryNetworkAdapter = snapshot.PrimaryNetworkAdapter;
+            if (!string.IsNullOrWhiteSpace(snapshot.Ipv4Address)) Ipv4Address = snapshot.Ipv4Address;
+            if (!string.IsNullOrWhiteSpace(snapshot.DefaultGateway)) DefaultGateway = snapshot.DefaultGateway;
+            if (!string.IsNullOrWhiteSpace(snapshot.DnsServers)) DnsServers = snapshot.DnsServers;
+            if (!string.IsNullOrWhiteSpace(snapshot.MacAddress)) MacAddress = snapshot.MacAddress;
         }
 
         if (_uiContext != null && SynchronizationContext.Current != _uiContext)
@@ -250,7 +301,7 @@ public class DashboardViewModel : ViewModelBase, IDisposable
 
     private async Task QuickMailRepairAsync() => await ExecuteAsync("Quick Outlook Mail Repair", () =>
     {
-        var res = _outlook.QuickMailAndCacheRepair();
+        var res = _outlook.RepairGlobalMailSettings();
         OfficeStatus = res.Success ? "Mailbox cache and outbox clean" : "Mail repair reported issues";
         return Task.CompletedTask;
     });

@@ -1,0 +1,131 @@
+<UserControl x:Class="IToolkit.App.Views.ManageLocalAccountDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:ManageLocalAccountViewModel}"
+             MinWidth="480" MaxWidth="580">
+    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="20">
+        <StackPanel>
+            <!-- Header -->
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Manage Local User Account" Style="{StaticResource FluentSectionTitleStyle}" FontSize="15" />
+                    <TextBlock Text="{Binding Username, StringFormat='Account: {0}'}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,2,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="X" Command="{Binding CloseCommand}"
+                        Width="28" Height="28" Padding="0" VerticalAlignment="Top" HorizontalAlignment="Right" />
+            </Grid>
+
+            <!-- Account Details Card -->
+            <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="6" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="6" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Username:" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Username}" FontSize="12" />
+
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="SID:" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding Sid}" FontSize="11" TextTrimming="CharacterEllipsis" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Enabled:" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding IsEnabled}" FontSize="12" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Locked:" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding IsLocked}" FontSize="12" />
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Admin:" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding IsAdmin}" FontSize="12" />
+
+                    <TextBlock Grid.Row="4" Grid.Column="2" Text="Built-in Admin:" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Row="4" Grid.Column="3" Text="{Binding IsBuiltInAdmin}" FontSize="12" />
+                </Grid>
+            </Border>
+
+            <!-- Quick Account Controls -->
+            <TextBlock Text="Account Controls" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,8" />
+            <WrapPanel Margin="0,0,0,14">
+                <Button Content="Unlock Account" Command="{Binding UnlockCommand}"
+                        IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,8,6" />
+                <Button Content="Toggle Enabled" Command="{Binding ToggleEnabledCommand}"
+                        IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,8,6" />
+            </WrapPanel>
+
+            <!-- Reset Password -->
+            <TextBlock Text="Reset User Password" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding NewPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                <Button Grid.Column="1" Content="Reset Password" Command="{Binding ResetPasswordCommand}"
+                        IsEnabled="{Binding IsNotBusy}" Padding="12,6" />
+            </Grid>
+
+            <!-- Backup Profile -->
+            <TextBlock Text="Profile Backup" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding BackupDestinationDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowseBackupDestinationCommand}"
+                        IsEnabled="{Binding IsNotBusy}" Padding="10,6" Margin="0,0,8,0" />
+                <Button Grid.Column="2" Content="Backup Profile" Command="{Binding BackupUserCommand}"
+                        IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="12,6" />
+            </Grid>
+
+            <!-- Danger Zone -->
+            <TextBlock Text="Danger Zone" FontWeight="SemiBold" FontSize="12" Foreground="#DC2626" Margin="0,0,0,6" />
+            <Border BorderBrush="#FCA5A5" BorderThickness="1" Background="#FEF2F2" CornerRadius="6" Padding="10" Margin="0,0,0,14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Permanently delete this local user account from the Windows SAM database."
+                               TextWrapping="Wrap" VerticalAlignment="Center" FontSize="11" Foreground="#991B1B" Margin="0,0,8,0" />
+                    <Button Grid.Column="1" Content="Remove Account" Command="{Binding RemoveAccountCommand}"
+                            IsEnabled="{Binding IsNotBusy}" Background="#DC2626" Foreground="#FFFFFF" BorderBrush="#B91C1C"
+                            FontWeight="SemiBold" Padding="12,6" />
+                </Grid>
+            </Border>
+
+            <!-- Status message -->
+            <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,12" TextWrapping="Wrap" />
+
+            <!-- Footer Buttons -->
+            <Button Content="Close" Command="{Binding CloseCommand}" HorizontalAlignment="Right" Padding="18,6" />
+        </StackPanel>
+    </Border>
+</UserControl>

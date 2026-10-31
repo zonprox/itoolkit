@@ -58,6 +58,9 @@ public class Milestone4TelemetryEmpiricalStressTests
         healthMock.Setup(h => h.RunDismSfcPipeline(It.IsAny<string?>(), It.IsAny<bool>()))
             .Returns((DismScanResult.Successful("DISM: OK"), SfcScanResult.Clean("SFC: Clean")));
 
+        outlookMock.Setup(o => o.RepairGlobalMailSettings())
+            .Returns(OperationResult.Succeeded("Mail repair OK"));
+
         outlookMock.Setup(o => o.QuickMailAndCacheRepair(It.IsAny<string?>()))
             .Returns(new QuickMailRepairResult(true, true, true, true, true, true, "Clean"));
 

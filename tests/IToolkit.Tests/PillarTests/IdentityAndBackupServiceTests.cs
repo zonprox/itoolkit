@@ -282,4 +282,54 @@ public class IdentityAndBackupServiceTests
         Assert.False(result.Validated);
         Assert.Contains("Pre-flight restore validation failed", result.Message);
     }
+
+    [Fact]
+    public void ResetUserPassword_InvokesNetUserWithProperEscaping()
+    {
+        bool success = _identityService.ResetUserPassword("TargetUser", "P@ss\"word\"123");
+
+        Assert.True(success);
+        Assert.Contains("net.exe user \"TargetUser\" \"P@ss\\\"word\\\"123\"", _processRunner.ExecutedCommands);
+    }
+
+    [Fact]
+    public void ResetUserPassword_WhenNetUserFails_ReturnsFalse()
+    {
+        _processRunner.SetCommandResult(
+            "net.exe user \"LockedUser\" \"NewPass123\"",
+            new ProcessExecutionResult(2, "", "System error 5 has occurred. Access is denied.", false));
+
+        bool success = _identityService.ResetUserPassword("LockedUser", "NewPass123");
+
+        Assert.False(success);
+    }
+
+    [Fact]
+    public void GetUserProfileMap_WhenTargetUserSpecified_ResolvesSpecifiedUserDirectory()
+    {
+        var map = _backupService.GetUserProfileMap("CustomUser");
+
+        Assert.Equal("CustomUser", map.Username);
+        Assert.Equal(@"C:\Users\CustomUser", map.ProfilePath);
+    }
+
+    [Fact]
+    public void RestoreProfileData_WhenTargetUserSpecified_RestoresIntoTargetUserDirectory()
+    {
+        string backupDir = @"E:\ValidBackup";
+        _fileSystem.CreateDirectory(backupDir);
+        string f1 = Path.Combine(backupDir, "data.txt");
+        _fileSystem.WriteAllText(f1, "verified_content");
+
+        string manifestPath = Path.Combine(backupDir, BackupService.ManifestFileName);
+        _backupService.CreateBackupManifest(backupDir, manifestPath);
+
+        var result = _backupService.RestoreProfileData(backupDir, manifestPath, "RestoredAlice");
+
+        Assert.True(result.Success);
+        Assert.True(result.Validated);
+        Assert.Equal(1, result.FilesRestored);
+        Assert.True(_fileSystem.FileExists(@"C:\Users\RestoredAlice\data.txt"));
+        Assert.Equal("verified_content", _fileSystem.ReadAllText(@"C:\Users\RestoredAlice\data.txt"));
+    }
 }

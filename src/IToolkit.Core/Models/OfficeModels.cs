@@ -46,7 +46,39 @@ public record MapiDataFileInfo(
     bool IsPst,
     long FileSizeBytes,
     string RegistryPath,
-    bool ExistsOnDisk);
+    bool ExistsOnDisk)
+{
+    public string Format => IsOst ? "OST" : (IsPst ? "PST" : "MAPI");
+
+    public string ProfileName => ExtractProfileName(RegistryPath);
+
+    public string FileSizeFormatted => FileSizeBytes >= 1024L * 1024 * 1024
+        ? $"{FileSizeBytes / (1024.0 * 1024.0 * 1024.0):F2} GB"
+        : $"{FileSizeBytes / (1024.0 * 1024.0):F1} MB";
+
+    private static string ExtractProfileName(string? registryPath)
+    {
+        if (string.IsNullOrWhiteSpace(registryPath))
+        {
+            return "Default";
+        }
+
+        const string marker = @"\Profiles\";
+        int idx = registryPath.IndexOf(marker, System.StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            string rest = registryPath.Substring(idx + marker.Length);
+            int nextSlash = rest.IndexOf('\\');
+            string prof = nextSlash >= 0 ? rest.Substring(0, nextSlash) : rest;
+            if (!string.IsNullOrWhiteSpace(prof))
+            {
+                return prof;
+            }
+        }
+
+        return "Default";
+    }
+}
 
 /// <summary>
 /// Result of Quick Mail & Cache Repair (Outbox, SRS, RoamCache preserving autocomplete, NavPane).

@@ -28,6 +28,36 @@ public interface INetworkService
     bool RestartAdapter(string adapterName);
 
     /// <summary>
+    /// Enables a specified network adapter.
+    /// </summary>
+    bool EnableAdapter(string adapterName) => false;
+
+    /// <summary>
+    /// Disables a specified network adapter.
+    /// </summary>
+    bool DisableAdapter(string adapterName) => false;
+
+    /// <summary>
+    /// Releases and renews DHCP lease specifically for a designated network adapter.
+    /// </summary>
+    bool ReleaseRenewAdapterDhcp(string adapterName) => false;
+
+    /// <summary>
+    /// Configures IPv4 addressing (DHCP or static IP) for a specific network adapter.
+    /// </summary>
+    bool SetAdapterIpConfiguration(string adapterName, AdapterIpConfig config) => false;
+
+    /// <summary>
+    /// Configures DNS server addresses (DHCP or static DNS) for a specific network adapter.
+    /// </summary>
+    bool SetAdapterDnsConfiguration(string adapterName, AdapterDnsConfig config) => false;
+
+    /// <summary>
+    /// Sets maximum transmission unit (MTU) for a specific network adapter.
+    /// </summary>
+    bool SetAdapterMtu(string adapterName, int mtu) => false;
+
+    /// <summary>
     /// Flushes the local DNS client resolver cache.
     /// </summary>
     bool FlushDns();

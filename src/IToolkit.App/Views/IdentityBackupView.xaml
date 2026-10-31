@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
+             xmlns:views="clr-namespace:IToolkit.App.Views"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:IdentityBackupViewModel}"
              mc:Ignorable="d"
@@ -21,10 +22,10 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <StackPanel Margin="0,8,0,16">
-                        <!-- Built-in Administrator Card -->
+                        <!-- Global System Administrator Fixes (SID -500 Recovery) Card -->
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Built-in Administrator (SID -500)" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Global System Administrator Fixes (SID -500 Recovery)" Style="{StaticResource FluentSectionTitleStyle}" />
 
                                 <WrapPanel Margin="0,0,0,12">
                                     <Button Content="Enable Built-in Admin" Command="{Binding EnableBuiltInAdminCommand}"
@@ -107,24 +108,34 @@
                                 <TextBlock Text="Local Accounts Directory" Style="{StaticResource FluentSectionTitleStyle}" />
 
                                 <WrapPanel Margin="0,0,0,10">
-                                    <Button Content="Unlock Selected" Command="{Binding UnlockAccountCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,8,6" />
-                                    <Button Content="Toggle Enabled" Command="{Binding ToggleAccountEnabledCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,8,6" />
-                                    <Button Content="Remove Selected" Command="{Binding RemoveAccountCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,8,6" />
                                     <Button Content="Refresh Accounts" Command="{Binding RefreshAccountsCommand}"
                                             IsEnabled="{Binding IsNotBusy}" Padding="12,6" Margin="0,0,8,6" />
                                 </WrapPanel>
 
                                 <DataGrid ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
                                           AutoGenerateColumns="False" CanUserAddRows="False" MinHeight="160" Margin="0,0,0,8">
+                                    <DataGrid.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Manage Account..." Command="{Binding ManageAccountCommand}" CommandParameter="{Binding SelectedAccount}" />
+                                            <MenuItem Header="Remove Account" Command="{Binding RemoveAccountCommand}" Visibility="Collapsed" />
+                                        </ContextMenu>
+                                    </DataGrid.ContextMenu>
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="180" />
-                                        <DataGridTextColumn Header="Enabled" Binding="{Binding IsEnabled}" Width="90" />
-                                        <DataGridTextColumn Header="Locked" Binding="{Binding IsLocked}" Width="90" />
-                                        <DataGridTextColumn Header="Admin" Binding="{Binding IsAdmin}" Width="90" />
+                                        <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="160" />
+                                        <DataGridTextColumn Header="Enabled" Binding="{Binding IsEnabled}" Width="80" />
+                                        <DataGridTextColumn Header="Locked" Binding="{Binding IsLocked}" Width="80" />
+                                        <DataGridTextColumn Header="Admin" Binding="{Binding IsAdmin}" Width="80" />
                                         <DataGridTextColumn Header="SID" Binding="{Binding Sid}" Width="*" />
+                                        <DataGridTemplateColumn Header="Actions" Width="100">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="Manage"
+                                                            Command="{Binding DataContext.ManageAccountCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Padding="10,4" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
 
@@ -274,5 +285,16 @@
                 </ScrollViewer>
             </TabItem>
         </TabControl>
+
+        <!-- Modal Popup Overlay for Per-Account Dedicated Management -->
+        <Grid Visibility="{Binding IsManageAccountOpen, Converter={StaticResource BoolToVisConverter}}"
+              Background="#7F000000"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
+              Panel.ZIndex="1000">
+            <views:ManageLocalAccountDialog DataContext="{Binding CurrentManageAccount}"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch" />
+        </Grid>
     </Grid>
 </UserControl>

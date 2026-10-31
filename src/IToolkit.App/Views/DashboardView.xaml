@@ -68,7 +68,7 @@
                         </DockPanel>
                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding CpuUsagePercentage}"
                                      Height="5" Margin="0,0,0,4" Foreground="{Binding CpuBrush}" />
-                        <TextBlock Text="Live utilization percentage" Style="{StaticResource FluentCaptionStyle}" />
+                        <TextBlock Text="{Binding CpuModelName}" Style="{StaticResource FluentCaptionStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CpuModelName}" />
                     </StackPanel>
                 </Border>
 
@@ -97,6 +97,94 @@
                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding DiskFreePercentage}"
                                      Height="5" Margin="0,0,0,4" Foreground="{Binding DiskHealthBrush}" />
                         <TextBlock Text="{Binding DiskFreeSpaceText}" Style="{StaticResource FluentCaptionStyle}" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Tier 2.5: Detailed System Configuration, Host/Domain/User Identity & Active Network -->
+            <UniformGrid Columns="3" Margin="0,0,0,6">
+                <!-- Spec Card 1: Host, Domain & User Identity -->
+                <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,0">
+                    <StackPanel>
+                        <TextBlock Text="Host, Domain &amp; User Identity" Style="{StaticResource FluentSectionTitleStyle}" Margin="0,0,0,4" />
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Computer Name:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding ComputerName}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ComputerName}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Domain / Workgroup:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding DomainOrWorkgroup}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DomainOrWorkgroup}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Current User:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding CurrentUser}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentUser}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="User Profile:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding UserProfilePath}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding UserProfilePath}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Arch / Uptime:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis">
+                                <Run Text="{Binding OsArchitecture}" />
+                                <Run Text=" | Up: " />
+                                <Run Text="{Binding SystemUptime}" />
+                            </TextBlock>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Spec Card 2: Hardware, BIOS & Drives Summary -->
+                <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,6,0">
+                    <StackPanel>
+                        <TextBlock Text="Hardware &amp; Storage Inventory" Style="{StaticResource FluentSectionTitleStyle}" Margin="0,0,0,4" />
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="System Model:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding SystemManufacturerModel}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding SystemManufacturerModel}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="CPU Model:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding CpuModelName}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CpuModelName}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Graphics (GPU):" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding GpuModelName}" FontSize="11" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding GpuModelName}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="BIOS / Serial:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding BiosAndSerial}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding BiosAndSerial}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Fixed Drives:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding AllDrivesSummary}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding AllDrivesSummary}" />
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Spec Card 3: Active Network & IP Configuration -->
+                <Border Style="{StaticResource FluentCardStyle}" Margin="0,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Active Network Configuration" Style="{StaticResource FluentSectionTitleStyle}" Margin="0,0,0,4" />
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Adapter:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding PrimaryNetworkAdapter}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding PrimaryNetworkAdapter}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="IPv4 Address:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding Ipv4Address}" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Ipv4Address}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="Gateway:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding DefaultGateway}" FontSize="11" Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DefaultGateway}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="DNS Servers:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding DnsServers}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DnsServers}" />
+                        </DockPanel>
+                        <DockPanel LastChildFill="True" Margin="0,1">
+                            <TextBlock DockPanel.Dock="Left" Text="MAC Address:" Style="{StaticResource FluentCaptionStyle}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding MacAddress}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding MacAddress}" />
+                        </DockPanel>
                     </StackPanel>
                 </Border>
             </UniformGrid>

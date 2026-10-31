@@ -37,6 +37,8 @@ public class IdentityBackupViewModel : ViewModelBase
 
     private string _lastIdentityStatus = "Ready";
     private string _lastBackupStatus = "Ready";
+    private ManageLocalAccountViewModel? _currentManageAccount;
+    private bool _isManageAccountOpen;
 
     public IdentityBackupViewModel(
         IIdentityService identityService,
@@ -67,6 +69,8 @@ public class IdentityBackupViewModel : ViewModelBase
         UnlockAccountCommand = new AsyncRelayCommand(UnlockAccountAsync, () => IsNotBusy && SelectedAccount != null);
         ToggleAccountEnabledCommand = new AsyncRelayCommand(ToggleAccountEnabledAsync, () => IsNotBusy && SelectedAccount != null);
         RemoveAccountCommand = new AsyncRelayCommand(RemoveAccountAsync, () => IsNotBusy && SelectedAccount != null);
+        ManageAccountCommand = new RelayCommand(OpenManageAccount);
+        CloseManageAccountCommand = new RelayCommand(CloseManageAccount);
 
         TestDomainReachabilityCommand = new AsyncRelayCommand(TestDomainReachabilityAsync, () => IsNotBusy && !string.IsNullOrEmpty(DomainTestName));
         UnlockDomainUserCommand = new AsyncRelayCommand(UnlockDomainUserAsync, () => IsNotBusy && !string.IsNullOrEmpty(DomainTestName) && !string.IsNullOrEmpty(DomainUserSamName));
@@ -252,6 +256,18 @@ public class IdentityBackupViewModel : ViewModelBase
         set => SetProperty(ref _lastBackupStatus, value);
     }
 
+    public ManageLocalAccountViewModel? CurrentManageAccount
+    {
+        get => _currentManageAccount;
+        set => SetProperty(ref _currentManageAccount, value);
+    }
+
+    public bool IsManageAccountOpen
+    {
+        get => _isManageAccountOpen;
+        set => SetProperty(ref _isManageAccountOpen, value);
+    }
+
     public IRelayCommand BrowseBackupDestinationCommand { get; }
     public IRelayCommand OpenBackupDestinationCommand { get; }
     public IRelayCommand BrowseRestoreBackupCommand { get; }
@@ -264,6 +280,8 @@ public class IdentityBackupViewModel : ViewModelBase
     public IAsyncRelayCommand UnlockAccountCommand { get; }
     public IAsyncRelayCommand ToggleAccountEnabledCommand { get; }
     public IAsyncRelayCommand RemoveAccountCommand { get; }
+    public IRelayCommand ManageAccountCommand { get; }
+    public IRelayCommand CloseManageAccountCommand { get; }
 
     public IAsyncRelayCommand TestDomainReachabilityCommand { get; }
     public IAsyncRelayCommand UnlockDomainUserCommand { get; }
@@ -373,11 +391,6 @@ public class IdentityBackupViewModel : ViewModelBase
             foreach (var acc in accounts)
             {
                 Accounts.Add(acc);
-            }
-
-            if (SelectedAccount == null && Accounts.Count > 0)
-            {
-                SelectedAccount = Accounts[0];
             }
 
             if (admin != null)
@@ -505,6 +518,39 @@ public class IdentityBackupViewModel : ViewModelBase
             LastIdentityStatus = ok ? $"Account '{username}' removed." : "Failed to remove account.";
             return Task.CompletedTask;
         });
+    }
+
+    private void OpenManageAccount(object? parameter)
+    {
+        var target = parameter as LocalAccountItem ?? SelectedAccount;
+        if (target == null) return;
+
+        var vm = new ManageLocalAccountViewModel(
+            target,
+            _identityService,
+            _confirmationService,
+            _backupService,
+            _dialogService,
+            Logger);
+
+        vm.RequestClose += () =>
+        {
+            IsManageAccountOpen = false;
+            CurrentManageAccount = null;
+            if (vm.IsAccountRemoved)
+            {
+                RefreshAccountsCore();
+            }
+        };
+
+        CurrentManageAccount = vm;
+        IsManageAccountOpen = true;
+    }
+
+    private void CloseManageAccount()
+    {
+        IsManageAccountOpen = false;
+        CurrentManageAccount = null;
     }
 
     private async Task TestDomainReachabilityAsync() => await ExecuteAsync($"Test Domain '{DomainTestName}'", () =>

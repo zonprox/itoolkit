@@ -218,9 +218,31 @@ public class OutlookService : IOutlookService
         }
     }
 
+    public OperationResult RepairGlobalMailSettings()
+    {
+        _logger?.LogInfo(nameof(OutlookService), "Configuring global Outlook mail settings (Send Mail Immediately)...");
+        _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
+        try
+        {
+            string mailOptionsKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Options\Mail";
+            _registry.CreateKey(mailOptionsKey);
+            _registry.SetValue(mailOptionsKey, "Send Mail Immediately", 1, RegistryValueKind.DWord);
+            return OperationResult.Succeeded("Global Outlook mail settings configured (Send Mail Immediately).");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(nameof(OutlookService), $"Failed to configure global mail settings: {ex.Message}");
+            return OperationResult.Failed($"Failed to configure global mail settings: {ex.Message}");
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
+        }
+    }
+
     public QuickMailRepairResult QuickMailAndCacheRepair(string? profileName = null)
     {
-        _logger?.LogInfo(nameof(OutlookService), "Executing Quick Mail & Cache Repair...");
+        _logger?.LogInfo(nameof(OutlookService), $"Executing Quick Mail & Cache Repair (Profile: '{profileName ?? "Global"}')...");
         _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
 
         // 1. Stuck Outbox registry fix
@@ -271,21 +293,48 @@ public class OutlookService : IOutlookService
             }
         }
 
-        // 4. NavPane Reset
-        string defaultProfile = profileName ?? "Outlook";
-        string navXml = Path.Combine(appDataOutlook, $"{defaultProfile}.xml");
+        // 4. NavPane Reset - Scoped strictly to profileName if provided, without touching sibling profiles
         bool navReset = false;
-        if (_fileSystem.FileExists(navXml))
+        if (!string.IsNullOrWhiteSpace(profileName))
         {
-            _fileSystem.DeleteFile(navXml);
-            navReset = true;
-        }
+            string navXml = Path.Combine(appDataOutlook, $"{profileName}.xml");
+            if (_fileSystem.FileExists(navXml))
+            {
+                _fileSystem.DeleteFile(navXml);
+                navReset = true;
+            }
 
-        string profKey = $@"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\{defaultProfile}";
-        if (_registry.KeyExists(profKey) && _registry.ValueExists(profKey, "NavPane"))
+            string profKey = $@"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\{profileName}";
+            if (_registry.KeyExists(profKey) && _registry.ValueExists(profKey, "NavPane"))
+            {
+                _registry.DeleteValue(profKey, "NavPane");
+                navReset = true;
+            }
+        }
+        else
         {
-            _registry.DeleteValue(profKey, "NavPane");
-            navReset = true;
+            if (_fileSystem.DirectoryExists(appDataOutlook))
+            {
+                foreach (var xmlFile in _fileSystem.EnumerateFiles(appDataOutlook, "*.xml"))
+                {
+                    _fileSystem.DeleteFile(xmlFile);
+                    navReset = true;
+                }
+            }
+
+            string profilesBase = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles";
+            if (_registry.KeyExists(profilesBase))
+            {
+                foreach (var prof in _registry.GetSubKeyNames(profilesBase))
+                {
+                    string profKey = $@"{profilesBase}\{prof}";
+                    if (_registry.ValueExists(profKey, "NavPane"))
+                    {
+                        _registry.DeleteValue(profKey, "NavPane");
+                        navReset = true;
+                    }
+                }
+            }
         }
 
         _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
@@ -404,9 +453,15 @@ public class OutlookService : IOutlookService
         }
     }
 
-    public DataFileRelocationResult RelocateDataFile(string sourceFilePath, string destinationDirectory)
+    public DataFileRelocationResult RelocateDataFile(MapiDataFileInfo fileInfo, string destinationDirectory)
     {
-        _logger?.LogInfo(nameof(OutlookService), $"Relocating data file '{sourceFilePath}' to '{destinationDirectory}'...");
+        ArgumentNullException.ThrowIfNull(fileInfo);
+        return RelocateDataFile(fileInfo.FilePath, destinationDirectory, fileInfo.RegistryPath);
+    }
+
+    public DataFileRelocationResult RelocateDataFile(string sourceFilePath, string destinationDirectory, string? registryKeyPath = null)
+    {
+        _logger?.LogInfo(nameof(OutlookService), $"Relocating data file '{sourceFilePath}' to '{destinationDirectory}' (RegistryScope: '{registryKeyPath ?? "Global"}')...");
 
         // Step 1: Pre-execution process guard
         _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
@@ -418,6 +473,24 @@ public class OutlookService : IOutlookService
             }
 
             long fileSize = _fileSystem.GetFileSize(sourceFilePath);
+            string fileName = Path.GetFileName(sourceFilePath);
+            string destinationFilePath = string.Equals(Path.GetFullPath(sourceFilePath), Path.GetFullPath(destinationDirectory), StringComparison.OrdinalIgnoreCase)
+                ? sourceFilePath
+                : Path.Combine(destinationDirectory, fileName);
+
+            if (string.Equals(Path.GetFullPath(sourceFilePath), Path.GetFullPath(destinationFilePath), StringComparison.OrdinalIgnoreCase))
+            {
+                _logger?.LogInfo(nameof(OutlookService), $"Source and destination are identical ('{sourceFilePath}'); file is already in place.");
+                return new DataFileRelocationResult(
+                    sourceFilePath,
+                    destinationFilePath,
+                    fileSize,
+                    Sha256Matched: true,
+                    SymlinkCreated: false,
+                    RegistryUpdated: true,
+                    Success: true,
+                    Message: "Source and destination are identical; file is already in place.");
+            }
 
             // Step 2: Headroom verification (>= 1.2x)
             _resourceGuard.ValidateDiskSpace(destinationDirectory, fileSize, safetyMultiplier: 1.2);
@@ -426,8 +499,6 @@ public class OutlookService : IOutlookService
             string preHash = _resourceGuard.ComputeSha256(sourceFilePath);
 
             _fileSystem.CreateDirectory(destinationDirectory);
-            string fileName = Path.GetFileName(sourceFilePath);
-            string destinationFilePath = Path.Combine(destinationDirectory, fileName);
 
             // Step 4: Copy file
             _fileSystem.CopyFile(sourceFilePath, destinationFilePath, overwrite: true);
@@ -452,7 +523,7 @@ public class OutlookService : IOutlookService
             }
             else
             {
-                UpdateMapiProfilePaths(sourceFilePath, destinationFilePath);
+                UpdateMapiProfilePaths(sourceFilePath, destinationFilePath, registryKeyPath);
                 if (_outlookCom != null)
                 {
                     _outlookCom.CloneFolderHierarchy(sourceFilePath, destinationFilePath, null);
@@ -477,20 +548,27 @@ public class OutlookService : IOutlookService
         }
     }
 
-    private void UpdateMapiProfilePaths(string oldFilePath, string newFilePath)
+    private void UpdateMapiProfilePaths(string oldFilePath, string newFilePath, string? registryKeyPath = null)
     {
-        var profileBases = new[]
+        if (!string.IsNullOrWhiteSpace(registryKeyPath) && _registry.KeyExists(registryKeyPath))
         {
-            @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles",
-            @"HKCU\Software\Microsoft\Office\15.0\Outlook\Profiles",
-            @"HKCU\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles"
-        };
-
-        foreach (var profBase in profileBases)
+            UpdateProfileKeyRecursively(registryKeyPath, oldFilePath, newFilePath);
+        }
+        else
         {
-            foreach (var profile in _registry.GetSubKeyNames(profBase))
+            var profileBases = new[]
             {
-                UpdateProfileKeyRecursively($@"{profBase}\{profile}", oldFilePath, newFilePath);
+                @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles",
+                @"HKCU\Software\Microsoft\Office\15.0\Outlook\Profiles",
+                @"HKCU\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles"
+            };
+
+            foreach (var profBase in profileBases)
+            {
+                foreach (var profile in _registry.GetSubKeyNames(profBase))
+                {
+                    UpdateProfileKeyRecursively($@"{profBase}\{profile}", oldFilePath, newFilePath);
+                }
             }
         }
 

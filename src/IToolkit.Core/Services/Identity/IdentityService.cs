@@ -158,12 +158,31 @@ public class IdentityService : IIdentityService
         return res.ExitCode == 0;
     }
 
+    public bool ResetUserPassword(string username, string newPassword)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newPassword);
+
+        _logger?.LogInfo(nameof(IdentityService), $"Resetting password for user '{username}'...");
+        string escapedPassword = newPassword.Replace("\"", "\\\"");
+        var res = _processRunner.Run("net.exe", $"user \"{username}\" \"{escapedPassword}\"");
+        if (res.ExitCode != 0)
+        {
+            _logger?.LogError(nameof(IdentityService), $"Failed to reset password for user '{username}'. Exit code: {res.ExitCode}. Error: {res.StandardError}");
+            return false;
+        }
+
+        _logger?.LogSuccess(nameof(IdentityService), $"Password reset successfully for user '{username}'.");
+        return true;
+    }
+
     public bool RemoveLocalAccount(string username, string? sid = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         _logger?.LogInfo(nameof(IdentityService), $"Attempting deletion of local account '{username}'...");
 
-        string cleanName = username.Contains('\\') ? username.Substring(username.LastIndexOf('\\') + 1) : username;
+        string trimmed = username.Trim();
+        string cleanName = (trimmed.Contains('\\') ? trimmed[(trimmed.LastIndexOf('\\') + 1)..] : trimmed).Trim();
 
         // GUARDRAIL 1: Built-in Administrator Protection (SID -500)
         if (cleanName.Equals("Administrator", StringComparison.OrdinalIgnoreCase) ||

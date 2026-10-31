@@ -613,6 +613,20 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
         Assert.True(snapshot.MemoryTotalBytes > 0);
         Assert.True(snapshot.SystemDriveTotalBytes > 0);
         Assert.True(snapshot.SystemDriveFreeBytes > 0);
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.ComputerName));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.DomainOrWorkgroup));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.CurrentUser));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.UserProfilePath));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.SystemUptime));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.OsArchitecture));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.CpuModelName));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.SystemManufacturerModel));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.GpuModelName));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.BiosAndSerial));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.AllDrivesSummary));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.PrimaryNetworkAdapter));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.Ipv4Address));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.MacAddress));
 
         // 6. ActivityLogger: Real log file creation and levels in sandbox
         _realLogger.Log(LogLevel.Info, "LiveTest", "Info entry");

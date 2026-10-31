@@ -269,8 +269,9 @@ public class DashboardEndToEndTests
         // Assert
         Assert.Equal("Mailbox cache and outbox clean", dashboardVm.OfficeStatus);
         Assert.Contains(consoleVm.FilteredEntries, e => e.Message.Contains("Quick Outlook Mail Repair"));
+        Assert.Equal(1, reg.GetValue(@"HKCU\Software\Microsoft\Office\16.0\Outlook\Options\Mail", "Send Mail Immediately"));
         Assert.True(fs.FileExists(Path.Combine(roamDir, "Stream_Autocomplete_0_TEST.dat")), "Autocomplete MUST be preserved.");
-        Assert.False(fs.FileExists(Path.Combine(roamDir, "Stream_Rules_0_TEST.dat")), "Stale cache should be cleaned.");
+        Assert.True(fs.FileExists(Path.Combine(roamDir, "Stream_Rules_0_TEST.dat")), "Global repair must not delete profile cache files.");
     }
 
     [Fact]

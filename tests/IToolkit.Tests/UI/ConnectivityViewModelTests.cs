@@ -311,4 +311,264 @@ public class ConnectivityViewModelTests
         Assert.Contains("20480 bytes", vm.LastPrinterStatus);
         Assert.Contains("[Stalled Jobs Detected]", vm.LastPrinterStatus);
     }
+
+    [Fact]
+    public void OpenAdapterEditPopupCommand_PopulatesAdapterStateAndOpensPopup()
+    {
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("eth0", "Ethernet 1", "Intel Adapter", "00-11-22-33-44-55", "Up", new[] { "192.168.1.100" }, false, "255.255.255.0", "192.168.1.1", new[] { "1.1.1.1", "8.8.8.8" }, 1492);
+        vm.AvailableAdapters.Add(adapter);
+        vm.SelectedAdapter = adapter;
+
+        vm.OpenAdapterEditPopupCommand.Execute(null);
+
+        Assert.True(vm.IsAdapterEditPopupOpen);
+        Assert.NotNull(vm.SelectedEditingAdapter);
+        Assert.Equal("Ethernet 1", vm.SelectedEditingAdapter.Name);
+        Assert.False(vm.AdapterUseDhcpIp);
+        Assert.Equal("192.168.1.100", vm.AdapterStaticIp);
+        Assert.Equal("255.255.255.0", vm.AdapterSubnetMask);
+        Assert.Equal("192.168.1.1", vm.AdapterDefaultGateway);
+        Assert.Equal("1.1.1.1", vm.AdapterPreferredDns);
+        Assert.Equal("8.8.8.8", vm.AdapterAlternateDns);
+        Assert.Equal(1492, vm.AdapterMtu);
+    }
+
+    [Fact]
+    public void OpenAdapterEditPopupForItemCommand_PopulatesItemStateAndOpensPopup()
+    {
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("wlan0", "Wi-Fi", "Intel Wi-Fi", "66-77-88-99-AA-BB", "Up", new[] { "10.0.0.50" }, true);
+
+        vm.OpenAdapterEditPopupForItemCommand.Execute(adapter);
+
+        Assert.True(vm.IsAdapterEditPopupOpen);
+        Assert.Equal("Wi-Fi", vm.SelectedEditingAdapter?.Name);
+        Assert.True(vm.AdapterUseDhcpIp);
+    }
+
+    [Fact]
+    public void CloseAdapterEditPopupCommand_ClosesPopupAndClearsSelection()
+    {
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("eth0", "Ethernet 1", "Intel Adapter", "00-11-22-33-44-55", "Up", new[] { "192.168.1.100" });
+        vm.OpenAdapterEditPopupForItemCommand.Execute(adapter);
+        Assert.True(vm.IsAdapterEditPopupOpen);
+
+        vm.CloseAdapterEditPopupCommand.Execute(null);
+
+        Assert.False(vm.IsAdapterEditPopupOpen);
+        Assert.Null(vm.SelectedEditingAdapter);
+    }
+
+    [Fact]
+    public async Task SaveAdapterIpConfigCommand_InvokesServiceWithConfig()
+    {
+        _connectivityMock
+            .Setup(c => c.SetAdapterIpConfiguration("Ethernet 1", It.IsAny<AdapterIpConfig>()))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("eth0", "Ethernet 1", "Intel Adapter", "00-11-22-33-44-55", "Up", new[] { "192.168.1.100" });
+        vm.OpenAdapterEditPopupForItemCommand.Execute(adapter);
+
+        vm.AdapterUseDhcpIp = false;
+        vm.AdapterStaticIp = "192.168.1.200";
+        vm.AdapterSubnetMask = "255.255.255.0";
+        vm.AdapterDefaultGateway = "192.168.1.1";
+
+        await vm.SaveAdapterIpConfigCommand.ExecuteAsync(null);
+
+        _connectivityMock.Verify(c => c.SetAdapterIpConfiguration("Ethernet 1", It.Is<AdapterIpConfig>(cfg => !cfg.UseDhcp && cfg.IpAddress == "192.168.1.200")), Times.Once);
+        Assert.Contains("IP configuration for 'Ethernet 1' updated successfully", vm.LastNetworkStatus);
+    }
+
+    [Fact]
+    public async Task SaveAdapterDnsConfigCommand_InvokesServiceWithConfig()
+    {
+        _connectivityMock
+            .Setup(c => c.SetAdapterDnsConfiguration("Ethernet 1", It.IsAny<AdapterDnsConfig>()))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("eth0", "Ethernet 1", "Intel Adapter", "00-11-22-33-44-55", "Up", new[] { "192.168.1.100" });
+        vm.OpenAdapterEditPopupForItemCommand.Execute(adapter);
+
+        vm.AdapterUseDhcpDns = false;
+        vm.AdapterPreferredDns = "1.1.1.1";
+        vm.AdapterAlternateDns = "8.8.8.8";
+
+        await vm.SaveAdapterDnsConfigCommand.ExecuteAsync(null);
+
+        _connectivityMock.Verify(c => c.SetAdapterDnsConfiguration("Ethernet 1", It.Is<AdapterDnsConfig>(cfg => !cfg.UseDhcp && cfg.PreferredDns == "1.1.1.1" && cfg.AlternateDns == "8.8.8.8")), Times.Once);
+        Assert.Contains("DNS configuration for 'Ethernet 1' updated successfully", vm.LastNetworkStatus);
+    }
+
+    [Fact]
+    public async Task SetAdapterMtuCommand_InvokesServiceWithMtu()
+    {
+        _connectivityMock
+            .Setup(c => c.SetAdapterMtu("Ethernet 1", 1492))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("eth0", "Ethernet 1", "Intel Adapter", "00-11-22-33-44-55", "Up", new[] { "192.168.1.100" });
+        vm.OpenAdapterEditPopupForItemCommand.Execute(adapter);
+
+        vm.AdapterMtu = 1492;
+        await vm.SetAdapterMtuCommand.ExecuteAsync(null);
+
+        _connectivityMock.Verify(c => c.SetAdapterMtu("Ethernet 1", 1492), Times.Once);
+        Assert.Contains("MTU for 'Ethernet 1' set to 1492", vm.LastNetworkStatus);
+    }
+
+    [Fact]
+    public async Task ToggleAdapterEnableCommand_DisablesUpAdapter()
+    {
+        _connectivityMock
+            .Setup(c => c.DisableAdapter("Ethernet 1"))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("eth0", "Ethernet 1", "Intel Adapter", "00-11-22-33-44-55", "Up", new[] { "192.168.1.100" });
+        vm.OpenAdapterEditPopupForItemCommand.Execute(adapter);
+
+        await vm.ToggleAdapterEnableCommand.ExecuteAsync(null);
+
+        _connectivityMock.Verify(c => c.DisableAdapter("Ethernet 1"), Times.Once);
+        Assert.Contains("disabled successfully", vm.LastNetworkStatus);
+    }
+
+    [Fact]
+    public async Task RenewAdapterDhcpCommand_InvokesServiceForTargetAdapter()
+    {
+        _connectivityMock
+            .Setup(c => c.ReleaseRenewAdapterDhcp("Ethernet 1"))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var adapter = new NetworkAdapterInfo("eth0", "Ethernet 1", "Intel Adapter", "00-11-22-33-44-55", "Up", new[] { "192.168.1.100" });
+        vm.OpenAdapterEditPopupForItemCommand.Execute(adapter);
+
+        await vm.RenewAdapterDhcpCommand.ExecuteAsync(null);
+
+        _connectivityMock.Verify(c => c.ReleaseRenewAdapterDhcp("Ethernet 1"), Times.Once);
+        Assert.Contains("DHCP lease for 'Ethernet 1' renewed successfully", vm.LastNetworkStatus);
+    }
+
+    [Fact]
+    public async Task RefreshPrintersCommand_PopulatesAvailablePrinters()
+    {
+        var printers = new List<PrinterInfo>
+        {
+            new("Canon Office", "Canon Driver", "USB001", true, false, "Ready", 0),
+            new("HP LaserJet", "HP Driver", "192.168.1.50", false, true, "Ready", 2)
+        };
+
+        _printerMock.Setup(p => p.GetPrinters()).Returns(printers);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+
+        await vm.RefreshPrintersCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, vm.AvailablePrinters.Count);
+        Assert.Equal("Canon Office", vm.SelectedPrinter?.Name);
+        Assert.Contains("Discovered 2 installed printer(s)", vm.LastPrinterStatus);
+    }
+
+    [Fact]
+    public void OpenPrinterEditPopupCommand_PopulatesPrinterStateAndOpensPopup()
+    {
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var printer = new PrinterInfo("HP LaserJet", "HP Driver", "192.168.1.50", false, true, "Ready", 1);
+        vm.AvailablePrinters.Add(printer);
+        vm.SelectedPrinter = printer;
+
+        vm.OpenPrinterEditPopupCommand.Execute(null);
+
+        Assert.True(vm.IsPrinterEditPopupOpen);
+        Assert.Equal("HP LaserJet", vm.SelectedEditingPrinter?.Name);
+    }
+
+    [Fact]
+    public void ClosePrinterEditPopupCommand_ClosesPopupAndClearsSelection()
+    {
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var printer = new PrinterInfo("HP LaserJet", "HP Driver", "192.168.1.50", false, true, "Ready", 1);
+        vm.OpenPrinterEditPopupForItemCommand.Execute(printer);
+        Assert.True(vm.IsPrinterEditPopupOpen);
+
+        vm.ClosePrinterEditPopupCommand.Execute(null);
+
+        Assert.False(vm.IsPrinterEditPopupOpen);
+        Assert.Null(vm.SelectedEditingPrinter);
+    }
+
+    [Fact]
+    public async Task PrintTestPageCommand_InvokesServiceForTargetPrinter()
+    {
+        _printerMock
+            .Setup(p => p.PrintTestPage("Office Canon"))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var printer = new PrinterInfo("Office Canon", "Canon Driver", "USB001", true, false, "Ready", 0);
+        vm.OpenPrinterEditPopupForItemCommand.Execute(printer);
+
+        await vm.PrintTestPageCommand.ExecuteAsync(null);
+
+        _printerMock.Verify(p => p.PrintTestPage("Office Canon"), Times.Once);
+        Assert.Contains("Test page sent to printer 'Office Canon' successfully", vm.LastPrinterStatus);
+    }
+
+    [Fact]
+    public async Task PurgeTargetPrinterQueueCommand_InvokesServiceForTargetPrinter()
+    {
+        _printerMock
+            .Setup(p => p.PurgePrinterQueue("Office Canon"))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var printer = new PrinterInfo("Office Canon", "Canon Driver", "USB001", true, false, "Ready", 3);
+        vm.OpenPrinterEditPopupForItemCommand.Execute(printer);
+
+        await vm.PurgeTargetPrinterQueueCommand.ExecuteAsync(null);
+
+        _printerMock.Verify(p => p.PurgePrinterQueue("Office Canon"), Times.Once);
+        Assert.Contains("Print queue for printer 'Office Canon' purged successfully", vm.LastPrinterStatus);
+    }
+
+    [Fact]
+    public async Task SetAsDefaultPrinterCommand_InvokesServiceForTargetPrinter()
+    {
+        _printerMock
+            .Setup(p => p.SetDefaultPrinter("Office Canon"))
+            .Returns(true);
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var printer = new PrinterInfo("Office Canon", "Canon Driver", "USB001", false, false, "Ready", 0);
+        vm.OpenPrinterEditPopupForItemCommand.Execute(printer);
+
+        await vm.SetAsDefaultPrinterCommand.ExecuteAsync(null);
+
+        _printerMock.Verify(p => p.SetDefaultPrinter("Office Canon"), Times.Once);
+        Assert.Contains("Printer 'Office Canon' set as default successfully", vm.LastPrinterStatus);
+    }
+
+    [Fact]
+    public async Task ResetTargetPrinterConnectionCommand_InvokesServiceForTargetPrinter()
+    {
+        _printerMock
+            .Setup(p => p.ResetPrinterConnection(@"\\Server\Canon"))
+            .Returns(new PrinterConnectionResetResult(1, 1, 0, new[] { "Reconnected" }, true));
+
+        var vm = new ConnectivityViewModel(_connectivityMock.Object, _printerMock.Object, _loggerMock.Object);
+        var printer = new PrinterInfo(@"\\Server\Canon", "Canon Driver", "NetPort", false, true, "Ready", 0);
+        vm.OpenPrinterEditPopupForItemCommand.Execute(printer);
+
+        await vm.ResetTargetPrinterConnectionCommand.ExecuteAsync(null);
+
+        _printerMock.Verify(p => p.ResetPrinterConnection(@"\\Server\Canon"), Times.Once);
+        Assert.Contains(@"Reset connection for '\\Server\Canon'", vm.LastPrinterStatus);
+    }
 }

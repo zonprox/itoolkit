@@ -57,16 +57,16 @@ public class BackupService : IBackupService
     public UserProfileMap GetUserProfileMap(string? username = null)
     {
         _logger?.LogInfo(nameof(BackupService), "Resolving user profile shell folders and detecting OneDrive redirection...");
-        string user = username ?? Environment.UserName;
+        string user = string.IsNullOrWhiteSpace(username) ? Environment.UserName : username.Trim();
         string profileDir = GetUserProfileDir(user);
 
         string shellFoldersKey = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders";
 
-        string desktop = ResolveShellFolder(shellFoldersKey, "Desktop", Path.Combine(profileDir, "Desktop"));
-        string personal = ResolveShellFolder(shellFoldersKey, "Personal", Path.Combine(profileDir, "Documents"));
-        string downloads = ResolveShellFolder(shellFoldersKey, "{374DE290-123F-4565-9164-39C4925E467B}", Path.Combine(profileDir, "Downloads"));
-        string favorites = ResolveShellFolder(shellFoldersKey, "Favorites", Path.Combine(profileDir, "Favorites"));
-        string pictures = ResolveShellFolder(shellFoldersKey, "My Pictures", Path.Combine(profileDir, "Pictures"));
+        string desktop = ResolveShellFolder(shellFoldersKey, "Desktop", Path.Combine(profileDir, "Desktop"), profileDir, user);
+        string personal = ResolveShellFolder(shellFoldersKey, "Personal", Path.Combine(profileDir, "Documents"), profileDir, user);
+        string downloads = ResolveShellFolder(shellFoldersKey, "{374DE290-123F-4565-9164-39C4925E467B}", Path.Combine(profileDir, "Downloads"), profileDir, user);
+        string favorites = ResolveShellFolder(shellFoldersKey, "Favorites", Path.Combine(profileDir, "Favorites"), profileDir, user);
+        string pictures = ResolveShellFolder(shellFoldersKey, "My Pictures", Path.Combine(profileDir, "Pictures"), profileDir, user);
 
         bool isOneDriveRedirected = desktop.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
                                    personal.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
@@ -76,14 +76,17 @@ public class BackupService : IBackupService
         return new UserProfileMap(user, profileDir, desktop, personal, downloads, favorites, pictures, isOneDriveRedirected);
     }
 
-    private string ResolveShellFolder(string keyPath, string valueName, string fallbackPath)
+    private string ResolveShellFolder(string keyPath, string valueName, string fallbackPath, string profileDir, string user)
     {
         if (_registry.KeyExists(keyPath) && _registry.ValueExists(keyPath, valueName))
         {
             var raw = _registry.GetValue(keyPath, valueName)?.ToString();
             if (!string.IsNullOrWhiteSpace(raw))
             {
-                return Environment.ExpandEnvironmentVariables(raw);
+                string expanded = raw
+                    .Replace("%USERPROFILE%", profileDir, StringComparison.OrdinalIgnoreCase)
+                    .Replace("%USERNAME%", user, StringComparison.OrdinalIgnoreCase);
+                return Environment.ExpandEnvironmentVariables(expanded);
             }
         }
         return fallbackPath;

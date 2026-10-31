@@ -479,4 +479,206 @@ public class ConnectivityAndPrinterServiceTests
         Assert.Equal(1, result.RemovedStalePrinters); // OldDotMatrix
         Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("net start spooler"));
     }
+
+    [Fact]
+    public void EnableAdapter_CallsNetworkAndProcess_ReturnsTrue()
+    {
+        bool result = _connectivityService.EnableAdapter("Ethernet 1");
+        Assert.True(result);
+        Assert.Contains("Ethernet 1", _network.EnabledAdapters);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("interface set interface \"Ethernet 1\" enable"));
+    }
+
+    [Fact]
+    public void DisableAdapter_CallsNetworkAndProcess_ReturnsTrue()
+    {
+        bool result = _connectivityService.DisableAdapter("Ethernet 1");
+        Assert.True(result);
+        Assert.Contains("Ethernet 1", _network.DisabledAdapters);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("interface set interface \"Ethernet 1\" disable"));
+    }
+
+    [Fact]
+    public void ReleaseRenewAdapterDhcp_CallsNetworkAndProcess_ReturnsTrue()
+    {
+        bool result = _connectivityService.ReleaseRenewAdapterDhcp("Ethernet 1");
+        Assert.True(result);
+        Assert.Contains("Ethernet 1", _network.RenewedDhcpAdapters);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("ipconfig.exe /renew \"Ethernet 1\""));
+    }
+
+    [Fact]
+    public void SetAdapterIpConfiguration_StaticIp_CallsNetworkAndSetsStaticAddress()
+    {
+        var config = new AdapterIpConfig(false, "192.168.1.50", "255.255.255.0", "192.168.1.1");
+        bool result = _connectivityService.SetAdapterIpConfiguration("Ethernet 1", config);
+
+        Assert.True(result);
+        Assert.True(_network.ConfiguredIpAdapters.ContainsKey("Ethernet 1"));
+        Assert.Equal("192.168.1.50", _network.ConfiguredIpAdapters["Ethernet 1"].IpAddress);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("interface ipv4 set address \"Ethernet 1\" static 192.168.1.50 255.255.255.0 192.168.1.1"));
+    }
+
+    [Fact]
+    public void SetAdapterIpConfiguration_Dhcp_CallsNetworkAndSetsDhcp()
+    {
+        var config = new AdapterIpConfig(true);
+        bool result = _connectivityService.SetAdapterIpConfiguration("Ethernet 1", config);
+
+        Assert.True(result);
+        Assert.True(_network.ConfiguredIpAdapters.ContainsKey("Ethernet 1"));
+        Assert.True(_network.ConfiguredIpAdapters["Ethernet 1"].UseDhcp);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("interface ipv4 set address \"Ethernet 1\" dhcp"));
+    }
+
+    [Fact]
+    public void SetAdapterDnsConfiguration_CustomDns_CallsNetworkAndSetsDnsServers()
+    {
+        var config = new AdapterDnsConfig(false, "1.1.1.1", "8.8.8.8");
+        bool result = _connectivityService.SetAdapterDnsConfiguration("Ethernet 1", config);
+
+        Assert.True(result);
+        Assert.True(_network.ConfiguredDnsAdapters.ContainsKey("Ethernet 1"));
+        Assert.Equal("1.1.1.1", _network.ConfiguredDnsAdapters["Ethernet 1"].PreferredDns);
+        Assert.Equal("8.8.8.8", _network.ConfiguredDnsAdapters["Ethernet 1"].AlternateDns);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("interface ipv4 set dnsservers \"Ethernet 1\" static 1.1.1.1 primary"));
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("interface ipv4 add dnsservers \"Ethernet 1\" 8.8.8.8 index=2"));
+    }
+
+    [Fact]
+    public void SetAdapterMtu_ValidRange_SetsSubinterfaceMtu()
+    {
+        bool result = _connectivityService.SetAdapterMtu("Ethernet 1", 1492);
+
+        Assert.True(result);
+        Assert.True(_network.ConfiguredMtuAdapters.ContainsKey("Ethernet 1"));
+        Assert.Equal(1492, _network.ConfiguredMtuAdapters["Ethernet 1"]);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("mtu=1492 store=persistent"));
+    }
+
+    [Theory]
+    [InlineData(500)]
+    [InlineData(10000)]
+    public void SetAdapterMtu_InvalidRange_ReturnsFalse(int invalidMtu)
+    {
+        bool result = _connectivityService.SetAdapterMtu("Ethernet 1", invalidMtu);
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void GetPrinters_EnumeratesDiscoveredPrintersWithAccurateAttributes()
+    {
+        _wmi.SetQueryResult("SELECT Name, DriverName, PortName, Default, Network, Status, ServerName, ShareName FROM Win32_Printer", new[]
+        {
+            new Dictionary<string, object?>
+            {
+                { "Name", "HP LaserJet Pro" },
+                { "DriverName", "HP Universal Printing PCL 6" },
+                { "PortName", "192.168.1.150" },
+                { "Default", true },
+                { "Network", false },
+                { "Status", "Ready" }
+            }
+        });
+
+        var printers = _printerService.GetPrinters().ToList();
+
+        Assert.Single(printers);
+        var hp = printers[0];
+        Assert.Equal("HP LaserJet Pro", hp.Name);
+        Assert.Equal("HP Universal Printing PCL 6", hp.DriverName);
+        Assert.Equal("192.168.1.150", hp.PortName);
+        Assert.True(hp.IsDefault);
+        Assert.False(hp.IsNetwork);
+        Assert.Equal("Ready", hp.Status);
+    }
+
+    [Fact]
+    public void GetPrinterJobs_ReturnsJobsForTargetPrinter()
+    {
+        _wmi.SetQueryResult("SELECT JobId, Document, Owner, Size, Status, TimeSubmitted FROM Win32_PrintJob WHERE Name LIKE 'HP LaserJet Pro%'", new[]
+        {
+            new Dictionary<string, object?>
+            {
+                { "JobId", 101 },
+                { "Document", "Quarterly Report.pdf" },
+                { "Owner", "Admin" },
+                { "Size", 204800L },
+                { "Status", "Printing" }
+            }
+        });
+
+        var jobs = _printerService.GetPrinterJobs("HP LaserJet Pro").ToList();
+
+        Assert.Single(jobs);
+        Assert.Equal(101, jobs[0].JobId);
+        Assert.Equal("Quarterly Report.pdf", jobs[0].DocumentName);
+        Assert.Equal("Admin", jobs[0].Owner);
+        Assert.Equal(204800L, jobs[0].SizeBytes);
+    }
+
+    [Fact]
+    public void PurgePrinterQueue_PurgesJobsForTargetPrinterOnly()
+    {
+        bool result = _printerService.PurgePrinterQueue("HP LaserJet Pro");
+
+        Assert.True(result);
+        Assert.Contains("Win32_Printer::CancelAllJobs", _wmi.ExecutedMethods);
+    }
+
+    [Fact]
+    public void PrintTestPage_ExecutesPrintUIEntryTargetingSpecifiedPrinter()
+    {
+        bool result = _printerService.PrintTestPage("Office Canon");
+
+        Assert.True(result);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("printui.dll,PrintUIEntry /k /n \"Office Canon\""));
+    }
+
+    [Fact]
+    public void SetDefaultPrinter_ExecutesPrintUIEntryAndUpdatesRegistry()
+    {
+        string winKey = @"HKCU\Software\Microsoft\Windows NT\CurrentVersion\Windows";
+        _registry.CreateKey(winKey);
+        _registry.SetValue(winKey, "Device", "OldPrinter,winspool,Ne01:", RegistryValueKind.String);
+
+        bool result = _printerService.SetDefaultPrinter("Office Canon");
+
+        Assert.True(result);
+        Assert.Contains(_processRunner.ExecutedCommands, c => c.Contains("printui.dll,PrintUIEntry /y /n \"Office Canon\""));
+        string currentDevice = _registry.GetValue<string>(winKey, "Device") ?? "";
+        Assert.StartsWith("Office Canon,", currentDevice);
+    }
+
+    [Fact]
+    public void ResetPrinterConnection_TargetsOnlySpecifiedPrinter()
+    {
+        _network.SetHostReachable("PrintServer", true);
+
+        var result = _printerService.ResetPrinterConnection(@"\\PrintServer\OfficeCanon");
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.DiscoveredPrinters);
+        Assert.Equal(1, result.ReconnectedPrinters);
+        Assert.Contains(result.Details, d => d.Contains(@"\\PrintServer\OfficeCanon"));
+    }
+
+    [Fact]
+    public void ResetAllPrinterConnections_ResetsAllDiscoveredNetworkPrinters()
+    {
+        _wmi.SetQueryResult("SELECT Name FROM Win32_Printer", new[]
+        {
+            new Dictionary<string, object?> { { "Name", @"\\ServerA\Printer1" } },
+            new Dictionary<string, object?> { { "Name", @"\\ServerB\Printer2" } }
+        });
+
+        _network.SetHostReachable("ServerA", true);
+        _network.SetHostReachable("ServerB", true);
+
+        var result = _printerService.ResetAllPrinterConnections();
+
+        Assert.True(result.Success);
+        Assert.Equal(2, result.DiscoveredPrinters);
+        Assert.Equal(2, result.ReconnectedPrinters);
+    }
 }

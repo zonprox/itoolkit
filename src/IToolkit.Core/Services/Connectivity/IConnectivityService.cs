@@ -17,5 +17,11 @@ public interface IConnectivityService
     NetworkRemediationResult RemediateNetworkStack();
     SmbConfigResult ConfigureSmbSharing();
     bool RestartAdapter(string adapterName);
+    bool EnableAdapter(string adapterName);
+    bool DisableAdapter(string adapterName);
+    bool ReleaseRenewAdapterDhcp(string adapterName);
+    bool SetAdapterIpConfiguration(string adapterName, AdapterIpConfig config);
+    bool SetAdapterDnsConfiguration(string adapterName, AdapterDnsConfig config);
+    bool SetAdapterMtu(string adapterName, int mtu);
     PrinterPortDiagnosticResult DiagnosePrinterPortConnectivity(string host);
 }

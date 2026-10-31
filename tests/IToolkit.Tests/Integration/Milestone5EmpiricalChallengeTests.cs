@@ -331,8 +331,8 @@ public class Milestone5EmpiricalChallengeTests
 
         var officeMock = new Mock<IOfficeSuiteService>();
         var outlookMock = new Mock<IOutlookService>();
-        outlookMock.Setup(o => o.QuickMailAndCacheRepair(It.IsAny<string?>()))
-            .Throws(new IOException("RoamCache locked by external process."));
+        outlookMock.Setup(o => o.RepairGlobalMailSettings())
+            .Throws(new IOException("Mail options registry locked."));
 
         var netMock = new Mock<IConnectivityService>();
         netMock.Setup(c => c.RemediateNetworkStack())
@@ -367,7 +367,7 @@ public class Milestone5EmpiricalChallengeTests
         // 2. QuickMailRepair
         await dashboardVm.QuickMailRepairCommand.ExecuteAsync(null);
         Assert.False(dashboardVm.IsBusy);
-        Assert.Contains("failed: RoamCache locked", dashboardVm.StatusMessage);
+        Assert.Contains("failed: Mail options registry locked", dashboardVm.StatusMessage);
 
         // 3. QuickNetworkReset
         await dashboardVm.QuickNetworkResetCommand.ExecuteAsync(null);

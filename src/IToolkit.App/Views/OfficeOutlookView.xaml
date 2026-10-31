@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
+             xmlns:views="clr-namespace:IToolkit.App.Views"
              xmlns:converters="clr-namespace:IToolkit.App.Converters"
              d:DataContext="{d:DesignInstance Type=vm:OfficeOutlookViewModel}"
              mc:Ignorable="d"
@@ -14,7 +15,7 @@
     </UserControl.Resources>
 
     <Grid Margin="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-        <!-- Structured 3-Tab Sub-Views -->
+        <!-- Structured 2-Tab Sub-Views (Automated New Default PST & Per-User Actions Integrated in User Edit Popup) -->
         <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <!-- Tab 1: Click-to-Run & App Quick Repairs -->
             <TabItem Header="Click-to-Run &amp; App Quick Repairs">
@@ -79,79 +80,39 @@
                     <StackPanel Margin="0,8,0,16">
                         <Border Style="{StaticResource FluentCardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Outlook Mail &amp; MAPI Data Files (PST / OST)" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Outlook Email Users &amp; MAPI Data Files (PST / OST)" Style="{StaticResource FluentSectionTitleStyle}" />
 
                                 <WrapPanel Margin="0,0,0,12">
-                                    <Button Content="Quick Mail &amp; Cache Repair" Command="{Binding QuickMailRepairCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
-                                            Padding="14,7" Margin="0,0,8,6" />
-                                    <Button Content="Expand Limits to 100 GB" Command="{Binding Expand100GBCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
                                     <Button Content="Refresh Data Files" Command="{Binding DiscoverDataFilesCommand}"
                                             IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
-                                    <Button Content="Compact Selected PST" Command="{Binding CompactSelectedPstCommand}"
+                                    <Button Content="Expand Limits to 100 GB" Command="{Binding Expand100GBCommand}"
                                             IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                                    <Button Content="Edit Selected User" Command="{Binding OpenUserEditPopupCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,7" Margin="0,0,8,6"
+                                            ToolTip="Open dedicated popup to manage PST/OST, relocate, backup, or run New Default PST pipeline for the selected user" />
                                 </WrapPanel>
 
                                 <DataGrid ItemsSource="{Binding DataFiles}" SelectedItem="{Binding SelectedDataFile, Mode=TwoWay}"
-                                          AutoGenerateColumns="False" CanUserAddRows="False" MinHeight="180" Margin="0,0,0,14">
+                                          AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" MinHeight="220" Margin="0,0,0,12">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}" Width="180" />
-                                        <DataGridTextColumn Header="Format" Binding="{Binding Format}" Width="80" />
-                                        <DataGridTextColumn Header="Size (Bytes)" Binding="{Binding FileSizeBytes}" Width="120" />
+                                        <DataGridTextColumn Header="Email User / Store" Binding="{Binding DisplayName}" Width="170" />
+                                        <DataGridTextColumn Header="Profile" Binding="{Binding ProfileName}" Width="90" />
+                                        <DataGridTextColumn Header="Format" Binding="{Binding Format}" Width="65" />
+                                        <DataGridTextColumn Header="Size" Binding="{Binding FileSizeFormatted}" Width="85" />
                                         <DataGridTextColumn Header="File Path" Binding="{Binding FilePath}" Width="*" />
+                                        <DataGridTemplateColumn Header="Manage" Width="105">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="Manage Store"
+                                                            Command="{Binding DataContext.OpenUserEditPopupForItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Padding="10,4" Margin="2" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
-
-                                <!-- Relocation Section -->
-                                <TextBlock Text="Relocate MAPI Data File" FontWeight="SemiBold" FontSize="13"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="150" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Relocation Destination:" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
-                                    <TextBox Grid.Column="1" Text="{Binding RelocationDestinationDir, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
-                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseRelocationDirCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
-                                            ToolTip="Select relocation destination folder" />
-                                    <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenRelocationDirCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
-                                            ToolTip="Open destination folder in Explorer" />
-                                    <Button Grid.Column="4" Content="Relocate Selected PST" Command="{Binding RelocateSelectedPstCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" />
-                                </Grid>
-
-                                <!-- Backup Section -->
-                                <TextBlock Text="Backup MAPI Data File" FontWeight="SemiBold" FontSize="13"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="150" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Backup Directory:" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
-                                    <TextBox Grid.Column="1" Text="{Binding BackupDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
-                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseBackupDirCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
-                                            ToolTip="Select backup destination folder" />
-                                    <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenBackupDirCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
-                                            ToolTip="Open backup folder in Explorer" />
-                                    <Button Grid.Column="4" Content="Backup Selected PST" Command="{Binding BackupSelectedPstCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5" />
-                                </Grid>
 
                                 <TextBlock Text="{Binding LastOutlookSummary, StringFormat='Outlook Status: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
                             </StackPanel>
@@ -159,56 +120,135 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-
-            <!-- Tab 3: Automated New Default PST Pipeline -->
-            <TabItem Header="Automated New Default PST Pipeline">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-                    <StackPanel Margin="0,8,0,16">
-                        <Border Style="{StaticResource FluentCardStyle}">
-                            <StackPanel>
-                                <TextBlock Text="Automated New Default PST Pipeline" Style="{StaticResource FluentSectionTitleStyle}" />
-
-                                <!-- Source PST Path Row -->
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="140" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Source PST Path:" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
-                                    <TextBox Grid.Column="1" Text="{Binding SourcePstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
-                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseSourcePstCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5"
-                                            ToolTip="Select source PST file" />
-                                </Grid>
-
-                                <!-- Target PST Path Row -->
-                                <Grid Margin="0,0,0,16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="140" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Target PST Path:" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
-                                    <TextBox Grid.Column="1" Text="{Binding TargetPstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             VerticalContentAlignment="Center" Margin="0,0,8,0" />
-                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPstCommand}"
-                                            IsEnabled="{Binding IsNotBusy}" Padding="12,5"
-                                            ToolTip="Select target PST destination file" />
-                                </Grid>
-
-                                <Button Content="Create &amp; Set Default PST Pipeline" Command="{Binding CreateAndSetDefaultPstCommand}"
-                                        IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
-                                        HorizontalAlignment="Left" Padding="16,8" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
         </TabControl>
+
+        <!-- Per-Email-User Modal Popup Overlay -->
+        <Border Background="#B30F172A"
+                Visibility="{Binding IsUserEditPopupOpen, Converter={StaticResource BoolToVisConverter}}"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Padding="12">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                <Border Style="{StaticResource FluentCardStyle}" VerticalAlignment="Top">
+                    <StackPanel>
+                        <!-- Popup Header & Selected User Context -->
+                        <DockPanel Margin="0,0,0,10">
+                            <Button DockPanel.Dock="Right" Content="Close Popup"
+                                    Command="{Binding CloseUserEditPopupCommand}"
+                                    Padding="12,5" VerticalAlignment="Top" />
+                            <StackPanel>
+                                <TextBlock Text="Edit Email User &amp; MAPI Mailbox Operations" Style="{StaticResource FluentSectionTitleStyle}" Margin="0,0,0,2" />
+                                <TextBlock Text="{Binding EditingUserHeaderSummary}" FontWeight="SemiBold" FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,2" />
+                                <TextBlock Text="{Binding EditingUserFilePath, StringFormat='User Store File: {0}'}"
+                                           Style="{StaticResource FluentCaptionStyle}" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding EditingUserFilePath}" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- 1. User Mailbox Repair & Compaction -->
+                        <TextBlock Text="Mailbox Maintenance &amp; Compaction (Selected User)" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                        <WrapPanel Margin="0,0,0,12">
+                            <Button Content="Quick Mail &amp; Cache Repair" Command="{Binding QuickMailRepairCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                    Padding="14,7" Margin="0,0,8,6" />
+                            <Button Content="Compact Selected PST" Command="{Binding CompactSelectedPstCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="14,7" Margin="0,0,8,6" />
+                        </WrapPanel>
+
+                        <!-- 2. Automated New Default PST Pipeline (Scoped to Selected User) -->
+                        <TextBlock Text="Automated New Default PST Pipeline (Selected User)" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Source PST Path:" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                            <TextBox Grid.Column="1" Text="{Binding SourcePstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseSourcePstCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="12,5"
+                                    ToolTip="Select source PST file for this user" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Target PST Path:" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                            <TextBox Grid.Column="1" Text="{Binding TargetPstPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPstCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                    ToolTip="Select target PST destination file for this user" />
+                            <Button Grid.Column="3" Content="Create &amp; Set Default PST Pipeline" Command="{Binding CreateAndSetDefaultPstCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                    Padding="12,5" />
+                        </Grid>
+
+                        <!-- 3. Relocate User MAPI Data File -->
+                        <TextBlock Text="Relocate MAPI Data File (Selected User)" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Relocation Destination:" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                            <TextBox Grid.Column="1" Text="{Binding RelocationDestinationDir, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseRelocationDirCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                    ToolTip="Select relocation destination folder" />
+                            <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenRelocationDirCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                    ToolTip="Open destination folder in Explorer" />
+                            <Button Grid.Column="4" Content="Relocate Selected PST" Command="{Binding RelocateSelectedPstCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" />
+                        </Grid>
+
+                        <!-- 4. Backup User MAPI Data File -->
+                        <TextBlock Text="Backup MAPI Data File (Selected User)" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Backup Directory:" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontSize="12" Margin="0,0,12,0" />
+                            <TextBox Grid.Column="1" Text="{Binding BackupDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseBackupDirCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                    ToolTip="Select backup destination folder" />
+                            <Button Grid.Column="3" Content="Open Folder" Command="{Binding OpenBackupDirCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="12,5" Margin="0,0,6,0"
+                                    ToolTip="Open backup folder in Explorer" />
+                            <Button Grid.Column="4" Content="Backup Selected PST" Command="{Binding BackupSelectedPstCommand}"
+                                    IsEnabled="{Binding IsNotBusy}" Padding="12,5" />
+                        </Grid>
+
+                        <TextBlock Text="{Binding LastOutlookSummary, StringFormat='User Operation Status: {0}'}" Style="{StaticResource FluentCaptionStyle}" />
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+        </Border>
     </Grid>
 </UserControl>

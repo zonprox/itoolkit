@@ -1,7 +1,9 @@
 namespace IToolkit.App.ViewModels;
 
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Threading.Tasks;
 using IToolkit.Core.Abstractions;
 using IToolkit.Core.Models;
@@ -9,15 +11,30 @@ using IToolkit.Core.Services.Office;
 
 public class OfficeOutlookViewModel : ViewModelBase
 {
+    private sealed class UserMailboxEditSettings
+    {
+        public string SourcePstPath { get; set; } = string.Empty;
+        public string TargetPstPath { get; set; } = string.Empty;
+        public string RelocationDestinationDir { get; set; } = string.Empty;
+        public string BackupDirectory { get; set; } = string.Empty;
+    }
+
     private readonly IOfficeSuiteService _officeSuiteService;
     private readonly IOutlookService _outlookService;
     private readonly IDialogService? _dialogService;
     private readonly ISafetyConfirmationService? _confirmationService;
+    private readonly Dictionary<string, UserMailboxEditSettings> _userSettingsByFilePath = new(StringComparer.OrdinalIgnoreCase);
     private bool _useOnlineC2RRepair;
     private bool _disableHardwareAcceleration;
     private MapiDataFileInfo? _selectedDataFile;
+    private bool _isUserEditPopupOpen;
+    private bool _isManageStoreOpen;
+    private ManageMapiStoreViewModel? _currentManageStore;
+    private bool _hasCustomGlobalTargetPstPath;
     private string _targetPstPath = @"C:\OutlookFiles\NewDefaultStore.pst";
     private string? _sourcePstPath;
+    private string _defaultRelocationDestinationDir = @"D:\OutlookFiles";
+    private string _defaultBackupDirectory = @"D:\OutlookBackups";
     private string _relocationDestinationDir = @"D:\OutlookFiles";
     private string _backupDirectory = @"D:\OutlookBackups";
     private string _lastOfficeSummary = "Ready";
@@ -37,6 +54,16 @@ public class OfficeOutlookViewModel : ViewModelBase
         _confirmationService = confirmationService;
 
         DataFiles = new ObservableCollection<MapiDataFileInfo>();
+
+        // Per-Store Manage & User Edit Popup Commands
+        ManageStoreCommand = new RelayCommand(
+            OpenManageStore,
+            param => IsNotBusy && (param is MapiDataFileInfo || SelectedDataFile != null));
+        OpenManageStoreCommand = ManageStoreCommand;
+        CloseManageStoreCommand = new RelayCommand(CloseManageStore);
+
+        OpenUserEditPopupCommand = ManageStoreCommand;
+        CloseUserEditPopupCommand = CloseManageStoreCommand;
 
         // Smart Path Commands
         BrowseTargetPstCommand = new RelayCommand(BrowseTargetPst, () => IsNotBusy);
@@ -78,14 +105,80 @@ public class OfficeOutlookViewModel : ViewModelBase
             {
                 if (value != null && !string.IsNullOrWhiteSpace(value.FilePath))
                 {
-                    SourcePstPath = value.FilePath;
+                    var settings = GetOrCreateUserSettings(value);
+                    SetProperty(ref _sourcePstPath, settings.SourcePstPath, nameof(SourcePstPath));
+                    SetProperty(ref _targetPstPath, settings.TargetPstPath, nameof(TargetPstPath));
+
+                    string destDir = !IsUserEditPopupOpen && (string.IsNullOrWhiteSpace(settings.RelocationDestinationDir) || settings.RelocationDestinationDir == @"D:\OutlookFiles")
+                        ? _defaultRelocationDestinationDir
+                        : settings.RelocationDestinationDir;
+                    settings.RelocationDestinationDir = destDir;
+
+                    string backupDir = !IsUserEditPopupOpen && (string.IsNullOrWhiteSpace(settings.BackupDirectory) || settings.BackupDirectory == @"D:\OutlookBackups")
+                        ? _defaultBackupDirectory
+                        : settings.BackupDirectory;
+                    settings.BackupDirectory = backupDir;
+
+                    if (SetProperty(ref _relocationDestinationDir, destDir, nameof(RelocationDestinationDir)))
+                    {
+                        OpenRelocationDirCommand.RaiseCanExecuteChanged();
+                    }
+                    if (SetProperty(ref _backupDirectory, backupDir, nameof(BackupDirectory)))
+                    {
+                        OpenBackupDirCommand.RaiseCanExecuteChanged();
+                    }
                 }
+                else if (value == null)
+                {
+                    IsUserEditPopupOpen = false;
+                }
+
+                OnPropertyChanged(nameof(EditingUserHeaderSummary));
+                OnPropertyChanged(nameof(EditingUserFilePath));
+                ManageStoreCommand.RaiseCanExecuteChanged();
+                OpenUserEditPopupCommand.RaiseCanExecuteChanged();
                 RelocatePstCommand.RaiseCanExecuteChanged();
                 CompactPstCommand.RaiseCanExecuteChanged();
                 BackupPstCommand.RaiseCanExecuteChanged();
             }
         }
     }
+
+    public ManageMapiStoreViewModel? CurrentManageStore
+    {
+        get => _currentManageStore;
+        set => SetProperty(ref _currentManageStore, value);
+    }
+
+    public bool IsManageStoreOpen
+    {
+        get => _isManageStoreOpen;
+        set
+        {
+            if (SetProperty(ref _isManageStoreOpen, value))
+            {
+                SetProperty(ref _isUserEditPopupOpen, value, nameof(IsUserEditPopupOpen));
+            }
+        }
+    }
+
+    public bool IsUserEditPopupOpen
+    {
+        get => _isUserEditPopupOpen;
+        set
+        {
+            if (SetProperty(ref _isUserEditPopupOpen, value))
+            {
+                SetProperty(ref _isManageStoreOpen, value, nameof(IsManageStoreOpen));
+            }
+        }
+    }
+
+    public string EditingUserHeaderSummary => SelectedDataFile != null
+        ? $"{SelectedDataFile.DisplayName}  |  Profile: {SelectedDataFile.ProfileName}  |  {SelectedDataFile.Format} ({SelectedDataFile.FileSizeFormatted})"
+        : "No Email User / MAPI Store Selected";
+
+    public string EditingUserFilePath => SelectedDataFile?.FilePath ?? "N/A";
 
     public bool UseOnlineC2RRepair
     {
@@ -102,13 +195,35 @@ public class OfficeOutlookViewModel : ViewModelBase
     public string TargetPstPath
     {
         get => _targetPstPath;
-        set => SetProperty(ref _targetPstPath, value);
+        set
+        {
+            if (SetProperty(ref _targetPstPath, value))
+            {
+                if (SelectedDataFile != null && !string.IsNullOrWhiteSpace(SelectedDataFile.FilePath))
+                {
+                    GetOrCreateUserSettings(SelectedDataFile).TargetPstPath = value;
+                }
+                else
+                {
+                    _hasCustomGlobalTargetPstPath = true;
+                }
+            }
+        }
     }
 
     public string? SourcePstPath
     {
         get => _sourcePstPath;
-        set => SetProperty(ref _sourcePstPath, value);
+        set
+        {
+            if (SetProperty(ref _sourcePstPath, value))
+            {
+                if (SelectedDataFile != null && !string.IsNullOrWhiteSpace(SelectedDataFile.FilePath))
+                {
+                    GetOrCreateUserSettings(SelectedDataFile).SourcePstPath = value ?? string.Empty;
+                }
+            }
+        }
     }
 
     public string RelocationDestinationDir
@@ -118,6 +233,19 @@ public class OfficeOutlookViewModel : ViewModelBase
         {
             if (SetProperty(ref _relocationDestinationDir, value))
             {
+                if (!IsUserEditPopupOpen)
+                {
+                    _defaultRelocationDestinationDir = value;
+                }
+
+                if (SelectedDataFile != null && !string.IsNullOrWhiteSpace(SelectedDataFile.FilePath))
+                {
+                    GetOrCreateUserSettings(SelectedDataFile).RelocationDestinationDir = value;
+                }
+                else
+                {
+                    _defaultRelocationDestinationDir = value;
+                }
                 OpenRelocationDirCommand.RaiseCanExecuteChanged();
             }
         }
@@ -130,6 +258,19 @@ public class OfficeOutlookViewModel : ViewModelBase
         {
             if (SetProperty(ref _backupDirectory, value))
             {
+                if (!IsUserEditPopupOpen)
+                {
+                    _defaultBackupDirectory = value;
+                }
+
+                if (SelectedDataFile != null && !string.IsNullOrWhiteSpace(SelectedDataFile.FilePath))
+                {
+                    GetOrCreateUserSettings(SelectedDataFile).BackupDirectory = value;
+                }
+                else
+                {
+                    _defaultBackupDirectory = value;
+                }
                 OpenBackupDirCommand.RaiseCanExecuteChanged();
             }
         }
@@ -146,6 +287,14 @@ public class OfficeOutlookViewModel : ViewModelBase
         get => _lastOutlookSummary;
         set => SetProperty(ref _lastOutlookSummary, value);
     }
+
+    public IRelayCommand ManageStoreCommand { get; }
+    public IRelayCommand OpenManageStoreCommand { get; }
+    public IRelayCommand CloseManageStoreCommand { get; }
+
+    public IRelayCommand OpenUserEditPopupCommand { get; }
+    public IRelayCommand OpenUserEditPopupForItemCommand => OpenUserEditPopupCommand;
+    public IRelayCommand CloseUserEditPopupCommand { get; }
 
     public IRelayCommand BrowseTargetPstCommand { get; }
     public IRelayCommand BrowseSourcePstCommand { get; }
@@ -176,6 +325,81 @@ public class OfficeOutlookViewModel : ViewModelBase
     public IAsyncRelayCommand CompactSelectedPstCommand => CompactPstCommand;
     public IAsyncRelayCommand BackupPstCommand { get; }
     public IAsyncRelayCommand BackupSelectedPstCommand => BackupPstCommand;
+
+    private UserMailboxEditSettings GetOrCreateUserSettings(MapiDataFileInfo file)
+    {
+        if (!_userSettingsByFilePath.TryGetValue(file.FilePath, out var settings))
+        {
+            string suggestedTarget = _hasCustomGlobalTargetPstPath
+                ? _targetPstPath
+                : BuildSuggestedTargetPstPath(file);
+            settings = new UserMailboxEditSettings
+            {
+                SourcePstPath = file.FilePath,
+                TargetPstPath = suggestedTarget,
+                RelocationDestinationDir = _defaultRelocationDestinationDir,
+                BackupDirectory = _defaultBackupDirectory
+            };
+            _userSettingsByFilePath[file.FilePath] = settings;
+        }
+        return settings;
+    }
+
+    private static string BuildSuggestedTargetPstPath(MapiDataFileInfo file)
+    {
+        string baseName = !string.IsNullOrWhiteSpace(file.DisplayName)
+            ? Path.GetFileNameWithoutExtension(file.DisplayName)
+            : Path.GetFileNameWithoutExtension(file.FilePath);
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            return @"C:\OutlookFiles\NewDefaultStore.pst";
+        }
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+        {
+            baseName = baseName.Replace(invalid, '_');
+        }
+        return Path.Combine(@"C:\OutlookFiles", $"{baseName.Trim()}_NewDefaultStore.pst");
+    }
+
+    private void OpenManageStore(object? parameter)
+    {
+        if (parameter is MapiDataFileInfo item)
+        {
+            SelectedDataFile = item;
+        }
+
+        if (SelectedDataFile != null)
+        {
+            var vm = new ManageMapiStoreViewModel(
+                SelectedDataFile,
+                _outlookService,
+                _confirmationService,
+                _dialogService,
+                Logger,
+                _defaultRelocationDestinationDir,
+                _defaultBackupDirectory);
+
+            vm.RequestClose += () =>
+            {
+                IsManageStoreOpen = false;
+                CurrentManageStore = null;
+                if (vm.IsStoreRelocated)
+                {
+                    RefreshDataFilesCore();
+                }
+            };
+
+            CurrentManageStore = vm;
+            IsManageStoreOpen = true;
+            Logger?.LogInfo(nameof(OfficeOutlookViewModel), $"Opened store manager for '{SelectedDataFile.DisplayName}' ({SelectedDataFile.FilePath}).");
+        }
+    }
+
+    private void CloseManageStore()
+    {
+        IsManageStoreOpen = false;
+        CurrentManageStore = null;
+    }
 
     private void BrowseTargetPst()
     {
@@ -387,10 +611,16 @@ public class OfficeOutlookViewModel : ViewModelBase
         if (!await ConfirmSaveAppWorkBeforeFixAsync("Quick Mail & Cache Repair", "Microsoft Outlook")) return;
         await ExecuteAsync("Quick Mail & Cache Repair", () =>
         {
-            var res = _outlookService.QuickMailAndCacheRepair();
+            string? profileName = SelectedDataFile?.ProfileName;
+            if (string.Equals(profileName, "Default", StringComparison.OrdinalIgnoreCase))
+            {
+                profileName = null;
+            }
+            var res = _outlookService.QuickMailAndCacheRepair(profileName);
             LastOfficeSummary = res.Success
                 ? "Mailbox repaired: Outbox purged, SRS reset, RoamCache cleaned (AutoComplete preserved), NavPane reset."
                 : $"Quick Mail Repair failed: {res.Message}";
+            LastOutlookSummary = LastOfficeSummary;
             return Task.CompletedTask;
         });
     }
@@ -505,7 +735,7 @@ public class OfficeOutlookViewModel : ViewModelBase
         await ExecuteAsync("Relocate PST Data File", () =>
         {
             if (SelectedDataFile == null) return Task.CompletedTask;
-            var res = _outlookService.RelocateDataFile(SelectedDataFile.FilePath, RelocationDestinationDir);
+            var res = _outlookService.RelocateDataFile(SelectedDataFile, RelocationDestinationDir);
             RefreshDataFilesCore();
             if (res.Success)
             {
