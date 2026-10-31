@@ -162,6 +162,7 @@ public class AppInstallerService : IAppInstallerService
             if (wingetRes.ExitCode == 0)
             {
                 ApplyPostInstall(app);
+                _processLockGuard.RestartClosedProcesses();
                 _logger?.LogSuccess(nameof(AppInstallerService), $"Successfully installed '{app.DisplayName}' via Winget.");
                 return new AppInstallResult(app.AppId, app.DisplayName, "Winget", true, "Installed via Winget successfully.", true);
             }
@@ -209,6 +210,7 @@ public class AppInstallerService : IAppInstallerService
                     _fileSystem.DeleteFile(tempZip);
                 }
             }
+            _processLockGuard.RestartClosedProcesses();
             return new AppInstallResult(app.AppId, app.DisplayName, "ArchiveExtract", true, "Extracted and configured successfully.", !_fileSystem.FileExists(tempZip));
         }
         else
@@ -244,6 +246,10 @@ public class AppInstallerService : IAppInstallerService
             }
 
             bool success = exitCode == 0;
+            if (success)
+            {
+                _processLockGuard.RestartClosedProcesses();
+            }
             return new AppInstallResult(app.AppId, app.DisplayName, "DirectDownload", success, $"Installer executed with exit code {exitCode}.", !_fileSystem.FileExists(tempExe));
         }
     }
@@ -260,12 +266,12 @@ public class AppInstallerService : IAppInstallerService
         // 2. Configure default app handler if defined
         if (app.DefaultAppType == "Browser")
         {
-            SetDefaultBrowser();
-            ConfigureUblockOriginLitePolicy();
+            SetDefaultBrowserCore();
+            ConfigureUblockOriginLitePolicyCore();
         }
         else if (app.DefaultAppType == "PDF")
         {
-            SetDefaultPdfViewer();
+            SetDefaultPdfViewerCore();
         }
     }
 
@@ -316,6 +322,19 @@ public class AppInstallerService : IAppInstallerService
     public bool SetDefaultBrowser(string browserExecutable = "chrome.exe")
     {
         _logger?.LogInfo(nameof(AppInstallerService), "Assigning Google Chrome as default web browser...");
+        _processLockGuard.EnsureProcessesClosed(new[] { "chrome" }, TimeSpan.FromSeconds(3));
+        try
+        {
+            return SetDefaultBrowserCore(browserExecutable);
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses(new[] { "chrome" });
+        }
+    }
+
+    private bool SetDefaultBrowserCore(string browserExecutable = "chrome.exe")
+    {
         _processRunner.Run(browserExecutable, "--make-default-browser");
 
         _registry.CreateKey(@"HKCU\Software\Classes\.htm");
@@ -323,24 +342,48 @@ public class AppInstallerService : IAppInstallerService
 
         _registry.CreateKey(@"HKCU\Software\Classes\.html");
         _registry.SetValue(@"HKCU\Software\Classes\.html", "", "ChromeHTML", RegistryValueKind.String);
-
         return true;
     }
 
     public bool SetDefaultPdfViewer(string pdfExecutable = "FoxitPDFReader.exe")
     {
         _logger?.LogInfo(nameof(AppInstallerService), "Assigning Foxit PDF Reader as default PDF viewer...");
+        _processLockGuard.EnsureProcessesClosed(new[] { "FoxitPDFReader", "FoxitReader" }, TimeSpan.FromSeconds(3));
+        try
+        {
+            return SetDefaultPdfViewerCore(pdfExecutable);
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses(new[] { "FoxitPDFReader" });
+        }
+    }
+
+    private bool SetDefaultPdfViewerCore(string pdfExecutable = "FoxitPDFReader.exe")
+    {
         _processRunner.Run(pdfExecutable, "/register");
 
         _registry.CreateKey(@"HKCU\Software\Classes\.pdf");
         _registry.SetValue(@"HKCU\Software\Classes\.pdf", "", "FoxitPDFReader.Document", RegistryValueKind.String);
-
         return true;
     }
 
     public bool ConfigureUblockOriginLitePolicy()
     {
         _logger?.LogInfo(nameof(AppInstallerService), "Deploying uBlock Origin Lite enterprise extension policy for Chrome...");
+        _processLockGuard.EnsureProcessesClosed(new[] { "chrome" }, TimeSpan.FromSeconds(3));
+        try
+        {
+            return ConfigureUblockOriginLitePolicyCore();
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses(new[] { "chrome" });
+        }
+    }
+
+    private bool ConfigureUblockOriginLitePolicyCore()
+    {
         string extensionEntry = "ddkjiahejlhfcafbddmgiahcphecmpfh;https://clients2.google.com/service/update2/crx";
 
         var targets = new[]

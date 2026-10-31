@@ -46,4 +46,9 @@ public interface IProcessRunner
     /// Checks if at least one instance of the named process is running.
     /// </summary>
     bool IsProcessRunning(string processName);
+
+    /// <summary>
+    /// Starts an application or process asynchronously without blocking for exit.
+    /// </summary>
+    bool StartProcess(string fileName, string? arguments = null) => true;
 }

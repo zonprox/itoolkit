@@ -34,6 +34,7 @@ public static class ServiceRegistration
         services.AddSingleton<INetworkService, WindowsNetworkService>();
         services.AddSingleton<IWmiService, WindowsWmiService>();
         services.AddSingleton<ISystemTelemetryService, WindowsTelemetryService>();
+        services.AddSingleton<IOutlookComService, WindowsOutlookComService>();
 #if WINDOWS || NET10_0_WINDOWS
         services.AddSingleton<WpfDialogService>();
         services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<WpfDialogService>());

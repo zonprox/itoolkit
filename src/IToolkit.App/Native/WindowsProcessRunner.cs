@@ -54,9 +54,16 @@ public class WindowsProcessRunner : IProcessRunner
             }
         };
 
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        try
+        {
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+        }
+        catch (Exception ex)
+        {
+            return new ProcessExecutionResult(-1, string.Empty, ex.Message, false);
+        }
 
         bool exited = process.WaitForExit(timeoutMs);
         if (!exited)
@@ -184,5 +191,98 @@ public class WindowsProcessRunner : IProcessRunner
             p.Dispose();
         }
         return processes.Length > 0;
+    }
+
+    public bool StartProcess(string fileName, string? arguments = null)
+    {
+        if (string.IsNullOrWhiteSpace(fileName)) return false;
+
+        string exeName = fileName.Trim();
+        if (!exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            exeName += ".exe";
+        }
+
+        string resolvedFileName = ResolveExecutablePath(exeName);
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = resolvedFileName,
+                Arguments = arguments ?? string.Empty,
+                WorkingDirectory = System.IO.File.Exists(resolvedFileName)
+                    ? (System.IO.Path.GetDirectoryName(resolvedFileName) ?? Environment.CurrentDirectory)
+                    : Environment.CurrentDirectory,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Normal
+            };
+            using var proc = Process.Start(psi);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string ResolveExecutablePath(string exeName)
+    {
+        if (System.IO.File.Exists(exeName))
+        {
+            return System.IO.Path.GetFullPath(exeName);
+        }
+
+        try
+        {
+            using var hklmKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey($@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exeName}");
+            if (hklmKey?.GetValue(null) is string hklmPath && !string.IsNullOrWhiteSpace(hklmPath) && System.IO.File.Exists(hklmPath.Trim('"')))
+            {
+                return hklmPath.Trim('"');
+            }
+
+            using var hklmWowKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey($@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\{exeName}");
+            if (hklmWowKey?.GetValue(null) is string hklmWowPath && !string.IsNullOrWhiteSpace(hklmWowPath) && System.IO.File.Exists(hklmWowPath.Trim('"')))
+            {
+                return hklmWowPath.Trim('"');
+            }
+
+            using var hkcuKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey($@"Software\Microsoft\Windows\CurrentVersion\App Paths\{exeName}");
+            if (hkcuKey?.GetValue(null) is string hkcuPath && !string.IsNullOrWhiteSpace(hkcuPath) && System.IO.File.Exists(hkcuPath.Trim('"')))
+            {
+                return hkcuPath.Trim('"');
+            }
+        }
+        catch
+        {
+        }
+
+        string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        string pfx86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string[] candidatePaths =
+        {
+            System.IO.Path.Combine(pf, "Microsoft Office", "root", "Office16", exeName),
+            System.IO.Path.Combine(pfx86, "Microsoft Office", "root", "Office16", exeName),
+            System.IO.Path.Combine(pf, "Google", "Chrome", "Application", exeName),
+            System.IO.Path.Combine(pfx86, "Google", "Chrome", "Application", exeName),
+            System.IO.Path.Combine(pf, "Microsoft", "Edge", "Application", exeName),
+            System.IO.Path.Combine(pfx86, "Microsoft", "Edge", "Application", exeName),
+            System.IO.Path.Combine(pf, "Foxit Software", "Foxit PDF Reader", exeName),
+            System.IO.Path.Combine(pfx86, "Foxit Software", "Foxit PDF Reader", exeName),
+            System.IO.Path.Combine(pf, "WinRAR", exeName),
+            System.IO.Path.Combine(pf, "UniKey", exeName),
+            System.IO.Path.Combine(localAppData, "Programs", "Zalo", exeName)
+        };
+
+        foreach (var candidate in candidatePaths)
+        {
+            if (System.IO.File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return exeName;
     }
 }

@@ -102,6 +102,28 @@ public class OutlookService : IOutlookService
             }
         }
 
+        string defaultSearchKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Search";
+        if (_registry.ValueExists(defaultSearchKey, "DefaultStorePath") &&
+            _registry.GetValue(defaultSearchKey, "DefaultStorePath") is string defaultStorePath &&
+            !string.IsNullOrWhiteSpace(defaultStorePath) &&
+            (defaultStorePath.EndsWith(".pst", StringComparison.OrdinalIgnoreCase) ||
+             defaultStorePath.EndsWith(".ost", StringComparison.OrdinalIgnoreCase)) &&
+            !files.ContainsKey(defaultStorePath))
+        {
+            bool isOst = defaultStorePath.EndsWith(".ost", StringComparison.OrdinalIgnoreCase);
+            bool exists = _fileSystem.FileExists(defaultStorePath);
+            long sz = exists ? _fileSystem.GetFileSize(defaultStorePath) : 0;
+            files[defaultStorePath] = new MapiDataFileInfo(
+                defaultStorePath,
+                Path.GetFileName(defaultStorePath),
+                "Default Outlook Store",
+                isOst,
+                !isOst,
+                sz,
+                defaultSearchKey,
+                exists);
+        }
+
         // Also discover any data files residing in standard filesystem directories
         var standardDirs = new[]
         {
@@ -266,12 +288,26 @@ public class OutlookService : IOutlookService
             navReset = true;
         }
 
+        _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
         return new QuickMailRepairResult(true, srsReset, roamCleaned, autoPreserved, navReset, true, "Quick Mail & Cache repair completed.");
     }
 
     public OperationResult ExpandDataFileLimitsTo100GB()
     {
         _logger?.LogInfo(nameof(OutlookService), "Expanding Outlook PST and OST registry limits to 100GB (102400MB)...");
+        _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
+        try
+        {
+            return ExpandDataFileLimitsTo100GBCore();
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
+        }
+    }
+
+    private OperationResult ExpandDataFileLimitsTo100GBCore()
+    {
         string pstKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\PST";
 
         return _atomicRegistry.ExecuteAtomicMutation(
@@ -304,62 +340,68 @@ public class OutlookService : IOutlookService
     {
         _logger?.LogInfo(nameof(OutlookService), $"Executing Bundled New Default PST pipeline for '{targetPstPath}'...");
         _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
-
-        // 1. Expand limits to 100GB
-        var limitRes = ExpandDataFileLimitsTo100GB();
-
-        // 2. Create target directory and initialize empty PST if needed
-        string? dir = Path.GetDirectoryName(targetPstPath);
-        if (!string.IsNullOrEmpty(dir))
+        try
         {
-            _fileSystem.CreateDirectory(dir);
-        }
+            // 1. Expand limits to 100GB
+            var limitRes = ExpandDataFileLimitsTo100GBCore();
 
-        if (!_fileSystem.FileExists(targetPstPath))
-        {
-            _fileSystem.WriteAllBytes(targetPstPath, new byte[1024]); // Minimal PST stub
-        }
+            // 2. Create target directory and initialize empty PST if needed
+            string? dir = Path.GetDirectoryName(targetPstPath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                _fileSystem.CreateDirectory(dir);
+            }
 
-        // 3. Clone folder hierarchy model and migrate rules via IOutlookComService
-        int foldersCloned = 0;
-        int rulesMigrated = 0;
+            if (!_fileSystem.FileExists(targetPstPath))
+            {
+                _fileSystem.WriteAllBytes(targetPstPath, new byte[1024]); // Minimal PST stub
+            }
 
-        if (!string.IsNullOrEmpty(sourcePstPath) && _fileSystem.FileExists(sourcePstPath))
-        {
+            // 3. Clone folder hierarchy model and migrate rules via IOutlookComService
+            int foldersCloned = 0;
+            int rulesMigrated = 0;
+
+            if (!string.IsNullOrEmpty(sourcePstPath) && _fileSystem.FileExists(sourcePstPath))
+            {
+                if (_outlookCom != null)
+                {
+                    foldersCloned = _outlookCom.CloneFolderHierarchy(sourcePstPath, targetPstPath, ExcludedCloneFolders);
+                    rulesMigrated = _outlookCom.MigrateRules(sourcePstPath, targetPstPath);
+                }
+            }
+
+            // 4. Update default store registry pointers & COM default delivery store
+            bool isDefaultSet = true;
             if (_outlookCom != null)
             {
-                foldersCloned = _outlookCom.CloneFolderHierarchy(sourcePstPath, targetPstPath, ExcludedCloneFolders);
-                rulesMigrated = _outlookCom.MigrateRules(sourcePstPath, targetPstPath);
+                isDefaultSet = _outlookCom.SetDefaultDeliveryStore(targetPstPath);
             }
-        }
 
-        // 4. Update default store registry pointers & COM default delivery store
-        bool isDefaultSet = true;
-        if (_outlookCom != null)
+            string defaultStoreKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Search";
+            var atomicRes = _atomicRegistry.ExecuteAtomicMutation(
+                defaultStoreKey,
+                () =>
+                {
+                    _registry.CreateKey(defaultStoreKey);
+                    _registry.SetValue(defaultStoreKey, "DefaultStorePath", targetPstPath, RegistryValueKind.String);
+                    return true;
+                },
+                "Set default delivery store path");
+
+            bool pipelineSuccess = limitRes.Success && atomicRes.Success && isDefaultSet;
+            return new PstPipelineResult(
+                targetPstPath,
+                limitRes.Success,
+                foldersCloned,
+                rulesMigrated,
+                isDefaultSet && atomicRes.Success,
+                pipelineSuccess,
+                "New default PST pipeline completed.");
+        }
+        finally
         {
-            isDefaultSet = _outlookCom.SetDefaultDeliveryStore(targetPstPath);
+            _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
         }
-
-        string defaultStoreKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Search";
-        var atomicRes = _atomicRegistry.ExecuteAtomicMutation(
-            defaultStoreKey,
-            () =>
-            {
-                _registry.CreateKey(defaultStoreKey);
-                _registry.SetValue(defaultStoreKey, "DefaultStorePath", targetPstPath, RegistryValueKind.String);
-                return true;
-            },
-            "Set default delivery store path");
-
-        bool pipelineSuccess = limitRes.Success && atomicRes.Success && isDefaultSet;
-        return new PstPipelineResult(
-            targetPstPath,
-            limitRes.Success,
-            foldersCloned,
-            rulesMigrated,
-            isDefaultSet && atomicRes.Success,
-            pipelineSuccess,
-            "New default PST pipeline completed.");
     }
 
     public DataFileRelocationResult RelocateDataFile(string sourceFilePath, string destinationDirectory)
@@ -368,136 +410,226 @@ public class OutlookService : IOutlookService
 
         // Step 1: Pre-execution process guard
         _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
-
-        if (!_fileSystem.FileExists(sourceFilePath))
+        try
         {
-            throw new FileNotFoundException($"Source data file not found: {sourceFilePath}");
+            if (!_fileSystem.FileExists(sourceFilePath))
+            {
+                throw new FileNotFoundException($"Source data file not found: {sourceFilePath}");
+            }
+
+            long fileSize = _fileSystem.GetFileSize(sourceFilePath);
+
+            // Step 2: Headroom verification (>= 1.2x)
+            _resourceGuard.ValidateDiskSpace(destinationDirectory, fileSize, safetyMultiplier: 1.2);
+
+            // Step 3: Compute pre-copy hash
+            string preHash = _resourceGuard.ComputeSha256(sourceFilePath);
+
+            _fileSystem.CreateDirectory(destinationDirectory);
+            string fileName = Path.GetFileName(sourceFilePath);
+            string destinationFilePath = Path.Combine(destinationDirectory, fileName);
+
+            // Step 4: Copy file
+            _fileSystem.CopyFile(sourceFilePath, destinationFilePath, overwrite: true);
+
+            // Step 5: Compute post-copy hash and verify
+            string postHash = _resourceGuard.ComputeSha256(destinationFilePath);
+            if (!string.Equals(preHash, postHash, StringComparison.OrdinalIgnoreCase))
+            {
+                _fileSystem.DeleteFile(destinationFilePath);
+                throw new InvalidOperationException($"SHA-256 verification failed during relocation. Pre: {preHash}, Post: {postHash}");
+            }
+
+            // Step 6: Update registry or create symlink/junction for OST
+            bool symlinkCreated = false;
+            bool isOst = sourceFilePath.EndsWith(".ost", StringComparison.OrdinalIgnoreCase);
+
+            if (isOst)
+            {
+                _fileSystem.DeleteFile(sourceFilePath);
+                _fileSystem.CreateSymbolicLink(sourceFilePath, destinationFilePath);
+                symlinkCreated = true;
+            }
+            else
+            {
+                UpdateMapiProfilePaths(sourceFilePath, destinationFilePath);
+                if (_outlookCom != null)
+                {
+                    _outlookCom.CloneFolderHierarchy(sourceFilePath, destinationFilePath, null);
+                    _outlookCom.MigrateRules(sourceFilePath, destinationFilePath);
+                }
+                _fileSystem.DeleteFile(sourceFilePath);
+            }
+
+            return new DataFileRelocationResult(
+                sourceFilePath,
+                destinationFilePath,
+                fileSize,
+                true,
+                symlinkCreated,
+                true,
+                true,
+                "Data file relocated successfully with SHA-256 verification.");
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
+        }
+    }
+
+    private void UpdateMapiProfilePaths(string oldFilePath, string newFilePath)
+    {
+        var profileBases = new[]
+        {
+            @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles",
+            @"HKCU\Software\Microsoft\Office\15.0\Outlook\Profiles",
+            @"HKCU\Software\Microsoft\Windows NT\CurrentVersion\Windows Messaging Subsystem\Profiles"
+        };
+
+        foreach (var profBase in profileBases)
+        {
+            foreach (var profile in _registry.GetSubKeyNames(profBase))
+            {
+                UpdateProfileKeyRecursively($@"{profBase}\{profile}", oldFilePath, newFilePath);
+            }
         }
 
-        long fileSize = _fileSystem.GetFileSize(sourceFilePath);
-
-        // Step 2: Headroom verification (>= 1.2x)
-        _resourceGuard.ValidateDiskSpace(destinationDirectory, fileSize, safetyMultiplier: 1.2);
-
-        // Step 3: Compute pre-copy hash
-        string preHash = _resourceGuard.ComputeSha256(sourceFilePath);
-
-        _fileSystem.CreateDirectory(destinationDirectory);
-        string fileName = Path.GetFileName(sourceFilePath);
-        string destinationFilePath = Path.Combine(destinationDirectory, fileName);
-
-        // Step 4: Copy file
-        _fileSystem.CopyFile(sourceFilePath, destinationFilePath, overwrite: true);
-
-        // Step 5: Compute post-copy hash and verify
-        string postHash = _resourceGuard.ComputeSha256(destinationFilePath);
-        if (!string.Equals(preHash, postHash, StringComparison.OrdinalIgnoreCase))
+        string defaultSearchKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Search";
+        if (_registry.ValueExists(defaultSearchKey, "DefaultStorePath") &&
+            _registry.GetValue(defaultSearchKey, "DefaultStorePath") is string defPath &&
+            string.Equals(defPath, oldFilePath, StringComparison.OrdinalIgnoreCase))
         {
-            _fileSystem.DeleteFile(destinationFilePath);
-            throw new InvalidOperationException($"SHA-256 verification failed during relocation. Pre: {preHash}, Post: {postHash}");
+            _registry.SetValue(defaultSearchKey, "DefaultStorePath", newFilePath, RegistryValueKind.String);
+        }
+    }
+
+    private void UpdateProfileKeyRecursively(string keyPath, string oldFilePath, string newFilePath)
+    {
+        if (_registry.ValueExists(keyPath, "001f6700"))
+        {
+            var raw = _registry.GetValue(keyPath, "001f6700");
+            if (raw is byte[] bytes && string.Equals(DecodeMapiUnicode(bytes), oldFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _registry.SetValue(keyPath, "001f6700", Encoding.Unicode.GetBytes(newFilePath + "\0"), RegistryValueKind.Binary);
+            }
+            else if (raw is string str && string.Equals(str, oldFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _registry.SetValue(keyPath, "001f6700", newFilePath, RegistryValueKind.String);
+            }
         }
 
-        // Step 6: Update registry or create symlink/junction for OST
-        bool symlinkCreated = false;
-        bool isOst = sourceFilePath.EndsWith(".ost", StringComparison.OrdinalIgnoreCase);
-
-        if (isOst)
+        if (_registry.ValueExists(keyPath, "001e6700"))
         {
-            _fileSystem.DeleteFile(sourceFilePath);
-            _fileSystem.CreateSymbolicLink(sourceFilePath, destinationFilePath);
-            symlinkCreated = true;
-        }
-        else
-        {
-            _fileSystem.DeleteFile(sourceFilePath);
+            var raw = _registry.GetValue(keyPath, "001e6700");
+            if (raw is byte[] bytes && string.Equals(DecodeMapiAnsi(bytes), oldFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _registry.SetValue(keyPath, "001e6700", Encoding.ASCII.GetBytes(newFilePath + "\0"), RegistryValueKind.Binary);
+            }
+            else if (raw is string str && string.Equals(str, oldFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _registry.SetValue(keyPath, "001e6700", newFilePath, RegistryValueKind.String);
+            }
         }
 
-        return new DataFileRelocationResult(
-            sourceFilePath,
-            destinationFilePath,
-            fileSize,
-            true,
-            symlinkCreated,
-            true,
-            true,
-            "Data file relocated successfully with SHA-256 verification.");
+        foreach (var subKey in _registry.GetSubKeyNames(keyPath))
+        {
+            UpdateProfileKeyRecursively($@"{keyPath}\{subKey}", oldFilePath, newFilePath);
+        }
     }
 
     public OperationResult BackupDataFile(string sourceFilePath, string backupDirectory)
     {
         _logger?.LogInfo(nameof(OutlookService), $"Backing up data file '{sourceFilePath}' to '{backupDirectory}'...");
         _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
-
-        if (!_fileSystem.FileExists(sourceFilePath))
+        try
         {
-            return OperationResult.Failed($"Source file does not exist: {sourceFilePath}");
+            if (!_fileSystem.FileExists(sourceFilePath))
+            {
+                return OperationResult.Failed($"Source file does not exist: {sourceFilePath}");
+            }
+
+            long size = _fileSystem.GetFileSize(sourceFilePath);
+            _resourceGuard.ValidateDiskSpace(backupDirectory, size, 1.2);
+
+            _fileSystem.CreateDirectory(backupDirectory);
+            string fileName = Path.GetFileName(sourceFilePath);
+            string dst = Path.Combine(backupDirectory, fileName);
+
+            string hash = _resourceGuard.ComputeSha256(sourceFilePath);
+            _fileSystem.CopyFile(sourceFilePath, dst, overwrite: true);
+
+            string dstHash = _resourceGuard.ComputeSha256(dst);
+            if (!string.Equals(hash, dstHash, StringComparison.OrdinalIgnoreCase))
+            {
+                _fileSystem.DeleteFile(dst);
+                return OperationResult.Failed("Backup integrity check failed: SHA-256 mismatch.");
+            }
+
+            // Save manifest hash file
+            string manifestPath = Path.Combine(backupDirectory, $"{fileName}.sha256");
+            _fileSystem.WriteAllText(manifestPath, $"{hash} *{fileName}");
+
+            return OperationResult.Succeeded($"Data file successfully backed up. Hash: {hash}", dst);
         }
-
-        long size = _fileSystem.GetFileSize(sourceFilePath);
-        _resourceGuard.ValidateDiskSpace(backupDirectory, size, 1.2);
-
-        _fileSystem.CreateDirectory(backupDirectory);
-        string fileName = Path.GetFileName(sourceFilePath);
-        string dst = Path.Combine(backupDirectory, fileName);
-
-        string hash = _resourceGuard.ComputeSha256(sourceFilePath);
-        _fileSystem.CopyFile(sourceFilePath, dst, overwrite: true);
-
-        string dstHash = _resourceGuard.ComputeSha256(dst);
-        if (!string.Equals(hash, dstHash, StringComparison.OrdinalIgnoreCase))
+        finally
         {
-            _fileSystem.DeleteFile(dst);
-            return OperationResult.Failed("Backup integrity check failed: SHA-256 mismatch.");
+            _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
         }
-
-        // Save manifest hash file
-        string manifestPath = Path.Combine(backupDirectory, $"{fileName}.sha256");
-        _fileSystem.WriteAllText(manifestPath, $"{hash} *{fileName}");
-
-        return OperationResult.Succeeded($"Data file successfully backed up. Hash: {hash}", dst);
     }
 
     public OperationResult RestoreDataFile(string backupFilePath, string targetFilePath, string expectedSha256)
     {
         _logger?.LogInfo(nameof(OutlookService), $"Restoring data file '{backupFilePath}' to '{targetFilePath}'...");
         _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
-
-        if (!_fileSystem.FileExists(backupFilePath))
+        try
         {
-            return OperationResult.Failed($"Backup file does not exist: {backupFilePath}");
-        }
+            if (!_fileSystem.FileExists(backupFilePath))
+            {
+                return OperationResult.Failed($"Backup file does not exist: {backupFilePath}");
+            }
 
-        string actualHash = _resourceGuard.ComputeSha256(backupFilePath);
-        if (!string.Equals(actualHash, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            string actualHash = _resourceGuard.ComputeSha256(backupFilePath);
+            if (!string.Equals(actualHash, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                return OperationResult.Failed($"Pre-restore verification failed. Expected: {expectedSha256}, Actual: {actualHash}");
+            }
+
+            string? dir = Path.GetDirectoryName(targetFilePath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                _fileSystem.CreateDirectory(dir);
+            }
+
+            _fileSystem.CopyFile(backupFilePath, targetFilePath, overwrite: true);
+            return OperationResult.Succeeded("Data file successfully restored.", targetFilePath);
+        }
+        finally
         {
-            return OperationResult.Failed($"Pre-restore verification failed. Expected: {expectedSha256}, Actual: {actualHash}");
+            _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
         }
-
-        string? dir = Path.GetDirectoryName(targetFilePath);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            _fileSystem.CreateDirectory(dir);
-        }
-
-        _fileSystem.CopyFile(backupFilePath, targetFilePath, overwrite: true);
-        return OperationResult.Succeeded("Data file successfully restored.", targetFilePath);
     }
 
     public OperationResult CompactDataFile(string filePath)
     {
         _logger?.LogInfo(nameof(OutlookService), $"Triggering compaction for data file '{filePath}'...");
         _processLockGuard.EnsureProcessesClosed(OutlookProcessNames);
-
-        if (!_fileSystem.FileExists(filePath))
+        try
         {
-            return OperationResult.Failed($"Data file not found: {filePath}");
-        }
+            if (!_fileSystem.FileExists(filePath))
+            {
+                return OperationResult.Failed($"Data file not found: {filePath}");
+            }
 
-        if (_outlookCom != null)
+            if (_outlookCom != null)
+            {
+                _outlookCom.CompactStore(filePath);
+            }
+
+            return OperationResult.Succeeded($"Compaction triggered for '{Path.GetFileName(filePath)}'.");
+        }
+        finally
         {
-            _outlookCom.CompactStore(filePath);
+            _processLockGuard.RestartClosedProcesses(OutlookProcessNames);
         }
-
-        return OperationResult.Succeeded($"Compaction triggered for '{Path.GetFileName(filePath)}'.");
     }
 }

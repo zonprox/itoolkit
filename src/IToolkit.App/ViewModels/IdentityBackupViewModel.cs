@@ -528,9 +528,9 @@ public class IdentityBackupViewModel : ViewModelBase
         if (RobocopyMirror && _confirmationService != null)
         {
             bool confirmed = await _confirmationService.ConfirmAsync(
-                "Confirm Robocopy Mirror (/MIR)",
-                $"Robocopy Mirror mode will purge any files or folders in '{BackupDestinationDirectory}' that do not exist in the source profile.",
-                "Files present in the destination but missing from the current user profile will be permanently deleted. Do you wish to continue?");
+                "Confirm Robocopy Mirror (/MIR) & Save Open Applications",
+                $"Robocopy Mirror mode will purge any files or folders in '{BackupDestinationDirectory}' that do not exist in the source profile. Please save and back up work in Microsoft Outlook, Microsoft Word, Microsoft Excel, Microsoft PowerPoint, Google Chrome, and Microsoft Edge before continuing.",
+                "Active Office and Browser applications will be safely closed before backup and automatically restarted afterward. Files present in the destination but missing from the current user profile will be permanently deleted. Do you wish to continue?");
             if (!confirmed)
             {
                 LastBackupStatus = "Profile backup cancelled by user (Mirror confirmation declined).";
@@ -541,6 +541,9 @@ public class IdentityBackupViewModel : ViewModelBase
 
         await ExecuteAsync("User Profile Backup Pipeline", () =>
         {
+            var profileMap = _backupService.GetUserProfileMap();
+            var syncRes = _backupService.RunRobocopySync(profileMap.ProfilePath, BackupDestinationDirectory, RobocopyMirror);
+
             if (IncludeBookmarks)
             {
                 _backupService.ExportBrowserBookmarks(BackupDestinationDirectory);
@@ -549,9 +552,6 @@ public class IdentityBackupViewModel : ViewModelBase
             {
                 _backupService.ExportCertificates(CertificateStoreName, BackupDestinationDirectory, CertificatePassword);
             }
-
-            var profileMap = _backupService.GetUserProfileMap();
-            var syncRes = _backupService.RunRobocopySync(profileMap.ProfilePath, BackupDestinationDirectory, RobocopyMirror);
 
             if (CreateManifest)
             {
@@ -581,9 +581,9 @@ public class IdentityBackupViewModel : ViewModelBase
         if (_confirmationService != null)
         {
             bool confirmed = await _confirmationService.ConfirmAsync(
-                "Confirm Profile Restore",
-                $"Restoring profile data will overwrite current user files from '{RestoreBackupDirectory}'.",
-                "Existing files in your profile folders may be overwritten by restored files. Do you wish to continue?");
+                "Confirm Profile Restore & Save Open Applications",
+                $"Restoring profile data will overwrite current user files from '{RestoreBackupDirectory}'. Please save and back up work in Microsoft Outlook, Microsoft Word, Microsoft Excel, Microsoft PowerPoint, Google Chrome, and Microsoft Edge before continuing.",
+                "Active Office and Browser applications will be safely closed before restore and automatically restarted afterward. Existing files in your profile folders may be overwritten by restored files. Do you wish to continue?");
             if (!confirmed)
             {
                 LastBackupStatus = "Profile restore cancelled by user.";

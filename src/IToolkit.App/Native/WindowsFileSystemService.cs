@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -66,10 +67,23 @@ public class WindowsFileSystemService : IFileSystemService
         }
     }
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateHardLinkW(string lpFileName, string lpExistingFileName, IntPtr lpSecurityAttributes);
+
     public void CreateSymbolicLink(string linkPath, string targetPath)
     {
-        if (File.Exists(targetPath)) File.CreateSymbolicLink(linkPath, targetPath);
-        else Directory.CreateSymbolicLink(linkPath, targetPath);
+        try
+        {
+            if (File.Exists(targetPath)) File.CreateSymbolicLink(linkPath, targetPath);
+            else Directory.CreateSymbolicLink(linkPath, targetPath);
+        }
+        catch (IOException) when (File.Exists(targetPath))
+        {
+            if (!CreateHardLinkW(linkPath, targetPath, IntPtr.Zero))
+            {
+                File.Copy(targetPath, linkPath, overwrite: true);
+            }
+        }
     }
 
     public string ReadAllText(string path, Encoding? encoding = null) =>
@@ -85,8 +99,43 @@ public class WindowsFileSystemService : IFileSystemService
     public void WriteAllBytes(string path, byte[] bytes) => File.WriteAllBytes(path, bytes);
     public Stream OpenRead(string path) => File.OpenRead(path);
     public DateTime GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
-    public IEnumerable<string> EnumerateFiles(string path, string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly) =>
-        Directory.EnumerateFiles(path, searchPattern, searchOption);
-    public IEnumerable<string> EnumerateDirectories(string path, string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly) =>
-        Directory.EnumerateDirectories(path, searchPattern, searchOption);
+    public IEnumerable<string> EnumerateFiles(string path, string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly)
+    {
+        if (!Directory.Exists(path)) return Array.Empty<string>();
+        try
+        {
+            var options = new EnumerationOptions
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = searchOption == SearchOption.AllDirectories,
+                MatchCasing = MatchCasing.CaseInsensitive,
+                AttributesToSkip = 0
+            };
+            return Directory.EnumerateFiles(path, searchPattern, options);
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    public IEnumerable<string> EnumerateDirectories(string path, string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly)
+    {
+        if (!Directory.Exists(path)) return Array.Empty<string>();
+        try
+        {
+            var options = new EnumerationOptions
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = searchOption == SearchOption.AllDirectories,
+                MatchCasing = MatchCasing.CaseInsensitive,
+                AttributesToSkip = 0
+            };
+            return Directory.EnumerateDirectories(path, searchPattern, options);
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
 }

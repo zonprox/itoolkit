@@ -240,40 +240,90 @@ public class OfficeOutlookViewModel : ViewModelBase
         _dialogService.OpenFolderInExplorer(BackupDirectory);
     }
 
-    private async Task RepairC2RAsync() => await ExecuteAsync("Office Click-to-Run Repair", () =>
+    private async Task<bool> ConfirmSaveAppWorkBeforeFixAsync(string operationName, string applicationName, bool isOutlookTarget = false)
     {
-        var res = _officeSuiteService.RunClickToRunRepair(UseOnlineC2RRepair);
-        LastOfficeSummary = res.ExitCode == 0 ? "C2R Repair triggered successfully." : $"C2R Repair failed (Exit {res.ExitCode}).";
-        return Task.CompletedTask;
-    });
+        if (_confirmationService == null)
+        {
+            return true;
+        }
 
-    private async Task RepairC2RServiceAsync() => await ExecuteAsync("Repair Click-to-Run Service", () =>
-    {
-        bool ok = _officeSuiteService.RepairClickToRunService();
-        LastOfficeSummary = ok ? "Click-to-Run service configuration and state repaired." : "Click-to-Run service repair failed.";
-        return Task.CompletedTask;
-    });
+        bool confirmed = await _confirmationService.ConfirmAsync(
+            $"Save Work Before {operationName} ({applicationName})",
+            $"Please save and back up all open files and data in {applicationName} before running '{operationName}' to prevent data loss.",
+            $"{applicationName} will be safely closed before executing '{operationName}' and automatically restarted once the fix completes. Do you want to proceed?");
 
-    private async Task ResetOfficeIdentityAsync() => await ExecuteAsync("Reset Office Identity & WAM Tokens", () =>
-    {
-        var res = _officeSuiteService.ResetOfficeIdentityCache();
-        LastOfficeSummary = res.Success ? "Office Identity & OneAuth token caches purged." : $"Reset failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (!confirmed)
+        {
+            string cancelMsg = $"{operationName} cancelled by user (save work in {applicationName} first).";
+            if (isOutlookTarget)
+            {
+                LastOutlookSummary = cancelMsg;
+            }
+            else
+            {
+                LastOfficeSummary = cancelMsg;
+            }
+            Logger?.LogWarning(nameof(OfficeOutlookViewModel), cancelMsg);
+            return false;
+        }
 
-    private async Task ToggleHardwareAccelerationAsync() => await ExecuteAsync("Toggle Hardware Acceleration", () =>
-    {
-        var res = _officeSuiteService.SetHardwareAcceleration(DisableHardwareAcceleration);
-        LastOfficeSummary = res.Success ? $"Hardware Acceleration set to: {(DisableHardwareAcceleration ? "Disabled" : "Enabled")}." : $"Toggle failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        return true;
+    }
 
-    private async Task TerminateOfficeProcessesAsync() => await ExecuteAsync("Terminate Office Processes", () =>
+    private async Task RepairC2RAsync()
     {
-        bool ok = _officeSuiteService.TerminateOfficeProcesses();
-        LastOfficeSummary = ok ? "All running Office processes terminated safely." : "Failed to terminate some Office processes.";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Office Click-to-Run Repair", "Microsoft Office (Word, Excel, PowerPoint, Outlook)")) return;
+        await ExecuteAsync("Office Click-to-Run Repair", () =>
+        {
+            var res = _officeSuiteService.RunClickToRunRepair(UseOnlineC2RRepair);
+            LastOfficeSummary = res.ExitCode == 0 ? "C2R Repair triggered successfully." : $"C2R Repair failed (Exit {res.ExitCode}).";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task RepairC2RServiceAsync()
+    {
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Repair Click-to-Run Service", "Microsoft Office (Word, Excel, PowerPoint, Outlook)")) return;
+        await ExecuteAsync("Repair Click-to-Run Service", () =>
+        {
+            bool ok = _officeSuiteService.RepairClickToRunService();
+            LastOfficeSummary = ok ? "Click-to-Run service configuration and state repaired." : "Click-to-Run service repair failed.";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task ResetOfficeIdentityAsync()
+    {
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Reset Office Identity & WAM Tokens", "Microsoft Office (Word, Excel, PowerPoint, Outlook)")) return;
+        await ExecuteAsync("Reset Office Identity & WAM Tokens", () =>
+        {
+            var res = _officeSuiteService.ResetOfficeIdentityCache();
+            LastOfficeSummary = res.Success ? "Office Identity & OneAuth token caches purged." : $"Reset failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task ToggleHardwareAccelerationAsync()
+    {
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Toggle Hardware Acceleration", "Microsoft Office (Word, Excel, PowerPoint, Outlook)")) return;
+        await ExecuteAsync("Toggle Hardware Acceleration", () =>
+        {
+            var res = _officeSuiteService.SetHardwareAcceleration(DisableHardwareAcceleration);
+            LastOfficeSummary = res.Success ? $"Hardware Acceleration set to: {(DisableHardwareAcceleration ? "Disabled" : "Enabled")}." : $"Toggle failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task TerminateOfficeProcessesAsync()
+    {
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Terminate Office Processes", "Microsoft Office (Word, Excel, PowerPoint, Outlook)")) return;
+        await ExecuteAsync("Terminate Office Processes", () =>
+        {
+            bool ok = _officeSuiteService.TerminateOfficeProcesses();
+            LastOfficeSummary = ok ? "All running Office processes terminated safely." : "Failed to terminate some Office processes.";
+            return Task.CompletedTask;
+        });
+    }
 
     private async Task ScrubOfficeSuiteAsync()
     {
@@ -299,42 +349,62 @@ public class OfficeOutlookViewModel : ViewModelBase
         });
     }
 
-    private async Task WordQuickRepairAsync() => await ExecuteAsync("Word Quick Repair", () =>
+    private async Task WordQuickRepairAsync()
     {
-        var res = _officeSuiteService.WordQuickRepair();
-        LastOfficeSummary = res.Success ? $"Word Repaired: Normal.dotm reset, {res.AddInsDisabledCount} add-ins isolated, locks cleaned." : "Word Repair encountered issues.";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Word Quick Repair", "Microsoft Word")) return;
+        await ExecuteAsync("Word Quick Repair", () =>
+        {
+            var res = _officeSuiteService.WordQuickRepair();
+            LastOfficeSummary = res.Success ? $"Word Repaired: Normal.dotm reset, {res.AddInsDisabledCount} add-ins isolated, locks cleaned." : "Word Repair encountered issues.";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task ExcelQuickRepairAsync() => await ExecuteAsync("Excel Quick Repair", () =>
+    private async Task ExcelQuickRepairAsync()
     {
-        var res = _officeSuiteService.ExcelQuickRepair();
-        LastOfficeSummary = res.Success ? "Excel Repaired: XLSTART isolated, UI cache cleared, DDE/resiliency reset." : "Excel Repair encountered issues.";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Excel Quick Repair", "Microsoft Excel")) return;
+        await ExecuteAsync("Excel Quick Repair", () =>
+        {
+            var res = _officeSuiteService.ExcelQuickRepair();
+            LastOfficeSummary = res.Success ? "Excel Repaired: XLSTART isolated, UI cache cleared, DDE/resiliency reset." : "Excel Repair encountered issues.";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task PowerPointQuickRepairAsync() => await ExecuteAsync("PowerPoint Quick Repair", () =>
+    private async Task PowerPointQuickRepairAsync()
     {
-        var res = _officeSuiteService.PowerPointQuickRepair();
-        LastOfficeSummary = res.Success ? "PowerPoint Repaired: Font/slide cache cleared, resiliency purged." : "PowerPoint Repair encountered issues.";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("PowerPoint Quick Repair", "Microsoft PowerPoint")) return;
+        await ExecuteAsync("PowerPoint Quick Repair", () =>
+        {
+            var res = _officeSuiteService.PowerPointQuickRepair();
+            LastOfficeSummary = res.Success ? "PowerPoint Repaired: Font/slide cache cleared, resiliency purged." : "PowerPoint Repair encountered issues.";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task QuickMailRepairAsync() => await ExecuteAsync("Quick Mail & Cache Repair", () =>
+    private async Task QuickMailRepairAsync()
     {
-        var res = _outlookService.QuickMailAndCacheRepair();
-        LastOfficeSummary = res.Success
-            ? "Mailbox repaired: Outbox purged, SRS reset, RoamCache cleaned (AutoComplete preserved), NavPane reset."
-            : $"Quick Mail Repair failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Quick Mail & Cache Repair", "Microsoft Outlook")) return;
+        await ExecuteAsync("Quick Mail & Cache Repair", () =>
+        {
+            var res = _outlookService.QuickMailAndCacheRepair();
+            LastOfficeSummary = res.Success
+                ? "Mailbox repaired: Outbox purged, SRS reset, RoamCache cleaned (AutoComplete preserved), NavPane reset."
+                : $"Quick Mail Repair failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task Expand100GBAsync() => await ExecuteAsync("Expand PST/OST Limit to 100GB", () =>
+    private async Task Expand100GBAsync()
     {
-        var res = _outlookService.ExpandDataFileLimitsTo100GB();
-        LastOutlookSummary = res.Success ? "Registry MaxLargeFileSize expanded to 100GB (102400 MB)." : $"Expansion failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Expand PST/OST Limit to 100GB", "Microsoft Outlook", isOutlookTarget: true)) return;
+        await ExecuteAsync("Expand PST/OST Limit to 100GB", () =>
+        {
+            var res = _outlookService.ExpandDataFileLimitsTo100GB();
+            LastOutlookSummary = res.Success ? "Registry MaxLargeFileSize expanded to 100GB (102400 MB)." : $"Expansion failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
     public async Task DiscoverDataFilesAsync() => await ExecuteAsync("Discover Outlook Data Files", () =>
     {
@@ -373,55 +443,111 @@ public class OfficeOutlookViewModel : ViewModelBase
 
     private void ApplyDiscoveredDataFiles(System.Collections.Generic.IReadOnlyList<MapiDataFileInfo> files)
     {
+        string? previousPath = SelectedDataFile?.FilePath;
         DataFiles.Clear();
+        MapiDataFileInfo? matched = null;
         foreach (var file in files)
         {
             DataFiles.Add(file);
+            if (!string.IsNullOrEmpty(previousPath) &&
+                string.Equals(file.FilePath, previousPath, StringComparison.OrdinalIgnoreCase))
+            {
+                matched = file;
+            }
         }
 
-        if (SelectedDataFile == null && DataFiles.Count > 0)
+        if (matched != null)
+        {
+            SelectedDataFile = matched;
+        }
+        else if (DataFiles.Count > 0)
         {
             SelectedDataFile = DataFiles[0];
+        }
+        else
+        {
+            SelectedDataFile = null;
         }
 
         LastOutlookSummary = $"Discovered {DataFiles.Count} PST/OST files in MAPI profiles.";
         StatusMessage = LastOutlookSummary;
     }
 
-    private async Task RunPstPipelineAsync() => await ExecuteAsync("New Default PST Pipeline", () =>
+    private async Task RunPstPipelineAsync()
     {
-        var res = _outlookService.RunNewDefaultPstPipeline(TargetPstPath, SourcePstPath);
-        RefreshDataFilesCore();
-        LastOutlookSummary = res.Success
-            ? $"New Default PST pipeline finished: Cloned {res.FoldersClonedCount} folders, migrated {res.RulesMigratedCount} rules."
-            : $"PST Pipeline failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("New Default PST Pipeline", "Microsoft Outlook", isOutlookTarget: true)) return;
+        await ExecuteAsync("New Default PST Pipeline", () =>
+        {
+            var res = _outlookService.RunNewDefaultPstPipeline(TargetPstPath, SourcePstPath);
+            RefreshDataFilesCore();
+            if (res.Success)
+            {
+                foreach (var item in DataFiles)
+                {
+                    if (string.Equals(item.FilePath, TargetPstPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        SelectedDataFile = item;
+                        break;
+                    }
+                }
+            }
+            LastOutlookSummary = res.Success
+                ? $"New Default PST pipeline finished: Cloned {res.FoldersClonedCount} folders, migrated {res.RulesMigratedCount} rules."
+                : $"PST Pipeline failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task RelocatePstAsync() => await ExecuteAsync("Relocate PST Data File", () =>
+    private async Task RelocatePstAsync()
     {
-        if (SelectedDataFile == null) return Task.CompletedTask;
-        var res = _outlookService.RelocateDataFile(SelectedDataFile.FilePath, RelocationDestinationDir);
-        RefreshDataFilesCore();
-        LastOutlookSummary = res.Success
-            ? $"Relocated to '{res.DestinationPath}' with verified SHA-256 and symlink."
-            : $"Relocation failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (SelectedDataFile == null) return;
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Relocate PST Data File", "Microsoft Outlook", isOutlookTarget: true)) return;
+        await ExecuteAsync("Relocate PST Data File", () =>
+        {
+            if (SelectedDataFile == null) return Task.CompletedTask;
+            var res = _outlookService.RelocateDataFile(SelectedDataFile.FilePath, RelocationDestinationDir);
+            RefreshDataFilesCore();
+            if (res.Success)
+            {
+                foreach (var item in DataFiles)
+                {
+                    if (string.Equals(item.FilePath, res.DestinationPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        SelectedDataFile = item;
+                        break;
+                    }
+                }
+            }
+            LastOutlookSummary = res.Success
+                ? $"Relocated to '{res.DestinationPath}' with verified SHA-256 and symlink."
+                : $"Relocation failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task CompactPstAsync() => await ExecuteAsync("Compact PST Data File", () =>
+    private async Task CompactPstAsync()
     {
-        if (SelectedDataFile == null) return Task.CompletedTask;
-        var res = _outlookService.CompactDataFile(SelectedDataFile.FilePath);
-        LastOutlookSummary = res.Success ? "Data file compacted successfully." : $"Compact failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (SelectedDataFile == null) return;
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Compact PST Data File", "Microsoft Outlook", isOutlookTarget: true)) return;
+        await ExecuteAsync("Compact PST Data File", () =>
+        {
+            if (SelectedDataFile == null) return Task.CompletedTask;
+            var res = _outlookService.CompactDataFile(SelectedDataFile.FilePath);
+            LastOutlookSummary = res.Success ? "Data file compacted successfully." : $"Compact failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task BackupPstAsync() => await ExecuteAsync("Backup PST Data File", () =>
+    private async Task BackupPstAsync()
     {
-        if (SelectedDataFile == null) return Task.CompletedTask;
-        var res = _outlookService.BackupDataFile(SelectedDataFile.FilePath, BackupDirectory);
-        LastOutlookSummary = res.Success ? $"PST backed up with verified SHA-256: {res.BackupPath}" : $"Backup failed: {res.Message}";
-        return Task.CompletedTask;
-    });
+        if (SelectedDataFile == null) return;
+        if (!await ConfirmSaveAppWorkBeforeFixAsync("Backup PST Data File", "Microsoft Outlook", isOutlookTarget: true)) return;
+        await ExecuteAsync("Backup PST Data File", () =>
+        {
+            if (SelectedDataFile == null) return Task.CompletedTask;
+            var res = _outlookService.BackupDataFile(SelectedDataFile.FilePath, BackupDirectory);
+            LastOutlookSummary = res.Success ? $"PST backed up with verified SHA-256: {res.BackupPath}" : $"Backup failed: {res.Message}";
+            return Task.CompletedTask;
+        });
+    }
 }

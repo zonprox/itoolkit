@@ -150,8 +150,34 @@ public class SoftwareOptimizationViewModel : ViewModelBase
         }
     }
 
+    private async Task<bool> ConfirmSaveAppWorkBeforeActionAsync(string operationName, string applicationName)
+    {
+        if (_confirmationService == null)
+        {
+            return true;
+        }
+
+        bool confirmed = await _confirmationService.ConfirmAsync(
+            $"Save Work Before {operationName} ({applicationName})",
+            $"Please save and back up all open files and work in {applicationName} before running '{operationName}' to prevent data loss.",
+            $"{applicationName} will be safely closed before executing '{operationName}' and automatically restarted once completed. Do you want to proceed?");
+
+        if (!confirmed)
+        {
+            LastSoftwareStatus = $"{operationName} cancelled by user (save work in {applicationName} first).";
+            Logger?.LogWarning(nameof(SoftwareOptimizationViewModel), LastSoftwareStatus);
+            return false;
+        }
+
+        return true;
+    }
+
     private async void InstallSingleApp(string appId)
     {
+        var targetVm = CatalogApps.FirstOrDefault(a => a.Item.AppId.Equals(appId, StringComparison.OrdinalIgnoreCase));
+        string displayName = targetVm?.Item.DisplayName ?? appId;
+        if (!await ConfirmSaveAppWorkBeforeActionAsync($"Install {displayName}", displayName)) return;
+
         await ExecuteAsync($"Install '{appId}'", () =>
         {
             var appVm = CatalogApps.FirstOrDefault(a => a.Item.AppId.Equals(appId, StringComparison.OrdinalIgnoreCase));
@@ -177,12 +203,16 @@ public class SoftwareOptimizationViewModel : ViewModelBase
 
     private async Task BatchInstallAsync()
     {
-        var selected = CatalogApps.Where(a => a.IsSelected).Select(a => a.Item.AppId).ToList();
+        var selectedItems = CatalogApps.Where(a => a.IsSelected).ToList();
+        var selected = selectedItems.Select(a => a.Item.AppId).ToList();
         if (selected.Count == 0)
         {
             LastSoftwareStatus = "No applications selected for installation.";
             return;
         }
+
+        string appNames = string.Join(", ", selectedItems.Select(a => a.Item.DisplayName));
+        if (!await ConfirmSaveAppWorkBeforeActionAsync("Batch Install Applications", appNames)) return;
 
         await ExecuteAsync($"Batch Install ({selected.Count} Apps)", () =>
         {
@@ -224,26 +254,38 @@ public class SoftwareOptimizationViewModel : ViewModelBase
         });
     }
 
-    private async Task SetDefaultBrowserAsync() => await ExecuteAsync("Set Default Browser (Chrome)", () =>
+    private async Task SetDefaultBrowserAsync()
     {
-        bool ok = _appInstallerService.SetDefaultBrowser("chrome.exe");
-        LastSoftwareStatus = ok ? "Default browser set to Google Chrome." : "Failed to set default browser.";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeActionAsync("Set Default Browser", "Google Chrome")) return;
+        await ExecuteAsync("Set Default Browser (Chrome)", () =>
+        {
+            bool ok = _appInstallerService.SetDefaultBrowser("chrome.exe");
+            LastSoftwareStatus = ok ? "Default browser set to Google Chrome." : "Failed to set default browser.";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task SetDefaultPdfViewerAsync() => await ExecuteAsync("Set Default PDF Viewer (Foxit)", () =>
+    private async Task SetDefaultPdfViewerAsync()
     {
-        bool ok = _appInstallerService.SetDefaultPdfViewer("FoxitPDFReader.exe");
-        LastSoftwareStatus = ok ? "Default PDF viewer set to Foxit PDF Reader." : "Failed to set default PDF viewer.";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeActionAsync("Set Default PDF Viewer", "Foxit PDF Reader")) return;
+        await ExecuteAsync("Set Default PDF Viewer (Foxit)", () =>
+        {
+            bool ok = _appInstallerService.SetDefaultPdfViewer("FoxitPDFReader.exe");
+            LastSoftwareStatus = ok ? "Default PDF viewer set to Foxit PDF Reader." : "Failed to set default PDF viewer.";
+            return Task.CompletedTask;
+        });
+    }
 
-    private async Task ConfigureUblockPolicyAsync() => await ExecuteAsync("Configure uBlock Origin Policy", () =>
+    private async Task ConfigureUblockPolicyAsync()
     {
-        bool ok = _appInstallerService.ConfigureUblockOriginLitePolicy();
-        LastSoftwareStatus = ok ? "uBlock Origin Lite enterprise extension policy configured." : "Failed to configure policy.";
-        return Task.CompletedTask;
-    });
+        if (!await ConfirmSaveAppWorkBeforeActionAsync("Configure uBlock Origin Policy", "Google Chrome")) return;
+        await ExecuteAsync("Configure uBlock Origin Policy", () =>
+        {
+            bool ok = _appInstallerService.ConfigureUblockOriginLitePolicy();
+            LastSoftwareStatus = ok ? "uBlock Origin Lite enterprise extension policy configured." : "Failed to configure policy.";
+            return Task.CompletedTask;
+        });
+    }
 
     private static string FormatWingetStatus(WingetStatus status)
     {

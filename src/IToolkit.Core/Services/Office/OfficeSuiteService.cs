@@ -63,6 +63,7 @@ public class OfficeSuiteService : IOfficeSuiteService
     public bool RepairClickToRunService()
     {
         _logger?.LogInfo(nameof(OfficeSuiteService), "Repairing Office Click-to-Run service and cleaning corrupt XML releases...");
+        TerminateOfficeProcesses(TimeSpan.FromSeconds(3));
         _processRunner.Run("sc.exe", "config ClickToRunSvc start= auto");
         _processRunner.Run("net", "start ClickToRunSvc");
 
@@ -85,19 +86,23 @@ public class OfficeSuiteService : IOfficeSuiteService
                 }
             }
         }
+        _processLockGuard.RestartClosedProcesses();
         return true;
     }
 
     public ProcessExecutionResult RunClickToRunRepair(bool online = false)
     {
         _logger?.LogInfo(nameof(OfficeSuiteService), $"Initiating Click-to-Run {(online ? "Online" : "Quick")} repair...");
+        TerminateOfficeProcesses(TimeSpan.FromSeconds(3));
         string repairType = online ? "FullRepair" : "QuickRepair";
         string args = $"scenario=Repair platform=x64 culture=en-us RepairType={repairType} DisplayLevel=True forceappshutdown=True";
 
         string defaultExePath = Path.Combine(GetProgramFiles(), "Common Files", "Microsoft Shared", "ClickToRun", "OfficeClickToRun.exe");
         string exe = _fileSystem.FileExists(defaultExePath) ? defaultExePath : "OfficeClickToRun.exe";
 
-        return _processRunner.Run(exe, args);
+        var result = _processRunner.Run(exe, args);
+        _processLockGuard.RestartClosedProcesses();
+        return result;
     }
 
     public OperationResult ResetOfficeIdentityCache()
@@ -143,12 +148,26 @@ public class OfficeSuiteService : IOfficeSuiteService
             }
         }
 
+        _processLockGuard.RestartClosedProcesses();
         return regResult.Success ? OperationResult.Succeeded("Office Identity and WAM tokens reset successfully.") : regResult;
     }
 
     public OperationResult SetHardwareAcceleration(bool disable)
     {
         _logger?.LogInfo(nameof(OfficeSuiteService), $"Setting suite-wide hardware acceleration: disable={disable}...");
+        TerminateOfficeProcesses(TimeSpan.FromSeconds(3));
+        try
+        {
+            return SetHardwareAccelerationCore(disable);
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses();
+        }
+    }
+
+    private OperationResult SetHardwareAccelerationCore(bool disable)
+    {
         string commonGraphicsKey = @"HKCU\Software\Microsoft\Office\16.0\Common\Graphics";
 
         return _atomicRegistry.ExecuteAtomicMutation(
@@ -179,6 +198,7 @@ public class OfficeSuiteService : IOfficeSuiteService
     public bool ResetWordNormalDotm()
     {
         _logger?.LogInfo(nameof(OfficeSuiteService), "Resetting Word Normal.dotm template...");
+        _processLockGuard.EnsureProcessesClosed(new[] { "WINWORD" });
         string templateDir = Path.Combine(GetAppData(), "Microsoft", "Templates");
         string normalDotm = Path.Combine(templateDir, "Normal.dotm");
 
@@ -281,12 +301,14 @@ public class OfficeSuiteService : IOfficeSuiteService
         int locksRemoved = CleanWordLockFiles();
 
         bool success = regReset.Success;
+        _processLockGuard.RestartClosedProcesses(new[] { "WINWORD" });
         return new OfficeAppRepairResult("Word", dotmReset, addInsDisabled, success, locksRemoved, success, "Word quick repair completed.");
     }
 
     public int IsolateExcelXlStart()
     {
         _logger?.LogInfo(nameof(OfficeSuiteService), "Isolating Excel XLSTART add-ins...");
+        _processLockGuard.EnsureProcessesClosed(new[] { "EXCEL" });
         int count = 0;
         string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
 
@@ -431,12 +453,14 @@ public class OfficeSuiteService : IOfficeSuiteService
         var gdiResults = AuditAndMitigateGdiLeaks();
 
         bool success = ddeRes.Success && resRes.Success && uiReset;
+        _processLockGuard.RestartClosedProcesses(new[] { "EXCEL" });
         return new OfficeAppRepairResult("Excel", false, isolated, success, 0, success, "Excel quick repair completed.");
     }
 
     public bool PurgePowerPointCache()
     {
         _logger?.LogInfo(nameof(OfficeSuiteService), "Purging PowerPoint font and slide cache...");
+        _processLockGuard.EnsureProcessesClosed(new[] { "POWERPNT" });
         string pptCache = Path.Combine(GetLocalAppData(), "Microsoft", "Office", "16.0", "PowerPoint", "Cache");
         if (_fileSystem.DirectoryExists(pptCache))
         {
@@ -468,13 +492,19 @@ public class OfficeSuiteService : IOfficeSuiteService
     {
         _logger?.LogInfo(nameof(OfficeSuiteService), "Executing PowerPoint Quick Repair composite pipeline...");
         _processLockGuard.EnsureProcessesClosed(new[] { "POWERPNT" });
+        try
+        {
+            bool cachePurged = PurgePowerPointCache();
+            var resRes = PurgePowerPointResiliency();
+            var hwRes = SetHardwareAccelerationCore(disable: true);
 
-        bool cachePurged = PurgePowerPointCache();
-        var resRes = PurgePowerPointResiliency();
-        var hwRes = SetHardwareAcceleration(disable: true);
-
-        bool success = resRes.Success && hwRes.Success;
-        return new OfficeAppRepairResult("PowerPoint", false, 0, success, 0, success, "PowerPoint quick repair completed.");
+            bool success = resRes.Success && hwRes.Success;
+            return new OfficeAppRepairResult("PowerPoint", false, 0, success, 0, success, "PowerPoint quick repair completed.");
+        }
+        finally
+        {
+            _processLockGuard.RestartClosedProcesses(new[] { "POWERPNT" });
+        }
     }
 
     public OfficeScrubResult ScrubOfficeSuiteCleanly()
@@ -491,6 +521,7 @@ public class OfficeSuiteService : IOfficeSuiteService
                 terminated++;
             }
         }
+        _processLockGuard.EnsureProcessesClosed(OfficeProcessNames, TimeSpan.FromSeconds(3), forceKill: true);
 
         // 2. Stop and disable services
         int servicesStopped = 0;

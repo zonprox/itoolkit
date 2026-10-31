@@ -13,12 +13,19 @@ public class BackupService : IBackupService
 {
     public const string ManifestFileName = "iToolKit_Backup_Manifest.json";
 
+    public static readonly string[] BrowserProcessNames = { "chrome", "msedge" };
+    public static readonly string[] ProfileLockingProcessNames =
+    {
+        "OUTLOOK", "WINWORD", "EXCEL", "POWERPNT", "ONENOTE", "chrome", "msedge"
+    };
+
     private readonly IProcessRunner _processRunner;
     private readonly IFileSystemService _fileSystem;
     private readonly IRegistryService _registry;
     private readonly ResourceGuard _resourceGuard;
     private readonly ICertificateService? _certificateService;
     private readonly IActivityLogger? _logger;
+    private readonly ProcessLockGuard _processLockGuard;
 
     public BackupService(
         IProcessRunner processRunner,
@@ -26,7 +33,8 @@ public class BackupService : IBackupService
         IRegistryService registry,
         ResourceGuard resourceGuard,
         ICertificateService? certificateService = null,
-        IActivityLogger? logger = null)
+        IActivityLogger? logger = null,
+        ProcessLockGuard? processLockGuard = null)
     {
         _processRunner = processRunner ?? throw new ArgumentNullException(nameof(processRunner));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -34,6 +42,7 @@ public class BackupService : IBackupService
         _resourceGuard = resourceGuard ?? throw new ArgumentNullException(nameof(resourceGuard));
         _certificateService = certificateService;
         _logger = logger;
+        _processLockGuard = processLockGuard ?? new ProcessLockGuard(_processRunner, _fileSystem, _logger);
     }
 
     private string GetUserProfileDir(string? username = null)
@@ -84,6 +93,7 @@ public class BackupService : IBackupService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectory);
         _logger?.LogInfo(nameof(BackupService), $"Exporting Chrome and Edge bookmarks to '{destinationDirectory}'...");
+        _processLockGuard.EnsureProcessesClosed(BrowserProcessNames, TimeSpan.FromSeconds(3));
 
         _fileSystem.CreateDirectory(destinationDirectory);
         var results = new List<BookmarkExportResult>();
@@ -146,6 +156,7 @@ public class BackupService : IBackupService
             }
         }
 
+        _processLockGuard.RestartClosedProcesses();
         return results;
     }
 
@@ -228,6 +239,7 @@ public class BackupService : IBackupService
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
 
         _logger?.LogInfo(nameof(BackupService), $"Executing Robocopy sync: '{source}' -> '{destination}' (Mirror={mirror})...");
+        _processLockGuard.EnsureProcessesClosed(ProfileLockingProcessNames, TimeSpan.FromSeconds(3));
         _fileSystem.CreateDirectory(destination);
 
         string syncMode = mirror ? "/MIR" : "/E";
@@ -245,6 +257,7 @@ public class BackupService : IBackupService
         // Bitmask evaluation: Exit code < 8 is SUCCESS (0=no change, 1=copied, 2=extra files, 4=mismatches)
         bool isSuccess = res.ExitCode < 8;
 
+        _processLockGuard.RestartClosedProcesses();
         return new RobocopySyncResult(source, destination, res.ExitCode, isSuccess, res.StandardOutput, res.StandardError);
     }
 
@@ -346,35 +359,42 @@ public class BackupService : IBackupService
     public ProfileRestoreResult RestoreProfileData(string backupDirectory, string manifestPath, string? targetUser = null)
     {
         _logger?.LogInfo(nameof(BackupService), $"Initiating user profile restore from '{backupDirectory}'...");
-
-        // Pre-flight manifest verification
-        var validation = ValidateBackupManifest(backupDirectory, manifestPath);
-        if (!validation.IsIntact)
+        _processLockGuard.EnsureProcessesClosed(ProfileLockingProcessNames, TimeSpan.FromSeconds(3));
+        try
         {
-            string err = $"Pre-flight restore validation failed: {validation.MissingCount} missing files, {validation.CorruptedCount} corrupted files.";
-            _logger?.LogError(nameof(BackupService), err);
-            return new ProfileRestoreResult(false, 0, false, err);
+            // Pre-flight manifest verification
+            var validation = ValidateBackupManifest(backupDirectory, manifestPath);
+            if (!validation.IsIntact)
+            {
+                string err = $"Pre-flight restore validation failed: {validation.MissingCount} missing files, {validation.CorruptedCount} corrupted files.";
+                _logger?.LogError(nameof(BackupService), err);
+                return new ProfileRestoreResult(false, 0, false, err);
+            }
+
+            var userMap = GetUserProfileMap(targetUser);
+            string json = _fileSystem.ReadAllText(manifestPath);
+            var manifest = JsonSerializer.Deserialize<BackupManifestData>(json)!;
+
+            int restored = 0;
+            foreach (var item in manifest.Files)
+            {
+                string normRel = item.RelativePath.Replace('/', Path.DirectorySeparatorChar);
+                string srcFile = Path.Combine(backupDirectory, normRel);
+                string dstFile = Path.Combine(userMap.ProfilePath, normRel);
+
+                string? dstDir = Path.GetDirectoryName(dstFile);
+                if (!string.IsNullOrEmpty(dstDir)) _fileSystem.CreateDirectory(dstDir);
+
+                _fileSystem.CopyFile(srcFile, dstFile, overwrite: true);
+                restored++;
+            }
+
+            _logger?.LogSuccess(nameof(BackupService), $"Profile restore completed: {restored} files restored.");
+            return new ProfileRestoreResult(true, restored, true, "Profile successfully restored from verified backup.");
         }
-
-        var userMap = GetUserProfileMap(targetUser);
-        string json = _fileSystem.ReadAllText(manifestPath);
-        var manifest = JsonSerializer.Deserialize<BackupManifestData>(json)!;
-
-        int restored = 0;
-        foreach (var item in manifest.Files)
+        finally
         {
-            string normRel = item.RelativePath.Replace('/', Path.DirectorySeparatorChar);
-            string srcFile = Path.Combine(backupDirectory, normRel);
-            string dstFile = Path.Combine(userMap.ProfilePath, normRel);
-
-            string? dstDir = Path.GetDirectoryName(dstFile);
-            if (!string.IsNullOrEmpty(dstDir)) _fileSystem.CreateDirectory(dstDir);
-
-            _fileSystem.CopyFile(srcFile, dstFile, overwrite: true);
-            restored++;
+            _processLockGuard.RestartClosedProcesses();
         }
-
-        _logger?.LogSuccess(nameof(BackupService), $"Profile restore completed: {restored} files restored.");
-        return new ProfileRestoreResult(true, restored, true, "Profile successfully restored from verified backup.");
     }
 }

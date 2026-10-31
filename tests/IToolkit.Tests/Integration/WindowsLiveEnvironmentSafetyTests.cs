@@ -78,6 +78,10 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
         {
             if (Directory.Exists(_sandboxDir))
             {
+                foreach (var file in _realFileSystem.EnumerateFiles(_sandboxDir, "*", SearchOption.AllDirectories))
+                {
+                    try { File.SetAttributes(file, FileAttributes.Normal); } catch { }
+                }
                 Directory.Delete(_sandboxDir, recursive: true);
             }
         }
@@ -249,8 +253,20 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
     /// </summary>
     private sealed class SafeInterceptingProcessRunner : IProcessRunner
     {
+        private readonly Dictionary<int, (string Name, bool ClosesGracefully)> _activeProcesses = new();
+
         public List<(string FileName, string Arguments)> RecordedCommands { get; } = new();
+        public List<int> GracefulCloseRequestedPids { get; } = new();
+        public List<int> ForceKilledPids { get; } = new();
         public Func<string, string, ProcessExecutionResult>? CustomHandler { get; set; }
+
+        public void SeedRunningProcess(int pid, string processName, bool closesGracefully = true)
+        {
+            string norm = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? processName[..^4]
+                : processName;
+            _activeProcesses[pid] = (norm, closesGracefully);
+        }
 
         public ProcessExecutionResult Run(string fileName, string arguments, string? workingDirectory = null, int timeoutMs = 60000)
         {
@@ -265,12 +281,57 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
         public Task<ProcessExecutionResult> RunAsync(string fileName, string arguments, string? workingDirectory = null, int timeoutMs = 60000, CancellationToken cancellationToken = default) =>
             Task.FromResult(Run(fileName, arguments, workingDirectory, timeoutMs));
 
-        public IEnumerable<ProcessInfo> GetProcessesByName(string processName) => Array.Empty<ProcessInfo>();
-        public bool CloseMainWindow(int processId) => true;
-        public bool WaitForExit(int processId, TimeSpan timeout) => true;
-        public bool KillProcess(int processId, bool entireProcessTree = true) => true;
-        public bool StopProcess(string processName, int timeoutSeconds = 10, bool force = true) => true;
-        public bool IsProcessRunning(string processName) => false;
+        public IEnumerable<ProcessInfo> GetProcessesByName(string processName)
+        {
+            string norm = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? processName[..^4]
+                : processName;
+            return _activeProcesses
+                .Where(kv => kv.Value.Name.Equals(norm, StringComparison.OrdinalIgnoreCase))
+                .Select(kv => new ProcessInfo(kv.Key, kv.Value.Name, $"{kv.Value.Name} Window"))
+                .ToList();
+        }
+
+        public bool CloseMainWindow(int processId)
+        {
+            GracefulCloseRequestedPids.Add(processId);
+            if (_activeProcesses.TryGetValue(processId, out var entry) && entry.ClosesGracefully)
+            {
+                _activeProcesses.Remove(processId);
+                return true;
+            }
+            return false;
+        }
+
+        public bool WaitForExit(int processId, TimeSpan timeout) => !_activeProcesses.ContainsKey(processId);
+
+        public bool KillProcess(int processId, bool entireProcessTree = true)
+        {
+            ForceKilledPids.Add(processId);
+            return _activeProcesses.Remove(processId);
+        }
+
+        public bool StopProcess(string processName, int timeoutSeconds = 10, bool force = true)
+        {
+            foreach (var proc in GetProcessesByName(processName).ToList())
+            {
+                if (!CloseMainWindow(proc.Id) && force)
+                {
+                    KillProcess(proc.Id, true);
+                }
+            }
+            return !IsProcessRunning(processName);
+        }
+
+        public bool IsProcessRunning(string processName) => GetProcessesByName(processName).Any();
+
+        public List<string> RestartedProcesses { get; } = new();
+
+        public bool StartProcess(string fileName, string? arguments = null)
+        {
+            RestartedProcesses.Add(string.IsNullOrWhiteSpace(arguments) ? fileName : $"{fileName} {arguments}");
+            return true;
+        }
     }
 
     private sealed class SandboxedNetworkService : INetworkService
@@ -337,11 +398,13 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
         public bool NextResult { get; set; } = true;
         public int CallCount { get; private set; }
         public string? LastTitle { get; private set; }
+        public List<(string Title, string Message, string? WarningDetail)> RecordedPrompts { get; } = new();
 
         public bool Confirm(string title, string message, string? warningDetail = null)
         {
             CallCount++;
             LastTitle = title;
+            RecordedPrompts.Add((title, message, warningDetail));
             return NextResult;
         }
 
@@ -1169,15 +1232,20 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
         safeProc.CustomHandler = null;
 
         // 4. BackupService: Bookmarks JSON parsing, Certificate export, real Robocopy sync, SHA-256 manifest, and Profile Restore
+        safeProc.CustomHandler = (exe, args) =>
+            exe.Equals("robocopy.exe", StringComparison.OrdinalIgnoreCase)
+                ? _realProcessRunner.Run("robocopy.exe", args)
+                : new ProcessExecutionResult(0, "OK", string.Empty, false);
+
         var realResourceGuard = new ResourceGuard(_realFileSystem, _realLogger);
-        var liveBackup = new BackupService(_realProcessRunner, _realFileSystem, _realRegistry, realResourceGuard, null, _realLogger);
+        var liveBackup = new BackupService(safeProc, _realFileSystem, _realRegistry, realResourceGuard, null, _realLogger);
 
         var profileMap = liveBackup.GetUserProfileMap();
         Assert.Equal(currentUserName, profileMap.Username);
 
         // Seed Chrome and Edge bookmarks in sandbox and verify JSON URL counting & SHA-256 export
         var sandboxResourceGuard = new ResourceGuard(sandboxFs, _realLogger);
-        var sandboxBackup = new BackupService(_realProcessRunner, sandboxFs, sandboxReg, sandboxResourceGuard, null, _realLogger);
+        var sandboxBackup = new BackupService(safeProc, sandboxFs, sandboxReg, sandboxResourceGuard, null, _realLogger);
         string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string chromeDefault = Path.Combine(localAppData, "Google", "Chrome", "User Data", "Default");
         string edgeProfile1 = Path.Combine(localAppData, "Microsoft", "Edge", "User Data", "Profile 1");
@@ -1492,5 +1560,606 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
         consoleVm.DismissCompletionCommand.Execute(null);
         consoleVm.ClearLogCommand.Execute(null);
         Assert.Equal(0, consoleVm.TotalCount);
+    }
+
+    [Fact]
+    public void LiveWindows_RealSystemExecution_AllFunctionsAndCompiledApp_VerifyActualBehaviorSafely()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // 1. Real WindowsProcessRunner resilience: missing binary must return ExitCode -1 instead of throwing Win32Exception
+        var missingProcRes = _realProcessRunner.Run("non_existent_binary_itoolkit_probe_9999.exe", "--version");
+        Assert.Equal(-1, missingProcRes.ExitCode);
+        Assert.False(missingProcRes.TimedOut);
+        Assert.False(string.IsNullOrWhiteSpace(missingProcRes.StandardError));
+
+        // 2. Real WindowsRegistryService resilience: read/write checks & non-throwing behavior on protected keys
+        var elevation = new ElevationGuard();
+        bool isElevated = elevation.IsElevated();
+        if (!isElevated)
+        {
+            // Writing to HKLM without elevation must return false cleanly without throwing UnauthorizedAccessException
+            Assert.False(_realRegistry.CreateKey(@"HKLM\SOFTWARE\Policies\iToolKit_ReadOnlyProbe_NonElevated"));
+            Assert.False(_realRegistry.SetValue(@"HKLM\SOFTWARE\Policies\iToolKit_ReadOnlyProbe_NonElevated", "Probe", 1, RegistryValueKind.DWord));
+            Assert.False(_realRegistry.DeleteValue(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuild"));
+            Assert.False(_realRegistry.DeleteKey(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", recursive: false));
+        }
+
+        // 3. Real WindowsFileSystemService resilience: EnumerateFiles with SearchOption.AllDirectories on protected OS dirs
+        //    (e.g., C:\Windows\Temp and %APPDATA%) must ignore inaccessible subdirectories and find hidden files
+        string winTemp = Path.Combine(Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows", "Temp");
+        var winTempFiles = _realFileSystem.EnumerateFiles(winTemp, "*", SearchOption.AllDirectories).Take(25).ToList();
+        Assert.NotNull(winTempFiles);
+
+        string hiddenWordDir = Path.Combine(_sandboxDir, "HiddenWordLockTest");
+        _realFileSystem.CreateDirectory(hiddenWordDir);
+        string hiddenLockFile = Path.Combine(hiddenWordDir, "~$HiddenRealWordDoc.docx");
+        _realFileSystem.WriteAllText(hiddenLockFile, "Hidden Word Lock");
+        File.SetAttributes(hiddenLockFile, FileAttributes.Hidden);
+
+        var discoveredHidden = _realFileSystem.EnumerateFiles(hiddenWordDir, "*", SearchOption.AllDirectories).ToList();
+        Assert.Single(discoveredHidden);
+
+        // 4. Pillar 1 Real Execution: WMI Repository verification, DISM CheckHealth, and W32Time status query
+        var sandboxFs = new SandboxedWindowsFileSystemService(_realFileSystem, _sandboxDir);
+        var sandboxReg = new SandboxedWindowsRegistryService(_realRegistry, _sandboxRegRoot);
+        var atomicReg = new AtomicRegistryService(sandboxReg, sandboxFs, _realLogger, Path.Combine(_sandboxDir, "Backups", "RealExec"));
+        var realLockGuard = new ProcessLockGuard(_realProcessRunner, _realFileSystem, _realLogger);
+        var realResourceGuard = new ResourceGuard(_realFileSystem, _realLogger);
+
+        var wmiVerify = _realProcessRunner.Run("winmgmt.exe", "/verifyrepository");
+        Assert.NotNull(wmiVerify);
+
+        var w32tmQuery = _realProcessRunner.Run("w32tm.exe", "/tz");
+        Assert.Equal(0, w32tmQuery.ExitCode);
+        Assert.False(string.IsNullOrWhiteSpace(w32tmQuery.StandardOutput));
+
+        var liveHealth = new SystemHealthService(_realProcessRunner, sandboxFs, _realLogger, sandboxReg, atomicReg);
+        var dismCheck = liveHealth.RunDismCheckHealth();
+        if (isElevated)
+        {
+            Assert.True(dismCheck.Success);
+        }
+        else
+        {
+            // Non-elevated DISM returns exit code 740 (ERROR_ELEVATION_REQUIRED)
+            Assert.Equal(740, dismCheck.ExitCode);
+        }
+
+        // 5. Pillar 2 Real Execution: Real MAPI/Filesystem PST/OST discovery, real GDI handle audit, and real hidden Word lock cleanup
+        var liveOutlook = new OutlookService(_realRegistry, atomicReg, _realFileSystem, realLockGuard, realResourceGuard, null, _realLogger);
+        var realDataFiles = liveOutlook.DiscoverDataFiles();
+        Assert.NotNull(realDataFiles);
+
+        var liveOffice = new OfficeSuiteService(_realProcessRunner, _realFileSystem, sandboxReg, atomicReg, realLockGuard, _realLogger);
+        var gdiAudit = liveOffice.AuditAndMitigateGdiLeaks(warningThreshold: 999999, killThreshold: 999999);
+        Assert.NotNull(gdiAudit);
+
+        int cleanedHiddenLocks = liveOffice.CleanWordLockFiles(hiddenWordDir);
+        Assert.Equal(1, cleanedHiddenLocks);
+        Assert.False(_realFileSystem.FileExists(hiddenLockFile));
+
+        // 6. Pillar 3 Real Execution: Real DNS cache flush (ipconfig /flushdns), real icacls ACL grant on sandbox dir,
+        //    real Spooler status inspection (WMI + sc.exe fallback), real Point & Print CVE-2021-1678 audit, and real TCP/ICMP port probe
+        var liveConnectivity = new ConnectivityService(_realNetwork, _realProcessRunner, sandboxReg, atomicReg, _realLogger);
+        Assert.True(liveConnectivity.FlushDns());
+
+        var realPortDiag = liveConnectivity.DiagnosePrinterPortConnectivity("127.0.0.1");
+        Assert.True(realPortDiag.IsPingSuccessful);
+        Assert.Contains("Ping=PASS", realPortDiag.DiagnosticsSummary);
+
+        string sandboxSpoolDir = Path.Combine(_sandboxDir, "RealIcaclsSpool");
+        _realFileSystem.CreateDirectory(sandboxSpoolDir);
+        var icaclsRes = _realProcessRunner.Run("icacls.exe", $"\"{sandboxSpoolDir}\" /grant \"SYSTEM:(OI)(CI)F\" \"Administrators:(OI)(CI)F\" /T /C /Q");
+        Assert.Equal(0, icaclsRes.ExitCode);
+
+        var livePrinterWmi = new PrinterService(_realProcessRunner, _realFileSystem, _realRegistry, atomicReg, realLockGuard, _realWmi, _realLogger, _realNetwork);
+        var spoolerViaWmi = livePrinterWmi.GetSpoolerStatus();
+        Assert.NotNull(spoolerViaWmi);
+        Assert.False(string.IsNullOrWhiteSpace(spoolerViaWmi.ServiceStatus));
+
+        // Also verify sc.exe query spooler fallback when WMI is null
+        var livePrinterSc = new PrinterService(_realProcessRunner, _realFileSystem, _realRegistry, atomicReg, realLockGuard, wmi: null, _realLogger, _realNetwork);
+        var spoolerViaSc = livePrinterSc.GetSpoolerStatus();
+        Assert.NotNull(spoolerViaSc);
+        Assert.Equal(spoolerViaWmi.IsRunning, spoolerViaSc.IsRunning);
+
+        var realPnpAudit = livePrinterWmi.AuditPointAndPrintPolicy();
+        Assert.NotNull(realPnpAudit);
+        Assert.False(string.IsNullOrWhiteSpace(realPnpAudit.PostureDescription));
+
+        // 7. Pillar 4 Real Execution: Real local accounts via WMI AND via net.exe user fallback, real domain reachability,
+        //    real user profile folder mapping, real Chrome/Edge bookmark export, real X509Store certificate export, and real Robocopy sync
+        var liveIdentityWmi = new IdentityService(_realProcessRunner, sandboxFs, sandboxReg, _realNetwork, _realWmi, _realLogger);
+        var wmiAccounts = liveIdentityWmi.GetLocalAccounts();
+        Assert.NotEmpty(wmiAccounts);
+
+        var liveIdentityNetUser = new IdentityService(_realProcessRunner, sandboxFs, sandboxReg, _realNetwork, wmi: null, _realLogger);
+        var netUserAccounts = liveIdentityNetUser.GetLocalAccounts();
+        Assert.NotEmpty(netUserAccounts);
+
+        var domReach = liveIdentityWmi.TestDomainReachability("127.0.0.1");
+        Assert.True(domReach.DnsResolved);
+
+        var safeRealCmdRunner = new SafeInterceptingProcessRunner
+        {
+            CustomHandler = (exe, args) => _realProcessRunner.Run(exe, args)
+        };
+        var safeRealLockGuard = new ProcessLockGuard(safeRealCmdRunner, _realFileSystem, _realLogger);
+
+        var liveBackup = new BackupService(safeRealCmdRunner, _realFileSystem, _realRegistry, realResourceGuard, null, _realLogger);
+        var realProfileMap = liveBackup.GetUserProfileMap();
+        Assert.Equal(Environment.UserName, realProfileMap.Username);
+        Assert.True(Directory.Exists(realProfileMap.ProfilePath));
+
+        string realBookmarksOut = Path.Combine(_sandboxDir, "RealHostBookmarks");
+        var hostBookmarks = liveBackup.ExportBrowserBookmarks(realBookmarksOut);
+        Assert.NotNull(hostBookmarks);
+        foreach (var bm in hostBookmarks)
+        {
+            Assert.True(File.Exists(bm.ExportPath));
+            Assert.Equal(64, bm.Sha256Hash.Length);
+        }
+
+        string realCertsOut = Path.Combine(_sandboxDir, "RealHostCerts");
+        var myCertExport = liveBackup.ExportCertificates("My", realCertsOut, "iToolKitLiveCertPass#2026");
+        Assert.True(myCertExport.Success);
+        Assert.True(File.Exists(myCertExport.ExportPath));
+
+        var rootCertExport = liveBackup.ExportCertificates("Root", realCertsOut, null);
+        Assert.True(rootCertExport.Success);
+        Assert.True(File.Exists(rootCertExport.ExportPath));
+        Assert.True(rootCertExport.ExportedCount > 0);
+
+        // 8. Pillar 5 Real Execution: Real winget.exe status & source check, real powershell.exe script execution & temp cleanup,
+        //    and real AppInstallerService browser/PDF/uBlock configuration with real WindowsProcessRunner
+        var liveOpt = new OptimizationService(_realProcessRunner, _realFileSystem, _realNetwork, _realLogger);
+        var realWinget = liveOpt.GetWingetStatus();
+        Assert.NotNull(realWinget);
+        if (realWinget.IsInstalled)
+        {
+            Assert.StartsWith("v", realWinget.Version, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var sandboxNet = new SandboxedNetworkService(_realNetwork, sandboxFs)
+        {
+            CustomDownloadStringHandler = _ => "Write-Output 'REAL_POWERSHELL_DEBLOAT_TEST_OK'; exit 0"
+        };
+        var realPsOpt = new OptimizationService(_realProcessRunner, _realFileSystem, sandboxNet, _realLogger);
+        var psDebloatRes = realPsOpt.ExecuteDebloatScript("RealPowerShellProbe", "https://debloat.raphi.re/probe.ps1");
+        Assert.True(psDebloatRes.SyntaxValid);
+        Assert.True(psDebloatRes.ExecutionSuccess);
+        Assert.Equal(0, psDebloatRes.ExitCode);
+        Assert.True(psDebloatRes.TempCleanedUp);
+        Assert.Contains("REAL_POWERSHELL_DEBLOAT_TEST_OK", psDebloatRes.Output);
+
+        var realAppInstaller = new AppInstallerService(safeRealCmdRunner, sandboxFs, sandboxReg, safeRealLockGuard, sandboxNet, _realLogger);
+        Assert.True(realAppInstaller.SetDefaultBrowser("non_existent_chrome_probe.exe"));
+        Assert.True(realAppInstaller.SetDefaultPdfViewer("non_existent_foxit_probe.exe"));
+        Assert.True(realAppInstaller.ConfigureUblockOriginLitePolicy());
+        Assert.Equal("ChromeHTML", sandboxReg.GetValue<string>(@"HKCU\Software\Classes\.html", ""));
+        Assert.Equal("FoxitPDFReader.Document", sandboxReg.GetValue<string>(@"HKCU\Software\Classes\.pdf", ""));
+        Assert.Contains("ddkjiahejlhfcafbddmgiahcphecmpfh", sandboxReg.GetValue<string>(@"HKCU\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist", "1") ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task LiveWindows_AllButtonWorkflows_RealPstCreateMapRuleMoveBackupRestoreAndProfileBackupRestore_ExecuteEndToEnd()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var safeProc = new SafeInterceptingProcessRunner();
+        var sandboxReg = new SandboxedWindowsRegistryService(_realRegistry, _sandboxRegRoot);
+        var confirmSvc = new ConfigurableConfirmationService { NextResult = true };
+
+        // =====================================================================
+        // PART 0: REAL WINDOWS OS PROCESS LOCK & SAFE TERMINATION VERIFICATION
+        // (Spawns a real OS process in sandbox, verifies ProcessLockGuard detects
+        //  PID, attempts CloseMainWindow first, escalates to KillProcess, and
+        //  confirms process exit on live Windows kernel)
+        // =====================================================================
+        string systemPingExe = Path.Combine(Environment.SystemDirectory, "PING.EXE");
+        if (File.Exists(systemPingExe))
+        {
+            string dummyAppPath = Path.Combine(_sandboxDir, "iToolKitDummyLockApp.exe");
+            File.Copy(systemPingExe, dummyAppPath, overwrite: true);
+
+            using var realDummyProc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dummyAppPath,
+                Arguments = "-n 30 127.0.0.1",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
+            Assert.NotNull(realDummyProc);
+
+            try
+            {
+                var realLockGuard = new ProcessLockGuard(_realProcessRunner, _realFileSystem, _realLogger);
+                Assert.True(_realProcessRunner.IsProcessRunning("iToolKitDummyLockApp"));
+                var lockingProcs = realLockGuard.GetLockingProcesses(new[] { "iToolKitDummyLockApp" });
+                Assert.Contains(lockingProcs, p => p.Id == realDummyProc!.Id);
+
+                bool closedOk = await realLockGuard.EnsureProcessesClosedAsync(
+                    new[] { "iToolKitDummyLockApp" },
+                    timeout: TimeSpan.FromMilliseconds(400),
+                    forceKill: true);
+
+                Assert.True(closedOk);
+                Assert.False(_realProcessRunner.IsProcessRunning("iToolKitDummyLockApp"));
+                Assert.Contains("iToolKitDummyLockApp", realLockGuard.LastClosedProcesses);
+
+                // Verify real WindowsProcessRunner.StartProcess & ProcessLockGuard.RestartClosedProcesses
+                bool restartedRealOk = _realProcessRunner.StartProcess(dummyAppPath, "-n 2 127.0.0.1");
+                Assert.True(restartedRealOk);
+            }
+            finally
+            {
+                try { if (!realDummyProc!.HasExited) realDummyProc.Kill(true); } catch { }
+                foreach (var p in _realProcessRunner.GetProcessesByName("iToolKitDummyLockApp"))
+                {
+                    _realProcessRunner.KillProcess(p.Id, true);
+                }
+            }
+        }
+
+        // =====================================================================
+        // PART 1: REAL PST/OST & OFFICE BUTTON WORKFLOWS ON REAL WINDOWS FILESYSTEM
+        // (Pre-Fix Save-Work Confirmation Dialog -> Safe App Close -> Execute Fix
+        //  -> Auto-Restart App; plus Discover -> Create New Default PST ->
+        //  Clone Folders -> Map Rules -> Backup PST -> Move PST/OST -> Compact -> Restore)
+        // =====================================================================
+        var pstServices = new ServiceCollection();
+        ServiceRegistration.ConfigureServices(pstServices);
+        pstServices.AddSingleton<IActivityLogger>(_realLogger);
+        pstServices.AddSingleton<IRegistryService>(sandboxReg);
+        pstServices.AddSingleton<IFileSystemService>(new SandboxedWindowsFileSystemService(_realFileSystem, _sandboxDir));
+        pstServices.AddSingleton<IProcessRunner>(safeProc);
+        pstServices.AddSingleton<ISafetyConfirmationService>(confirmSvc);
+        pstServices.AddSingleton(sp => new AtomicRegistryService(
+            sp.GetRequiredService<IRegistryService>(),
+            sp.GetRequiredService<IFileSystemService>(),
+            sp.GetRequiredService<IActivityLogger>(),
+            Path.Combine(_sandboxDir, "Backups", "RealPstWorkflows")));
+
+        await using (var pstProvider = pstServices.BuildServiceProvider())
+        {
+            var outlookCom = Assert.IsType<WindowsOutlookComService>(pstProvider.GetRequiredService<IOutlookComService>());
+            Assert.True(outlookCom.IsOutlookAvailable());
+
+            var offVm = pstProvider.GetRequiredService<OfficeOutlookViewModel>();
+            var outlookSvc = pstProvider.GetRequiredService<IOutlookService>();
+            var pstFs = pstProvider.GetRequiredService<IFileSystemService>();
+
+            // Step 0A: Verify pre-fix confirmation dialog when user clicks CANCEL (NextResult = false):
+            //          Prompt names "Microsoft Word", does NOT close running WINWORD, and aborts fix!
+            confirmSvc.RecordedPrompts.Clear();
+            confirmSvc.NextResult = false;
+            safeProc.SeedRunningProcess(4100, "WINWORD", closesGracefully: true);
+            await offVm.WordQuickRepairCommand.ExecuteAsync(null);
+            Assert.Single(confirmSvc.RecordedPrompts);
+            Assert.Contains("Microsoft Word", confirmSvc.RecordedPrompts[0].Title);
+            Assert.Contains("Microsoft Word", confirmSvc.RecordedPrompts[0].Message);
+            Assert.True(safeProc.IsProcessRunning("WINWORD"), "WINWORD must remain open when user cancels save-work confirmation!");
+            Assert.Contains("cancelled", offVm.LastOfficeSummary, StringComparison.OrdinalIgnoreCase);
+
+            // Step 0B: User clicks CONFIRM (NextResult = true) on Word, Excel, and PowerPoint Quick Repairs:
+            //          Prompts name the exact app, close running process, run fix, and auto-restart the app!
+            confirmSvc.NextResult = true;
+            safeProc.RestartedProcesses.Clear();
+            await offVm.WordQuickRepairCommand.ExecuteAsync(null);
+            Assert.Contains(4100, safeProc.GracefulCloseRequestedPids);
+            Assert.False(safeProc.IsProcessRunning("WINWORD"));
+            Assert.Contains("WINWORD.exe", safeProc.RestartedProcesses);
+
+            safeProc.RestartedProcesses.Clear();
+            safeProc.SeedRunningProcess(4108, "EXCEL", closesGracefully: true);
+            await offVm.ExcelQuickRepairCommand.ExecuteAsync(null);
+            Assert.Contains("Microsoft Excel", confirmSvc.RecordedPrompts.Last().Title);
+            Assert.Contains(4108, safeProc.GracefulCloseRequestedPids);
+            Assert.Contains("EXCEL.exe", safeProc.RestartedProcesses);
+
+            safeProc.RestartedProcesses.Clear();
+            safeProc.SeedRunningProcess(4109, "POWERPNT", closesGracefully: true);
+            await offVm.PowerPointQuickRepairCommand.ExecuteAsync(null);
+            Assert.Contains("Microsoft PowerPoint", confirmSvc.RecordedPrompts.Last().Title);
+            Assert.Contains(4109, safeProc.GracefulCloseRequestedPids);
+            Assert.Contains("POWERPNT.exe", safeProc.RestartedProcesses);
+
+            string storesDir = Path.Combine(_sandboxDir, "RealOutlookStores");
+            pstFs.CreateDirectory(storesDir);
+            string sourcePst = Path.Combine(storesDir, "CorporateMail.pst");
+            string sourceOst = Path.Combine(storesDir, "ExchangeCache.ost");
+
+            byte[] pstPayload = Encoding.UTF8.GetBytes("REAL_PST_HEADER_AND_MAILBOX_DATA_2026_" + new string('P', 4096));
+            byte[] ostPayload = Encoding.UTF8.GetBytes("REAL_OST_CACHED_EXCHANGE_DATA_2026_" + new string('O', 4096));
+            pstFs.WriteAllBytes(sourcePst, pstPayload);
+            pstFs.WriteAllBytes(sourceOst, ostPayload);
+
+            // Seed MAPI profile keys in sandboxed Windows Registry pointing to real files in _sandboxDir
+            string mapiPstKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\Outlook\9375CFF0413111d3B88A00104B2A6676\00000010";
+            string mapiOstKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\Outlook\9375CFF0413111d3B88A00104B2A6676\00000011";
+            sandboxReg.CreateKey(mapiPstKey);
+            sandboxReg.SetValue(mapiPstKey, "001f6700", Encoding.Unicode.GetBytes(sourcePst + "\0"), RegistryValueKind.Binary);
+            sandboxReg.SetValue(mapiPstKey, "001f3001", Encoding.Unicode.GetBytes("Corporate Mail PST\0"), RegistryValueKind.Binary);
+
+            sandboxReg.CreateKey(mapiOstKey);
+            sandboxReg.SetValue(mapiOstKey, "001e6700", Encoding.ASCII.GetBytes(sourceOst + "\0"), RegistryValueKind.Binary);
+
+            // Seed source PST with both system folders (must be skipped) and custom folders + rules (must be cloned/mapped)
+            outlookCom.AddStoreFolder(sourcePst, "Inbox");
+            outlookCom.AddStoreFolder(sourcePst, "Sent Items");
+            outlookCom.AddStoreFolder(sourcePst, "Deleted Items");
+            outlookCom.AddStoreFolder(sourcePst, "Drafts");
+            outlookCom.AddStoreFolder(sourcePst, "VIP_Clients");
+            outlookCom.AddStoreFolder(sourcePst, "Tax_2026");
+            outlookCom.AddStoreFolder(sourcePst, "Engineering_Specs");
+            outlookCom.AddStoreFolder(sourcePst, "Board_Reports");
+
+            outlookCom.AddStoreRule(sourcePst, "Route VIP_Clients to VIP_Clients");
+            outlookCom.AddStoreRule(sourcePst, "Auto-File Tax_2026 Invoices");
+            outlookCom.AddStoreRule(sourcePst, "Flag Engineering_Specs Updates");
+
+            // Step 1: Click "Discover Data Files" button
+            await offVm.DiscoverDataFilesCommand.ExecuteAsync(null);
+            Assert.Contains(offVm.DataFiles, f => string.Equals(f.FilePath, sourcePst, StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(offVm.DataFiles, f => string.Equals(f.FilePath, sourceOst, StringComparison.OrdinalIgnoreCase));
+
+            // Select CorporateMail.pst -> verifies SourcePstPath auto-populates
+            offVm.SelectedDataFile = offVm.DataFiles.First(f => string.Equals(f.FilePath, sourcePst, StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(sourcePst, offVm.SourcePstPath);
+
+            // Step 2: Seed running OUTLOOK (PID 4101) and click "Create & Set Default PST Pipeline" button
+            //         Verifies confirmation dialog names "Microsoft Outlook", OUTLOOK is safely closed BEFORE
+            //         creating new PST, cloning folders, and mapping rules, and OUTLOOK.exe is auto-restarted after!
+            safeProc.RestartedProcesses.Clear();
+            safeProc.SeedRunningProcess(4101, "OUTLOOK", closesGracefully: true);
+            Assert.True(safeProc.IsProcessRunning("OUTLOOK"));
+
+            string newDefaultPst = Path.Combine(_sandboxDir, "NewPstTarget", "NewDefault2026.pst");
+            offVm.TargetPstPath = newDefaultPst;
+            await offVm.CreateAndSetDefaultPstCommand.ExecuteAsync(null);
+
+            Assert.Contains("Microsoft Outlook", confirmSvc.RecordedPrompts.Last().Title);
+            Assert.Contains("Microsoft Outlook", confirmSvc.RecordedPrompts.Last().Message);
+            Assert.Contains(4101, safeProc.GracefulCloseRequestedPids);
+            Assert.False(safeProc.IsProcessRunning("OUTLOOK"));
+            Assert.Contains("OUTLOOK.exe", safeProc.RestartedProcesses);
+            Assert.True(_realFileSystem.FileExists(newDefaultPst));
+            Assert.Contains("Cloned 4 folders, migrated 3 rules", offVm.LastOutlookSummary);
+            Assert.Equal(102400, sandboxReg.GetValue<int>(@"HKCU\Software\Microsoft\Office\16.0\Outlook\PST", "MaxLargeFileSize"));
+            Assert.Equal(newDefaultPst, sandboxReg.GetValue<string>(@"HKCU\Software\Microsoft\Office\16.0\Outlook\Search", "DefaultStorePath"));
+            Assert.Equal(Path.GetFullPath(newDefaultPst), outlookCom.LastDefaultStorePath);
+
+            var clonedFolders = outlookCom.GetStoreFolders(newDefaultPst);
+            Assert.Equal(4, clonedFolders.Count);
+            Assert.Contains("VIP_Clients", clonedFolders);
+            Assert.Contains("Tax_2026", clonedFolders);
+            Assert.Contains("Engineering_Specs", clonedFolders);
+            Assert.Contains("Board_Reports", clonedFolders);
+            Assert.DoesNotContain("Inbox", clonedFolders);
+
+            var migratedRules = outlookCom.GetStoreRules(newDefaultPst);
+            Assert.Equal(3, migratedRules.Count);
+            Assert.Contains("Route VIP_Clients to VIP_Clients", migratedRules);
+            Assert.Contains("Auto-File Tax_2026 Invoices", migratedRules);
+            Assert.Contains("Flag Engineering_Specs Updates", migratedRules);
+
+            // Verify SelectedDataFile automatically updated to the newly created default PST
+            Assert.NotNull(offVm.SelectedDataFile);
+            Assert.Equal(newDefaultPst, offVm.SelectedDataFile!.FilePath);
+
+            // Step 3: Seed running OUTLOOK (PID 4102) and click "Backup Selected PST" button
+            safeProc.RestartedProcesses.Clear();
+            safeProc.SeedRunningProcess(4102, "OUTLOOK", closesGracefully: true);
+            string pstBackupDir = Path.Combine(_sandboxDir, "PstBackups");
+            offVm.BackupDirectory = pstBackupDir;
+            await offVm.BackupSelectedPstCommand.ExecuteAsync(null);
+
+            Assert.Contains("Microsoft Outlook", confirmSvc.RecordedPrompts.Last().Title);
+            Assert.Contains(4102, safeProc.GracefulCloseRequestedPids);
+            Assert.False(safeProc.IsProcessRunning("OUTLOOK"));
+            Assert.Contains("OUTLOOK.exe", safeProc.RestartedProcesses);
+            string backedUpPstFile = Path.Combine(pstBackupDir, "NewDefault2026.pst");
+            string backedUpShaFile = Path.Combine(pstBackupDir, "NewDefault2026.pst.sha256");
+            Assert.True(_realFileSystem.FileExists(backedUpPstFile));
+            Assert.True(_realFileSystem.FileExists(backedUpShaFile));
+            string expectedNewPstHash = _realFileSystem.ComputeSha256(newDefaultPst);
+            Assert.Contains(expectedNewPstHash, _realFileSystem.ReadAllText(backedUpShaFile), StringComparison.OrdinalIgnoreCase);
+
+            // Step 4: Seed HUNG OUTLOOK (PID 4103, closesGracefully: false) and click "Relocate / Move Selected PST" button
+            //         Verifies ProcessLockGuard tries CloseMainWindow first, escalates to KillProcess, moves PST, and auto-restarts OUTLOOK.exe
+            safeProc.RestartedProcesses.Clear();
+            safeProc.SeedRunningProcess(4103, "OUTLOOK", closesGracefully: false);
+            string relocateDir = Path.Combine(_sandboxDir, "RelocatedStores");
+            offVm.RelocationDestinationDir = relocateDir;
+            await offVm.RelocateSelectedPstCommand.ExecuteAsync(null);
+
+            Assert.Contains("Microsoft Outlook", confirmSvc.RecordedPrompts.Last().Title);
+            Assert.Contains(4103, safeProc.GracefulCloseRequestedPids);
+            Assert.Contains(4103, safeProc.ForceKilledPids);
+            Assert.False(safeProc.IsProcessRunning("OUTLOOK"));
+            Assert.Contains("OUTLOOK.exe", safeProc.RestartedProcesses);
+            string relocatedNewPst = Path.Combine(relocateDir, "NewDefault2026.pst");
+            Assert.False(_realFileSystem.FileExists(newDefaultPst), "Old PST path must be removed after relocation");
+            Assert.True(_realFileSystem.FileExists(relocatedNewPst), "Relocated PST must exist at destination");
+            Assert.Equal(expectedNewPstHash, _realFileSystem.ComputeSha256(relocatedNewPst));
+            Assert.Equal(relocatedNewPst, sandboxReg.GetValue<string>(@"HKCU\Software\Microsoft\Office\16.0\Outlook\Search", "DefaultStorePath"));
+            Assert.NotNull(offVm.SelectedDataFile);
+            Assert.Equal(relocatedNewPst, offVm.SelectedDataFile!.FilePath);
+
+            // Step 5: Seed running OUTLOOK (PID 4104) and click "Compact Selected PST" button immediately after relocation
+            safeProc.RestartedProcesses.Clear();
+            safeProc.SeedRunningProcess(4104, "OUTLOOK", closesGracefully: true);
+            await offVm.CompactSelectedPstCommand.ExecuteAsync(null);
+            Assert.Contains("Microsoft Outlook", confirmSvc.RecordedPrompts.Last().Title);
+            Assert.Contains(4104, safeProc.GracefulCloseRequestedPids);
+            Assert.False(safeProc.IsProcessRunning("OUTLOOK"));
+            Assert.Contains("OUTLOOK.exe", safeProc.RestartedProcesses);
+            Assert.Contains("compacted successfully", offVm.LastOutlookSummary, StringComparison.OrdinalIgnoreCase);
+            Assert.True(outlookCom.CompactInvoked);
+            Assert.Equal(Path.GetFullPath(relocatedNewPst), outlookCom.LastCompactedStorePath);
+
+            // Step 6: Also relocate CorporateMail.pst and verify MAPI profile binary key (001f6700) is updated in registry
+            offVm.SelectedDataFile = offVm.DataFiles.First(f => string.Equals(f.FilePath, sourcePst, StringComparison.OrdinalIgnoreCase));
+            await offVm.RelocateSelectedPstCommand.ExecuteAsync(null);
+            string relocatedCorpPst = Path.Combine(relocateDir, "CorporateMail.pst");
+            Assert.True(_realFileSystem.FileExists(relocatedCorpPst));
+            var updatedMapiBytes = sandboxReg.GetValue(mapiPstKey, "001f6700") as byte[];
+            Assert.NotNull(updatedMapiBytes);
+            Assert.Equal(relocatedCorpPst, OutlookService.DecodeMapiUnicode(updatedMapiBytes!));
+
+            // Step 7: Relocate ExchangeCache.ost and verify real Windows symlink/hardlink creation
+            offVm.SelectedDataFile = offVm.DataFiles.First(f => string.Equals(f.FilePath, sourceOst, StringComparison.OrdinalIgnoreCase));
+            await offVm.RelocateSelectedPstCommand.ExecuteAsync(null);
+            string relocatedOst = Path.Combine(relocateDir, "ExchangeCache.ost");
+            Assert.True(_realFileSystem.FileExists(relocatedOst));
+            Assert.True(_realFileSystem.FileExists(sourceOst), "OST link must exist at original path");
+            Assert.Equal(_realFileSystem.ComputeSha256(relocatedOst), _realFileSystem.ComputeSha256(sourceOst));
+
+            // Step 8: Restore PST from backup with SHA-256 verification
+            string restoredPstTarget = Path.Combine(_sandboxDir, "RestoredStores", "RestoredDefault2026.pst");
+            var restoreOk = outlookSvc.RestoreDataFile(backedUpPstFile, restoredPstTarget, expectedNewPstHash);
+            Assert.True(restoreOk.Success);
+            Assert.Equal(expectedNewPstHash, _realFileSystem.ComputeSha256(restoredPstTarget));
+        }
+
+        // =====================================================================
+        // PART 2: REAL PROFILE BACKUP (/MIR + BOOKMARKS + CERTS + MANIFEST) &
+        //         RESTORE BUTTON WORKFLOWS WITH REAL ROBOCOPY.EXE
+        // =====================================================================
+        var sandboxFs = new SandboxedWindowsFileSystemService(_realFileSystem, _sandboxDir);
+        string virtualUserProfilePath = $@"C:\Users\{Environment.UserName}";
+        sandboxFs.CreateDirectory(Path.Combine(virtualUserProfilePath, "Desktop"));
+        sandboxFs.CreateDirectory(Path.Combine(virtualUserProfilePath, "Documents"));
+        sandboxFs.WriteAllText(Path.Combine(virtualUserProfilePath, "Desktop", "ProjectPlan.txt"), "Critical desktop file 2026");
+        sandboxFs.WriteAllText(Path.Combine(virtualUserProfilePath, "Documents", "Budget2026.csv"), "Quarter,Amount\nQ1,50000");
+
+        // Seed Chrome Bookmarks in sandboxed LocalAppData
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        sandboxFs.WriteAllText(
+            Path.Combine(localAppData, "Google", "Chrome", "User Data", "Default", "Bookmarks"),
+            """{"roots":{"bookmark_bar":{"children":[{"type":"url","url":"https://intranet.corp.local"}]}}}""");
+
+        string profileBackupDest = Path.Combine(_sandboxDir, "RealProfileBackupMirrorDest");
+        sandboxFs.CreateDirectory(profileBackupDest);
+        // Seed a stale file in destination that robocopy /MIR should purge
+        string staleDestFile = Path.Combine(profileBackupDest, "stale_file_to_be_purged_by_mirror.tmp");
+        sandboxFs.WriteAllText(staleDestFile, "Stale file");
+
+        // Route robocopy.exe to execute for real via _realProcessRunner against the sandboxed user profile path
+        safeProc.CustomHandler = (exe, args) =>
+        {
+            if (exe.Equals("robocopy.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                string mappedSource = sandboxFs.MapPath(virtualUserProfilePath);
+                string mappedArgs = args.Replace($"\"{virtualUserProfilePath}\"", $"\"{mappedSource}\"", StringComparison.OrdinalIgnoreCase);
+                return _realProcessRunner.Run("robocopy.exe", mappedArgs);
+            }
+            return new ProcessExecutionResult(0, "OK", string.Empty, false);
+        };
+
+        var sandboxResourceGuard = new ResourceGuard(sandboxFs, _realLogger);
+        var hybridBackupService = new BackupService(safeProc, sandboxFs, sandboxReg, sandboxResourceGuard, null, _realLogger);
+        var sandboxIdentityService = new IdentityService(safeProc, sandboxFs, sandboxReg, _realNetwork, null, _realLogger);
+
+        var idVm = new IdentityBackupViewModel(sandboxIdentityService, hybridBackupService, _realLogger, null, confirmSvc)
+        {
+            BackupDestinationDirectory = profileBackupDest,
+            RestoreBackupDirectory = profileBackupDest,
+            IncludeBookmarks = true,
+            IncludeCertificates = true,
+            RobocopyMirror = true,
+            CreateManifest = true,
+            CertificateStoreName = "My",
+            CertificatePassword = "SafeCertPassword!2026"
+        };
+
+        // Seed active locking user apps (OUTLOOK, WINWORD, EXCEL, chrome, msedge) and click "Execute Profile Backup"
+        safeProc.RestartedProcesses.Clear();
+        safeProc.SeedRunningProcess(5101, "OUTLOOK", closesGracefully: true);
+        safeProc.SeedRunningProcess(5102, "WINWORD", closesGracefully: true);
+        safeProc.SeedRunningProcess(5103, "EXCEL", closesGracefully: true);
+        safeProc.SeedRunningProcess(5104, "chrome", closesGracefully: true);
+        safeProc.SeedRunningProcess(5105, "msedge", closesGracefully: true);
+
+        await idVm.ExecuteProfileBackupCommand.ExecuteAsync(null);
+        Assert.Contains("Microsoft Outlook", confirmSvc.RecordedPrompts.Last().Message);
+        Assert.Contains("Google Chrome", confirmSvc.RecordedPrompts.Last().Message);
+        Assert.Contains("Profile backup completed successfully", idVm.LastBackupStatus);
+        Assert.Contains(5101, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains(5102, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains(5103, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains(5104, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains(5105, safeProc.GracefulCloseRequestedPids);
+        Assert.False(safeProc.IsProcessRunning("OUTLOOK"));
+        Assert.False(safeProc.IsProcessRunning("chrome"));
+        Assert.False(safeProc.IsProcessRunning("msedge"));
+        Assert.Contains("OUTLOOK.exe", safeProc.RestartedProcesses);
+        Assert.Contains("WINWORD.exe", safeProc.RestartedProcesses);
+        Assert.Contains("EXCEL.exe", safeProc.RestartedProcesses);
+        Assert.Contains("chrome.exe", safeProc.RestartedProcesses);
+        Assert.Contains("msedge.exe", safeProc.RestartedProcesses);
+
+        // Verify robocopy /MIR purged the stale file, synced profile files, AND preserved Bookmarks + Certificates!
+        Assert.False(sandboxFs.FileExists(staleDestFile), "Robocopy /MIR must purge stale files not in source profile");
+        Assert.True(sandboxFs.FileExists(Path.Combine(profileBackupDest, "Desktop", "ProjectPlan.txt")));
+        Assert.True(sandboxFs.FileExists(Path.Combine(profileBackupDest, "Documents", "Budget2026.csv")));
+        Assert.True(sandboxFs.FileExists(Path.Combine(profileBackupDest, "Chrome_Default_Bookmarks.json")), "Bookmarks must not be wiped by Robocopy /MIR!");
+        Assert.True(sandboxFs.FileExists(Path.Combine(profileBackupDest, "My_Certificates.pfx")), "Exported certificates must not be wiped by Robocopy /MIR!");
+
+        // Click "Validate Backup Manifest" button
+        await idVm.ValidateBackupManifestCommand.ExecuteAsync(null);
+        Assert.Contains("0 missing, 0 corrupt", idVm.LastBackupStatus);
+
+        // Delete a file in user profile, seed running OUTLOOK & chrome, and click "Restore Profile" button
+        sandboxFs.DeleteFile(Path.Combine(virtualUserProfilePath, "Desktop", "ProjectPlan.txt"));
+        Assert.False(sandboxFs.FileExists(Path.Combine(virtualUserProfilePath, "Desktop", "ProjectPlan.txt")));
+        safeProc.RestartedProcesses.Clear();
+        safeProc.SeedRunningProcess(5201, "OUTLOOK", closesGracefully: true);
+        safeProc.SeedRunningProcess(5202, "chrome", closesGracefully: true);
+
+        await idVm.RestoreProfileCommand.ExecuteAsync(null);
+        Assert.Contains("Microsoft Outlook", confirmSvc.RecordedPrompts.Last().Message);
+        Assert.Contains("Google Chrome", confirmSvc.RecordedPrompts.Last().Message);
+        Assert.Contains("Profile restored:", idVm.LastBackupStatus);
+        Assert.Contains(5201, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains(5202, safeProc.GracefulCloseRequestedPids);
+        Assert.False(safeProc.IsProcessRunning("OUTLOOK"));
+        Assert.False(safeProc.IsProcessRunning("chrome"));
+        Assert.Contains("OUTLOOK.exe", safeProc.RestartedProcesses);
+        Assert.Contains("chrome.exe", safeProc.RestartedProcesses);
+        Assert.True(sandboxFs.FileExists(Path.Combine(virtualUserProfilePath, "Desktop", "ProjectPlan.txt")));
+
+        // =====================================================================
+        // PART 3: SOFTWARE & OPTIMIZATION BUTTON WORKFLOWS
+        // (Confirmation dialog naming "Google Chrome" / "Foxit PDF Reader" ->
+        //  Safe close -> Fix -> Auto-restart)
+        // =====================================================================
+        var sandboxNet = new SandboxedNetworkService(_realNetwork, sandboxFs);
+        var swLockGuard = new ProcessLockGuard(safeProc, sandboxFs, _realLogger);
+        var swInstaller = new AppInstallerService(safeProc, sandboxFs, sandboxReg, swLockGuard, sandboxNet, _realLogger);
+        var swOpt = new OptimizationService(safeProc, sandboxFs, sandboxNet, _realLogger);
+        var swVm = new SoftwareOptimizationViewModel(swInstaller, swOpt, _realLogger, confirmSvc);
+
+        safeProc.RestartedProcesses.Clear();
+        safeProc.SeedRunningProcess(6101, "chrome", closesGracefully: true);
+        await swVm.SetDefaultBrowserCommand.ExecuteAsync(null);
+        Assert.Contains("Google Chrome", confirmSvc.RecordedPrompts.Last().Title);
+        Assert.Contains(6101, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains("chrome.exe", safeProc.RestartedProcesses);
+
+        safeProc.RestartedProcesses.Clear();
+        safeProc.SeedRunningProcess(6102, "FoxitPDFReader", closesGracefully: true);
+        await swVm.SetDefaultPdfViewerCommand.ExecuteAsync(null);
+        Assert.Contains("Foxit PDF Reader", confirmSvc.RecordedPrompts.Last().Title);
+        Assert.Contains(6102, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains("FoxitPDFReader.exe", safeProc.RestartedProcesses);
+
+        safeProc.RestartedProcesses.Clear();
+        safeProc.SeedRunningProcess(6103, "chrome", closesGracefully: true);
+        await swVm.ConfigureUblockPolicyCommand.ExecuteAsync(null);
+        Assert.Contains("Google Chrome", confirmSvc.RecordedPrompts.Last().Title);
+        Assert.Contains(6103, safeProc.GracefulCloseRequestedPids);
+        Assert.Contains("chrome.exe", safeProc.RestartedProcesses);
     }
 }

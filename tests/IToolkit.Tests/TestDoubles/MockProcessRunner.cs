@@ -27,6 +27,7 @@ public class MockProcessRunner : IProcessRunner
 
     public IReadOnlyList<SimulatedProcess> SimulatedProcesses => _processes;
     public List<string> ExecutedCommands { get; } = new();
+    public List<string> StartedProcesses { get; } = new();
 
     public void AddProcess(int id, string name, string? title = null, bool exitsOnClose = true)
     {
@@ -129,5 +130,12 @@ public class MockProcessRunner : IProcessRunner
     public bool IsProcessRunning(string processName)
     {
         return _processes.Any(p => p.Info.ProcessName.Equals(processName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public bool StartProcess(string fileName, string? arguments = null)
+    {
+        string cmd = string.IsNullOrWhiteSpace(arguments) ? fileName : $"{fileName} {arguments}".Trim();
+        StartedProcesses.Add(cmd);
+        return true;
     }
 }
