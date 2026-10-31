@@ -12,6 +12,15 @@ using IToolkit.Core.Models;
 
 public class WindowsProcessRunner : IProcessRunner
 {
+    private static string NormalizeProcessName(string processName)
+    {
+        if (string.IsNullOrWhiteSpace(processName)) return string.Empty;
+        string trimmed = processName.Trim();
+        return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? trimmed[..^4]
+            : trimmed;
+    }
+
     public ProcessExecutionResult Run(string fileName, string arguments, string? workingDirectory = null, int timeoutMs = 60000)
     {
         var psi = new ProcessStartInfo
@@ -25,12 +34,25 @@ public class WindowsProcessRunner : IProcessRunner
             CreateNoWindow = true
         };
 
+        var syncLock = new object();
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
 
         using var process = new Process { StartInfo = psi };
-        process.OutputDataReceived += (s, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
-        process.ErrorDataReceived += (s, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
+        process.OutputDataReceived += (s, e) =>
+        {
+            if (e.Data != null)
+            {
+                lock (syncLock) { stdout.AppendLine(e.Data); }
+            }
+        };
+        process.ErrorDataReceived += (s, e) =>
+        {
+            if (e.Data != null)
+            {
+                lock (syncLock) { stderr.AppendLine(e.Data); }
+            }
+        };
 
         process.Start();
         process.BeginOutputReadLine();
@@ -40,11 +62,17 @@ public class WindowsProcessRunner : IProcessRunner
         if (!exited)
         {
             try { process.Kill(true); } catch { }
-            return new ProcessExecutionResult(-1, stdout.ToString(), $"Process timed out after {timeoutMs}ms: {stderr}", true);
+            lock (syncLock)
+            {
+                return new ProcessExecutionResult(-1, stdout.ToString(), $"Process timed out after {timeoutMs}ms: {stderr}", true);
+            }
         }
 
         process.WaitForExit(); // Flush async buffers
-        return new ProcessExecutionResult(process.ExitCode, stdout.ToString(), stderr.ToString(), false);
+        lock (syncLock)
+        {
+            return new ProcessExecutionResult(process.ExitCode, stdout.ToString(), stderr.ToString(), false);
+        }
     }
 
     public async Task<ProcessExecutionResult> RunAsync(string fileName, string arguments, string? workingDirectory = null, int timeoutMs = 60000, CancellationToken cancellationToken = default)
@@ -54,9 +82,27 @@ public class WindowsProcessRunner : IProcessRunner
 
     public IEnumerable<ProcessInfo> GetProcessesByName(string processName)
     {
-        return Process.GetProcessesByName(processName)
-            .Select(p => new ProcessInfo(p.Id, p.ProcessName, p.MainWindowTitle))
-            .ToList();
+        string normalized = NormalizeProcessName(processName);
+        if (string.IsNullOrEmpty(normalized)) return Array.Empty<ProcessInfo>();
+
+        var result = new List<ProcessInfo>();
+        var processes = Process.GetProcessesByName(normalized);
+        foreach (var p in processes)
+        {
+            using (p)
+            {
+                try
+                {
+                    string title = string.Empty;
+                    try { title = p.MainWindowTitle; } catch { }
+                    result.Add(new ProcessInfo(p.Id, p.ProcessName, title));
+                }
+                catch
+                {
+                }
+            }
+        }
+        return result;
     }
 
     public bool CloseMainWindow(int processId)
@@ -92,34 +138,51 @@ public class WindowsProcessRunner : IProcessRunner
 
     public bool StopProcess(string processName, int timeoutSeconds = 10, bool force = true)
     {
-        var processes = Process.GetProcessesByName(processName);
+        string normalized = NormalizeProcessName(processName);
+        if (string.IsNullOrEmpty(normalized)) return true;
+
+        var processes = Process.GetProcessesByName(normalized);
         if (processes.Length == 0) return true;
 
         foreach (var p in processes)
         {
-            try { p.CloseMainWindow(); } catch { }
+            using (p)
+            {
+                try { p.CloseMainWindow(); } catch { }
+            }
         }
 
         var sw = Stopwatch.StartNew();
         while (sw.Elapsed.TotalSeconds < timeoutSeconds)
         {
-            if (Process.GetProcessesByName(processName).Length == 0) return true;
+            if (!IsProcessRunning(normalized)) return true;
             Thread.Sleep(200);
         }
 
         if (force)
         {
-            foreach (var p in Process.GetProcessesByName(processName))
+            foreach (var p in Process.GetProcessesByName(normalized))
             {
-                try { p.Kill(true); } catch { }
+                using (p)
+                {
+                    try { p.Kill(true); } catch { }
+                }
             }
         }
 
-        return Process.GetProcessesByName(processName).Length == 0;
+        return !IsProcessRunning(normalized);
     }
 
     public bool IsProcessRunning(string processName)
     {
-        return Process.GetProcessesByName(processName).Length > 0;
+        string normalized = NormalizeProcessName(processName);
+        if (string.IsNullOrEmpty(normalized)) return false;
+
+        var processes = Process.GetProcessesByName(normalized);
+        foreach (var p in processes)
+        {
+            p.Dispose();
+        }
+        return processes.Length > 0;
     }
 }

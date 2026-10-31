@@ -24,44 +24,74 @@ public class WindowsRegistryService : IRegistryService
 
     public bool KeyExists(string keyPath)
     {
-        if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return false;
-        using var root = GetRootHive(hive);
-        if (root == null) return false;
-        if (string.IsNullOrEmpty(subKey)) return true;
-        using var target = root.OpenSubKey(subKey, false);
-        return target != null;
+        try
+        {
+            if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return false;
+            using var root = GetRootHive(hive);
+            if (root == null) return false;
+            if (string.IsNullOrEmpty(subKey)) return true;
+            using var target = root.OpenSubKey(subKey, false);
+            return target != null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public bool ValueExists(string keyPath, string valueName)
     {
-        if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return false;
-        using var root = GetRootHive(hive);
-        using var target = root?.OpenSubKey(subKey, false);
-        return target?.GetValue(valueName) != null;
+        try
+        {
+            if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return false;
+            using var root = GetRootHive(hive);
+            using var target = root?.OpenSubKey(subKey, false);
+            return target?.GetValue(valueName) != null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public object? GetValue(string keyPath, string valueName)
     {
-        if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return null;
-        using var root = GetRootHive(hive);
-        using var target = root?.OpenSubKey(subKey, false);
-        return target?.GetValue(valueName);
+        try
+        {
+            if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return null;
+            using var root = GetRootHive(hive);
+            using var target = root?.OpenSubKey(subKey, false);
+            return target?.GetValue(valueName);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public T? GetValue<T>(string keyPath, string valueName)
     {
         var val = GetValue(keyPath, valueName);
         if (val == null) return default;
+        if (val is T typed) return typed;
         try { return (T)Convert.ChangeType(val, typeof(T)); }
         catch { return default; }
     }
 
     public RegistryValueKind GetValueKind(string keyPath, string valueName)
     {
-        if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return RegistryValueKind.Unknown;
-        using var root = GetRootHive(hive);
-        using var target = root?.OpenSubKey(subKey, false);
-        return target?.GetValueKind(valueName) ?? RegistryValueKind.Unknown;
+        try
+        {
+            if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return RegistryValueKind.Unknown;
+            using var root = GetRootHive(hive);
+            using var target = root?.OpenSubKey(subKey, false);
+            if (target?.GetValue(valueName) == null) return RegistryValueKind.Unknown;
+            return target.GetValueKind(valueName);
+        }
+        catch
+        {
+            return RegistryValueKind.Unknown;
+        }
     }
 
     public bool SetValue(string keyPath, string valueName, object value, RegistryValueKind kind)
@@ -105,17 +135,31 @@ public class WindowsRegistryService : IRegistryService
 
     public IEnumerable<string> GetSubKeyNames(string keyPath)
     {
-        if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return Array.Empty<string>();
-        using var root = GetRootHive(hive);
-        using var target = root?.OpenSubKey(subKey, false);
-        return target?.GetSubKeyNames() ?? Array.Empty<string>();
+        try
+        {
+            if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return Array.Empty<string>();
+            using var root = GetRootHive(hive);
+            using var target = root?.OpenSubKey(subKey, false);
+            return target?.GetSubKeyNames() ?? Array.Empty<string>();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
     }
 
     public IEnumerable<string> GetValueNames(string keyPath)
     {
-        if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return Array.Empty<string>();
-        using var root = GetRootHive(hive);
-        using var target = root?.OpenSubKey(subKey, false);
-        return target?.GetValueNames() ?? Array.Empty<string>();
+        try
+        {
+            if (!RegistryPathNormalizer.TrySplitHiveAndSubKey(keyPath, out var hive, out var subKey)) return Array.Empty<string>();
+            using var root = GetRootHive(hive);
+            using var target = root?.OpenSubKey(subKey, false);
+            return target?.GetValueNames() ?? Array.Empty<string>();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
     }
 }
