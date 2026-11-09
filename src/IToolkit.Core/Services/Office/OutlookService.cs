@@ -24,7 +24,9 @@ public class OutlookService : IOutlookService
     public static readonly string[] ExcludedCloneFolders =
     {
         "Inbox", "Deleted Items", "Sent Items", "Drafts", "Outbox",
-        "Junk E-mail", "Junk Email", "Conversation History", "Sync Issues"
+        "Junk E-mail", "Junk Email", "Conversation History", "Sync Issues",
+        "Calendar", "Contacts", "Journal", "Notes", "Tasks",
+        "RSS Feeds", "Conversation Action Settings", "Quick Step Settings", "Search Folders"
     };
 
     public OutlookService(
@@ -394,16 +396,11 @@ public class OutlookService : IOutlookService
             // 1. Expand limits to 100GB
             var limitRes = ExpandDataFileLimitsTo100GBCore();
 
-            // 2. Create target directory and initialize empty PST if needed
+            // 2. Create target directory
             string? dir = Path.GetDirectoryName(targetPstPath);
             if (!string.IsNullOrEmpty(dir))
             {
                 _fileSystem.CreateDirectory(dir);
-            }
-
-            if (!_fileSystem.FileExists(targetPstPath))
-            {
-                _fileSystem.WriteAllBytes(targetPstPath, new byte[1024]); // Minimal PST stub
             }
 
             // 3. Clone folder hierarchy model and migrate rules via IOutlookComService
@@ -424,6 +421,12 @@ public class OutlookService : IOutlookService
             if (_outlookCom != null)
             {
                 isDefaultSet = _outlookCom.SetDefaultDeliveryStore(targetPstPath);
+            }
+
+            // Fallback minimal PST stub if COM service did not materialize the file on disk (e.g. in unit tests)
+            if (!_fileSystem.FileExists(targetPstPath))
+            {
+                _fileSystem.WriteAllBytes(targetPstPath, new byte[1024]);
             }
 
             string defaultStoreKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Search";

@@ -1913,6 +1913,12 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
             outlookCom.AddStoreRule(sourcePst, "Auto-File Tax_2026 Invoices");
             outlookCom.AddStoreRule(sourcePst, "Flag Engineering_Specs Updates");
 
+            // Materialize sourcePst as a genuine MAPI PST file (!BDN header, >= 265 KB) via real Microsoft Outlook COM
+            bool createdRealSourcePst = outlookCom.CreateRealPstStore(sourcePst, closeSessionWhenDone: false);
+            Assert.True(createdRealSourcePst, $"Outlook COM must create a genuine MAPI PST file (!BDN signature) on disk. Error: {outlookCom.LastComError}");
+            Assert.True(WindowsOutlookComService.IsRealPstFile(sourcePst));
+            Assert.True(_realFileSystem.GetFileSize(sourcePst) >= 262144);
+
             // Step 1: Click "Discover Data Files" button
             await offVm.DiscoverDataFilesCommand.ExecuteAsync(null);
             Assert.Contains(offVm.DataFiles, f => string.Equals(f.FilePath, sourcePst, StringComparison.OrdinalIgnoreCase));
@@ -1957,6 +1963,14 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
             Assert.Contains("Route VIP_Clients to VIP_Clients", migratedRules);
             Assert.Contains("Auto-File Tax_2026 Invoices", migratedRules);
             Assert.Contains("Flag Engineering_Specs Updates", migratedRules);
+
+            // Verify real Outlook COM execution, genuine !BDN PST header on newDefaultPst, and persisted rule folder remapping
+            Assert.True(outlookCom.LastOperationUsedRealOutlookCom, $"Expected real Outlook COM. Error: {outlookCom.LastComError}");
+            Assert.True(WindowsOutlookComService.IsRealPstFile(newDefaultPst));
+            Assert.True(_realFileSystem.GetFileSize(newDefaultPst) >= 262144);
+            Assert.True(outlookCom.VerifiedRemappedRuleTargets.Count == 3, $"Expected 3 verified remapped rules, got {outlookCom.VerifiedRemappedRuleTargets.Count}. Error: {outlookCom.LastComError}");
+            Assert.All(outlookCom.VerifiedRemappedRuleTargets.Values, targetInfo =>
+                Assert.Contains(newDefaultPst, targetInfo, StringComparison.OrdinalIgnoreCase));
 
             // Verify SelectedDataFile automatically updated to the newly created default PST
             Assert.NotNull(offVm.SelectedDataFile);
@@ -2035,6 +2049,35 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
             var restoreOk = outlookSvc.RestoreDataFile(backedUpPstFile, restoredPstTarget, expectedNewPstHash);
             Assert.True(restoreOk.Success);
             Assert.Equal(expectedNewPstHash, _realFileSystem.ComputeSha256(restoredPstTarget));
+            Assert.True(WindowsOutlookComService.IsRealPstFile(restoredPstTarget));
+
+            // Step 9: Verify Expand100GBCommand, QuickMailRepairCommand, RepairGlobalMailSettings, and per-store ManageMapiStoreViewModel popup workflows
+            await offVm.Expand100GBCommand.ExecuteAsync(null);
+            Assert.Contains("100GB", offVm.LastOutlookSummary, StringComparison.OrdinalIgnoreCase);
+
+            await offVm.QuickMailRepairCommand.ExecuteAsync(null);
+            Assert.Contains("AutoComplete preserved", offVm.LastOutlookSummary, StringComparison.OrdinalIgnoreCase);
+
+            Assert.True(outlookSvc.RepairGlobalMailSettings().Success);
+            Assert.Equal(1, sandboxReg.GetValue<int>(@"HKCU\Software\Microsoft\Office\16.0\Outlook\Options\Mail", "Send Mail Immediately"));
+
+            var storeToManage = offVm.DataFiles.First(f => string.Equals(f.FilePath, relocatedCorpPst, StringComparison.OrdinalIgnoreCase));
+            offVm.OpenManageStoreCommand.Execute(storeToManage);
+            Assert.True(offVm.IsManageStoreOpen);
+            Assert.NotNull(offVm.CurrentManageStore);
+
+            await offVm.CurrentManageStore!.QuickMailRepairCommand.ExecuteAsync(null);
+            Assert.Contains("Mailbox repaired", offVm.CurrentManageStore.OperationStatus, StringComparison.OrdinalIgnoreCase);
+
+            await offVm.CurrentManageStore.CompactStoreCommand.ExecuteAsync(null);
+            Assert.Contains("compacted successfully", offVm.CurrentManageStore.OperationStatus, StringComparison.OrdinalIgnoreCase);
+
+            offVm.CurrentManageStore.BackupDirectory = pstBackupDir;
+            await offVm.CurrentManageStore.BackupStoreCommand.ExecuteAsync(null);
+            Assert.Contains("backed up with verified SHA-256", offVm.CurrentManageStore.OperationStatus, StringComparison.OrdinalIgnoreCase);
+
+            offVm.CloseManageStoreCommand.Execute(null);
+            Assert.False(offVm.IsManageStoreOpen);
         }
 
         // =====================================================================
@@ -2175,5 +2218,121 @@ public class WindowsLiveEnvironmentSafetyTests : IDisposable
         Assert.Contains("Google Chrome", confirmSvc.RecordedPrompts.Last().Title);
         Assert.Contains(6103, safeProc.GracefulCloseRequestedPids);
         Assert.Contains("chrome.exe", safeProc.RestartedProcesses);
+    }
+
+    [Fact]
+    public async Task LiveWindows_OutlookFullSuite_RealPstCreation_NestedFolderCloning_RuleRemapping_Relocation_Backup_Compact_Restore_And_ManageStore()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // 1. Live Read-Only Discovery against real Windows Registry & Filesystem on this PC
+        var liveReadOnlyLockGuard = new ProcessLockGuard(new SafeInterceptingProcessRunner(), _realFileSystem, _realLogger);
+        var liveReadOnlyResourceGuard = new ResourceGuard(_realFileSystem, _realLogger);
+        var liveReadOnlyAtomicReg = new AtomicRegistryService(_realRegistry, _realFileSystem, _realLogger, Path.Combine(_sandboxDir, "Backups", "LiveReadOnly"));
+        var liveReadOnlyOutlook = new OutlookService(_realRegistry, liveReadOnlyAtomicReg, _realFileSystem, liveReadOnlyLockGuard, liveReadOnlyResourceGuard, null, _realLogger);
+
+        var realSystemStores = liveReadOnlyOutlook.DiscoverDataFiles();
+        Assert.NotNull(realSystemStores);
+
+        // 2. Full Real Outlook COM + Sandboxed Registry/Process E2E Pipeline
+        var safeProc = new SafeInterceptingProcessRunner();
+        var sandboxReg = new SandboxedWindowsRegistryService(_realRegistry, _sandboxRegRoot);
+        var sandboxFs = new SandboxedWindowsFileSystemService(_realFileSystem, _sandboxDir);
+        var confirmSvc = new ConfigurableConfirmationService { NextResult = true };
+
+        var services = new ServiceCollection();
+        ServiceRegistration.ConfigureServices(services);
+        services.AddSingleton<IActivityLogger>(_realLogger);
+        services.AddSingleton<IRegistryService>(sandboxReg);
+        services.AddSingleton<IFileSystemService>(sandboxFs);
+        services.AddSingleton<IProcessRunner>(safeProc);
+        services.AddSingleton<ISafetyConfirmationService>(confirmSvc);
+        services.AddSingleton(sp => new AtomicRegistryService(
+            sp.GetRequiredService<IRegistryService>(),
+            sp.GetRequiredService<IFileSystemService>(),
+            sp.GetRequiredService<IActivityLogger>(),
+            Path.Combine(_sandboxDir, "Backups", "OutlookFullSuite")));
+
+        await using var provider = services.BuildServiceProvider();
+        var outlookCom = Assert.IsType<WindowsOutlookComService>(provider.GetRequiredService<IOutlookComService>());
+        Assert.True(outlookCom.IsOutlookAvailable(), "Microsoft Outlook COM (Outlook.Application) must be available on this Windows machine");
+
+        var offVm = provider.GetRequiredService<OfficeOutlookViewModel>();
+        var outlookSvc = provider.GetRequiredService<IOutlookService>();
+
+        string suiteDir = Path.Combine(_sandboxDir, "OutlookFullSuiteStores");
+        sandboxFs.CreateDirectory(suiteDir);
+        string oldPstPath = Path.Combine(suiteDir, "OldLegacyArchive.pst");
+        string newPstPath = Path.Combine(suiteDir, "NewPrimaryStore2026.pst");
+
+        // Seed standard system folders, custom root folders, nested subfolders, and custom subfolder inside Inbox
+        outlookCom.AddStoreFolder(oldPstPath, "Inbox");
+        outlookCom.AddStoreFolder(oldPstPath, "Sent Items");
+        outlookCom.AddStoreFolder(oldPstPath, "Deleted Items");
+        outlookCom.AddStoreFolder(oldPstPath, "Calendar");
+        outlookCom.AddStoreFolder(oldPstPath, "Contacts");
+        outlookCom.AddStoreFolder(oldPstPath, "Finance_2026");
+        outlookCom.AddStoreFolder(oldPstPath, "HR_Policies");
+        outlookCom.AddStoreFolder(oldPstPath, @"Projects_2026\Q4_Deliverables");
+        outlookCom.AddStoreFolder(oldPstPath, @"Inbox\Urgent_Alerts");
+
+        // Seed 4 rules targeting root folders, nested subfolders, and Inbox subfolder in OldLegacyArchive.pst
+        outlookCom.AddStoreRule(oldPstPath, "Move Finance_2026 Statements");
+        outlookCom.AddStoreRule(oldPstPath, "Route HR_Policies Notices");
+        outlookCom.AddStoreRule(oldPstPath, "File Q4_Deliverables Milestones");
+        outlookCom.AddStoreRule(oldPstPath, "Forward Urgent_Alerts Notifications");
+
+        // Create genuine OldLegacyArchive.pst (!BDN header, >= 265 KB) via real Outlook COM
+        Assert.True(outlookCom.CreateRealPstStore(oldPstPath, closeSessionWhenDone: false), $"Failed to create old PST: {outlookCom.LastComError}");
+        Assert.True(WindowsOutlookComService.IsRealPstFile(oldPstPath));
+
+        string mapiKey = @"HKCU\Software\Microsoft\Office\16.0\Outlook\Profiles\Outlook\9375CFF0413111d3B88A00104B2A6676\00000099";
+        sandboxReg.CreateKey(mapiKey);
+        sandboxReg.SetValue(mapiKey, "001f6700", Encoding.Unicode.GetBytes(oldPstPath + "\0"), RegistryValueKind.Binary);
+        sandboxReg.SetValue(mapiKey, "001f3001", Encoding.Unicode.GetBytes("Old Legacy Archive\0"), RegistryValueKind.Binary);
+
+        await offVm.DiscoverDataFilesCommand.ExecuteAsync(null);
+        offVm.SelectedDataFile = offVm.DataFiles.First(f => string.Equals(f.FilePath, oldPstPath, StringComparison.OrdinalIgnoreCase));
+        offVm.TargetPstPath = newPstPath;
+
+        // Run New Default PST Pipeline -> creates NewPrimaryStore2026.pst via real Outlook COM, clones folders (including nested), and remaps rules
+        await offVm.CreateAndSetDefaultPstCommand.ExecuteAsync(null);
+
+        Assert.True(outlookCom.LastOperationUsedRealOutlookCom, $"Expected real Outlook COM execution. Error: {outlookCom.LastComError}");
+        Assert.True(WindowsOutlookComService.IsRealPstFile(newPstPath));
+        Assert.True(_realFileSystem.GetFileSize(newPstPath) >= 262144);
+
+        var clonedFolders = outlookCom.GetStoreFolders(newPstPath);
+        // Finance_2026, HR_Policies, Projects_2026, Projects_2026\Q4_Deliverables, Inbox\Urgent_Alerts = 5 custom folders
+        Assert.Equal(5, clonedFolders.Count);
+        Assert.Contains("Finance_2026", clonedFolders);
+        Assert.Contains("HR_Policies", clonedFolders);
+        Assert.Contains("Projects_2026", clonedFolders);
+        Assert.Contains(@"Projects_2026\Q4_Deliverables", clonedFolders);
+        Assert.Contains(@"Inbox\Urgent_Alerts", clonedFolders);
+        Assert.DoesNotContain("Inbox", clonedFolders);
+        Assert.DoesNotContain("Calendar", clonedFolders);
+        Assert.DoesNotContain("Contacts", clonedFolders);
+
+        // Verify all 4 rules were remapped in Outlook MAPI from OldLegacyArchive.pst to NewPrimaryStore2026.pst
+        var remappedRules = outlookCom.GetStoreRules(newPstPath);
+        Assert.Equal(4, remappedRules.Count);
+        Assert.True(outlookCom.VerifiedRemappedRuleTargets.Count >= 4, $"Expected 4 verified remapped rules. Error: {outlookCom.LastComError}");
+        Assert.Contains(newPstPath, outlookCom.VerifiedRemappedRuleTargets["Move Finance_2026 Statements"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(newPstPath, outlookCom.VerifiedRemappedRuleTargets["Route HR_Policies Notices"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@"Projects_2026\Q4_Deliverables", outlookCom.VerifiedRemappedRuleTargets["File Q4_Deliverables Milestones"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@"Inbox\Urgent_Alerts", outlookCom.VerifiedRemappedRuleTargets["Forward Urgent_Alerts Notifications"], StringComparison.OrdinalIgnoreCase);
+
+        // Verify Per-Store ManageMapiStoreViewModel pipeline & relocation
+        offVm.OpenManageStoreCommand.Execute(offVm.SelectedDataFile);
+        Assert.NotNull(offVm.CurrentManageStore);
+        string perStoreRelocateDir = Path.Combine(_sandboxDir, "PerStoreRelocated");
+        offVm.CurrentManageStore!.RelocationDestinationDir = perStoreRelocateDir;
+        await offVm.CurrentManageStore.RelocateStoreCommand.ExecuteAsync(null);
+        Assert.True(offVm.CurrentManageStore.IsStoreRelocated);
+        string relocatedPrimaryPst = Path.Combine(perStoreRelocateDir, "NewPrimaryStore2026.pst");
+        Assert.True(WindowsOutlookComService.IsRealPstFile(relocatedPrimaryPst));
+        offVm.CurrentManageStore.CloseCommand.Execute(null);
+        Assert.False(offVm.IsManageStoreOpen);
     }
 }
