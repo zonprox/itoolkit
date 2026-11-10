@@ -12,6 +12,11 @@ public interface IAsyncRelayCommand : ICommand
     void RaiseCanExecuteChanged();
 }
 
+public interface IAsyncRelayCommand<in T> : IAsyncRelayCommand
+{
+    Task ExecuteAsync(T? parameter);
+}
+
 /// <summary>
 /// Asynchronous ICommand implementation supporting Task-based execution with concurrency guards.
 /// </summary>
@@ -86,7 +91,7 @@ public class AsyncRelayCommand : IAsyncRelayCommand
 /// <summary>
 /// Generic asynchronous ICommand implementation for strongly-typed command parameters.
 /// </summary>
-public class AsyncRelayCommand<T> : IAsyncRelayCommand
+public class AsyncRelayCommand<T> : IAsyncRelayCommand<T>
 {
     private readonly Func<T?, Task> _execute;
     private readonly Predicate<T?>? _canExecute;
@@ -127,6 +132,8 @@ public class AsyncRelayCommand<T> : IAsyncRelayCommand
     {
         await ExecuteAsync(parameter);
     }
+
+    public Task ExecuteAsync(T? parameter) => ExecuteAsync((object?)parameter);
 
     public async Task ExecuteAsync(object? parameter)
     {

@@ -179,6 +179,7 @@ public class DashboardAndNavigationTests
         var connectivityVm = new ConnectivityViewModel(netMock.Object, printerMock.Object, loggerMock.Object);
         var identityVm = new IdentityBackupViewModel(identityMock.Object, backupMock.Object, loggerMock.Object);
         var softwareVm = new SoftwareOptimizationViewModel(appInstallerMock.Object, optMock.Object, loggerMock.Object);
+        var appManagementVm = new AppManagementViewModel(appInstallerMock.Object, null, loggerMock.Object);
 
         var mainVm = new MainViewModel(
             telemetryHeader,
@@ -188,7 +189,9 @@ public class DashboardAndNavigationTests
             officeVm,
             connectivityVm,
             identityVm,
-            softwareVm);
+            softwareVm,
+            appManagementVm,
+            loggerMock.Object);
 
         Assert.Equal("iToolKit", mainVm.AppTitle);
         Assert.Equal("Dashboard", mainVm.CurrentPillarName);
@@ -204,6 +207,10 @@ public class DashboardAndNavigationTests
         mainVm.NavigateCommand.Execute("SoftwareOptimization");
         Assert.Equal("SoftwareOptimization", mainVm.CurrentPillarName);
         Assert.Same(softwareVm, mainVm.CurrentPageViewModel);
+
+        mainVm.NavigateCommand.Execute("AppManagement");
+        Assert.Equal("AppManagement", mainVm.CurrentPillarName);
+        Assert.Same(appManagementVm, mainVm.CurrentPageViewModel);
 
         mainVm.NavigateCommand.Execute("Dashboard");
         Assert.Equal("Dashboard", mainVm.CurrentPillarName);

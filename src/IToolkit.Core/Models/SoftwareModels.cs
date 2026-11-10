@@ -57,3 +57,45 @@ public record DebloatExecutionResult(
     bool TempCleanedUp,
     string Output,
     string Message = "");
+
+/// <summary>
+/// A package discovered via Windows Package Manager (winget search).
+/// </summary>
+public record WingetPackage(
+    string Name,
+    string Id,
+    string Version,
+    string? Match,
+    string Source);
+
+/// <summary>
+/// An installed application detected on the system via winget list.
+/// </summary>
+public record WingetInstalledApp(
+    string Name,
+    string Id,
+    string Version,
+    string? AvailableVersion,
+    string Source);
+
+/// <summary>
+/// An application eligible for upgrade detected via winget list --upgrade-available.
+/// </summary>
+public record WingetUpdateItem(
+    string Name,
+    string Id,
+    string InstalledVersion,
+    string AvailableVersion,
+    string Source);
+
+/// <summary>
+/// Structured outcome of evaluating a winget process exit code.
+/// </summary>
+public record WingetExitCodeResult(
+    bool Success,
+    string Message,
+    bool RebootRequired = false,
+    bool AlreadyUpToDate = false,
+    bool RequiresAdmin = false,
+    bool CancelledByUser = false);
+

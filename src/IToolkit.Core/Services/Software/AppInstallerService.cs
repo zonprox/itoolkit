@@ -400,4 +400,301 @@ public class AppInstallerService : IAppInstallerService
 
         return true;
     }
+
+    #region Winget Subsystem Capabilities
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<WingetPackage>> SearchPackagesAsync(string query, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            _logger?.LogDebug(nameof(AppInstallerService), "SearchPackagesAsync called with empty query; returning empty list.");
+            return Array.Empty<WingetPackage>();
+        }
+
+        string sanitizedQuery = query.Trim().Replace("\"", "\\\"");
+        _logger?.LogInfo(nameof(AppInstallerService), $"Searching packages with query '{sanitizedQuery}' via Winget...");
+
+        try
+        {
+            string arguments = $"search \"{sanitizedQuery}\" --source winget --accept-source-agreements --disable-interactivity";
+            var res = await _processRunner.RunAsync("winget.exe", arguments, timeoutMs: 60000, cancellationToken: ct);
+
+            if (res.TimedOut)
+            {
+                _logger?.LogError(nameof(AppInstallerService), $"Winget package search for '{sanitizedQuery}' timed out.");
+                return Array.Empty<WingetPackage>();
+            }
+
+            if (WingetCliParser.IsNoApplicationsFound(res.ExitCode))
+            {
+                _logger?.LogInfo(nameof(AppInstallerService), $"No packages found matching query '{sanitizedQuery}'.");
+                return Array.Empty<WingetPackage>();
+            }
+
+            if (res.ExitCode != 0)
+            {
+                _logger?.LogWarning(nameof(AppInstallerService), $"Winget search returned exit code {res.ExitCode} (0x{res.ExitCode:X8}): {res.StandardError}");
+                return Array.Empty<WingetPackage>();
+            }
+
+            var packages = WingetCliParser.ParsePackages(res.StandardOutput);
+            _logger?.LogInfo(nameof(AppInstallerService), $"Found {packages.Count} package(s) matching '{sanitizedQuery}'.");
+            return packages;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), $"Winget package search for '{sanitizedQuery}' was cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(nameof(AppInstallerService), $"Error occurred while searching packages for '{sanitizedQuery}'", ex);
+            return Array.Empty<WingetPackage>();
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<WingetInstalledApp>> GetInstalledApplicationsAsync(CancellationToken ct = default)
+    {
+        _logger?.LogInfo(nameof(AppInstallerService), "Retrieving installed applications inventory via Winget...");
+
+        try
+        {
+            string arguments = "list --disable-interactivity --nowarn";
+            var res = await _processRunner.RunAsync("winget.exe", arguments, timeoutMs: 60000, cancellationToken: ct);
+
+            if (res.TimedOut)
+            {
+                _logger?.LogError(nameof(AppInstallerService), "Retrieval of installed applications timed out.");
+                return Array.Empty<WingetInstalledApp>();
+            }
+
+            if (WingetCliParser.IsNoApplicationsFound(res.ExitCode))
+            {
+                _logger?.LogInfo(nameof(AppInstallerService), "No installed applications found via Winget.");
+                return Array.Empty<WingetInstalledApp>();
+            }
+
+            if (res.ExitCode != 0)
+            {
+                _logger?.LogWarning(nameof(AppInstallerService), $"Winget list returned exit code {res.ExitCode} (0x{res.ExitCode:X8}): {res.StandardError}");
+                return Array.Empty<WingetInstalledApp>();
+            }
+
+            var apps = WingetCliParser.ParseInstalledApps(res.StandardOutput);
+            _logger?.LogInfo(nameof(AppInstallerService), $"Retrieved {apps.Count} installed application(s).");
+            return apps;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), "Retrieval of installed applications was cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(nameof(AppInstallerService), "Error occurred while retrieving installed applications", ex);
+            return Array.Empty<WingetInstalledApp>();
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<WingetUpdateItem>> GetAvailableUpdatesAsync(CancellationToken ct = default)
+    {
+        _logger?.LogInfo(nameof(AppInstallerService), "Checking for available application updates via Winget...");
+
+        try
+        {
+            string arguments = "list --upgrade-available --disable-interactivity --nowarn";
+            var res = await _processRunner.RunAsync("winget.exe", arguments, timeoutMs: 60000, cancellationToken: ct);
+
+            if (res.TimedOut)
+            {
+                _logger?.LogError(nameof(AppInstallerService), "Update check timed out.");
+                return Array.Empty<WingetUpdateItem>();
+            }
+
+            if (WingetCliParser.IsNoApplicationsFound(res.ExitCode))
+            {
+                _logger?.LogInfo(nameof(AppInstallerService), "No available application updates found.");
+                return Array.Empty<WingetUpdateItem>();
+            }
+
+            if (res.ExitCode != 0)
+            {
+                _logger?.LogWarning(nameof(AppInstallerService), $"Winget update check returned exit code {res.ExitCode} (0x{res.ExitCode:X8}): {res.StandardError}");
+                return Array.Empty<WingetUpdateItem>();
+            }
+
+            var updates = WingetCliParser.ParseUpdates(res.StandardOutput);
+            _logger?.LogInfo(nameof(AppInstallerService), $"Found {updates.Count} available update(s).");
+            return updates;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), "Application update check was cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(nameof(AppInstallerService), "Error occurred while checking for updates", ex);
+            return Array.Empty<WingetUpdateItem>();
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<AppInstallResult> InstallWingetPackageAsync(string packageId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(packageId))
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), "InstallWingetPackageAsync called with null or empty packageId.");
+            return new AppInstallResult(string.Empty, string.Empty, "Winget", false, "Package ID cannot be empty.", true);
+        }
+
+        string sanitizedId = packageId.Trim();
+        _logger?.LogInfo(nameof(AppInstallerService), $"Starting unattended Winget installation for '{sanitizedId}'...");
+
+        try
+        {
+            string arguments = $"install --id {FormatPackageIdArg(sanitizedId)} --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity";
+            var res = await _processRunner.RunAsync("winget.exe", arguments, timeoutMs: 600000, cancellationToken: ct);
+
+            if (res.TimedOut)
+            {
+                _logger?.LogError(nameof(AppInstallerService), $"Installation of '{sanitizedId}' timed out after 10 minutes.");
+                return new AppInstallResult(sanitizedId, sanitizedId, "Winget", false, $"Installation of '{sanitizedId}' timed out.", true);
+            }
+
+            var outcome = WingetCliParser.ParseExitCode(res.ExitCode, "Install", sanitizedId, res.StandardError);
+            if (outcome.Success)
+            {
+                if (outcome.RebootRequired)
+                    _logger?.LogWarning(nameof(AppInstallerService), $"Installed '{sanitizedId}' via Winget; system reboot required (Exit Code 3010).");
+                else
+                    _logger?.LogSuccess(nameof(AppInstallerService), $"Successfully installed '{sanitizedId}' via Winget.");
+            }
+            else
+            {
+                _logger?.LogError(nameof(AppInstallerService), $"Failed to install '{sanitizedId}' via Winget: {outcome.Message}");
+            }
+
+            return new AppInstallResult(sanitizedId, sanitizedId, "Winget", outcome.Success, outcome.Message, true);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), $"Installation of '{sanitizedId}' was cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(nameof(AppInstallerService), $"Unexpected error during installation of '{sanitizedId}'", ex);
+            return new AppInstallResult(sanitizedId, sanitizedId, "Winget", false, $"Installation error: {ex.Message}", true);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<AppInstallResult> UpgradeWingetPackageAsync(string packageId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(packageId))
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), "UpgradeWingetPackageAsync called with null or empty packageId.");
+            return new AppInstallResult(string.Empty, string.Empty, "Winget", false, "Package ID cannot be empty.", true);
+        }
+
+        string sanitizedId = packageId.Trim();
+        _logger?.LogInfo(nameof(AppInstallerService), $"Starting unattended Winget upgrade for '{sanitizedId}'...");
+
+        try
+        {
+            string arguments = $"upgrade --id {FormatPackageIdArg(sanitizedId)} --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity";
+            var res = await _processRunner.RunAsync("winget.exe", arguments, timeoutMs: 600000, cancellationToken: ct);
+
+            if (res.TimedOut)
+            {
+                _logger?.LogError(nameof(AppInstallerService), $"Upgrade of '{sanitizedId}' timed out after 10 minutes.");
+                return new AppInstallResult(sanitizedId, sanitizedId, "Winget", false, $"Upgrade of '{sanitizedId}' timed out.", true);
+            }
+
+            var outcome = WingetCliParser.ParseExitCode(res.ExitCode, "Upgrade", sanitizedId, res.StandardError);
+            if (outcome.Success)
+            {
+                if (outcome.RebootRequired)
+                    _logger?.LogWarning(nameof(AppInstallerService), $"Upgraded '{sanitizedId}' via Winget; system reboot required (Exit Code 3010).");
+                else
+                    _logger?.LogSuccess(nameof(AppInstallerService), $"Successfully upgraded '{sanitizedId}' via Winget.");
+            }
+            else
+            {
+                _logger?.LogError(nameof(AppInstallerService), $"Failed to upgrade '{sanitizedId}' via Winget: {outcome.Message}");
+            }
+
+            return new AppInstallResult(sanitizedId, sanitizedId, "Winget", outcome.Success, outcome.Message, true);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), $"Upgrade of '{sanitizedId}' was cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(nameof(AppInstallerService), $"Unexpected error during upgrade of '{sanitizedId}'", ex);
+            return new AppInstallResult(sanitizedId, sanitizedId, "Winget", false, $"Upgrade error: {ex.Message}", true);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<AppInstallResult> UninstallWingetPackageAsync(string packageId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(packageId))
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), "UninstallWingetPackageAsync called with null or empty packageId.");
+            return new AppInstallResult(string.Empty, string.Empty, "Winget", false, "Package ID cannot be empty.", true);
+        }
+
+        string sanitizedId = packageId.Trim();
+        _logger?.LogInfo(nameof(AppInstallerService), $"Starting unattended Winget uninstallation for '{sanitizedId}'...");
+
+        try
+        {
+            string arguments = $"uninstall --id {FormatPackageIdArg(sanitizedId)} --exact --silent --disable-interactivity";
+            var res = await _processRunner.RunAsync("winget.exe", arguments, timeoutMs: 600000, cancellationToken: ct);
+
+            if (res.TimedOut)
+            {
+                _logger?.LogError(nameof(AppInstallerService), $"Uninstallation of '{sanitizedId}' timed out after 10 minutes.");
+                return new AppInstallResult(sanitizedId, sanitizedId, "Winget", false, $"Uninstallation of '{sanitizedId}' timed out.", true);
+            }
+
+            var outcome = WingetCliParser.ParseExitCode(res.ExitCode, "Uninstall", sanitizedId, res.StandardError);
+            if (outcome.Success)
+            {
+                if (outcome.RebootRequired)
+                    _logger?.LogWarning(nameof(AppInstallerService), $"Uninstalled '{sanitizedId}' via Winget; system reboot required (Exit Code 3010).");
+                else
+                    _logger?.LogSuccess(nameof(AppInstallerService), $"Successfully uninstalled '{sanitizedId}' via Winget.");
+            }
+            else
+            {
+                _logger?.LogError(nameof(AppInstallerService), $"Failed to uninstall '{sanitizedId}' via Winget: {outcome.Message}");
+            }
+
+            return new AppInstallResult(sanitizedId, sanitizedId, "Winget", outcome.Success, outcome.Message, true);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogWarning(nameof(AppInstallerService), $"Uninstallation of '{sanitizedId}' was cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(nameof(AppInstallerService), $"Unexpected error during uninstallation of '{sanitizedId}'", ex);
+            return new AppInstallResult(sanitizedId, sanitizedId, "Winget", false, $"Uninstallation error: {ex.Message}", true);
+        }
+    }
+
+    private static string FormatPackageIdArg(string packageId) =>
+        packageId.Contains(' ') ? $"\"{packageId}\"" : packageId;
+
+    #endregion
 }
+

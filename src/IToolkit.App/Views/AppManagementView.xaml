@@ -1,0 +1,203 @@
+<UserControl x:Class="IToolkit.App.Views.AppManagementView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:IToolkit.App.ViewModels"
+             xmlns:converters="clr-namespace:IToolkit.App.Converters"
+             d:DataContext="{d:DesignInstance Type=vm:AppManagementViewModel}"
+             mc:Ignorable="d"
+             HorizontalContentAlignment="Stretch"
+             VerticalContentAlignment="Stretch">
+    <UserControl.Resources>
+        <converters:BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+    </UserControl.Resources>
+
+    <Grid Margin="10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+        <!-- Structured 3-Tab Sub-Views -->
+        <TabControl Style="{StaticResource FluentTabControlStyle}" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+
+            <!-- Tab 1: Search & Discover -->
+            <TabItem Header="Search &amp; Discover">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                    <StackPanel Margin="0,8,0,16">
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Search &amp; Discover Applications" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Discover and install Windows packages from the official Windows Package Manager (winget) repository."
+                                           Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,12" />
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="8,6" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12">
+                                        <TextBox.InputBindings>
+                                            <KeyBinding Key="Return" Command="{Binding SearchAppsCommand}" />
+                                        </TextBox.InputBindings>
+                                    </TextBox>
+                                    <Button Grid.Column="1" Content="Search Winget" Command="{Binding SearchAppsCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,6" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Content="Clear" Command="{Binding ClearSearchCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="12,6" VerticalAlignment="Center" />
+                                </Grid>
+
+                                <!-- Status / Busy Indicator -->
+                                <DockPanel LastChildFill="True" Margin="0,0,0,8">
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding SearchStatusText}" Style="{StaticResource FluentCaptionStyle}" VerticalAlignment="Center" />
+                                    <ProgressBar DockPanel.Dock="Right" IsIndeterminate="True" Height="3" Width="100" Margin="10,0,0,0"
+                                                 VerticalAlignment="Center" Visibility="{Binding IsSearching, Converter={StaticResource BoolToVisConverter}}" />
+                                </DockPanel>
+
+                                <!-- Search Results DataGrid -->
+                                <DataGrid ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" CanUserAddRows="False"
+                                          IsReadOnly="True" MinHeight="260" Margin="0,0,0,6">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Application Name" Binding="{Binding Name}" Width="2*" />
+                                        <DataGridTextColumn Header="Package ID" Binding="{Binding Id}" Width="1.5*" />
+                                        <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="90" />
+                                        <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="80" />
+                                        <DataGridTextColumn Header="Match" Binding="{Binding Match}" Width="110" />
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                                        <DataGridTemplateColumn Header="Action" Width="90">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="Install"
+                                                            Command="{Binding DataContext.InstallAppCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            IsEnabled="{Binding DataContext.IsNotBusy, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            Style="{DynamicResource AccentButtonStyle}"
+                                                            Padding="10,4" Margin="2" HorizontalAlignment="Center" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Tab 2: Installed Applications -->
+            <TabItem Header="Installed Applications">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                    <StackPanel Margin="0,8,0,16">
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Installed Applications &amp; Package Inventory" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Inspect all software packages registered on this Windows device with silent uninstallation support."
+                                           Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,12" />
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Text="{Binding InstalledFilterQuery, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="8,6" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12" />
+                                    <Button Grid.Column="1" Content="Refresh Installed" Command="{Binding RefreshInstalledCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,6" VerticalAlignment="Center" />
+                                </Grid>
+
+                                <!-- Status / Busy Indicator -->
+                                <DockPanel LastChildFill="True" Margin="0,0,0,8">
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding InstalledStatusText}" Style="{StaticResource FluentCaptionStyle}" VerticalAlignment="Center" />
+                                    <ProgressBar DockPanel.Dock="Right" IsIndeterminate="True" Height="3" Width="100" Margin="10,0,0,0"
+                                                 VerticalAlignment="Center" Visibility="{Binding IsLoadingInstalled, Converter={StaticResource BoolToVisConverter}}" />
+                                </DockPanel>
+
+                                <!-- Installed Apps DataGrid -->
+                                <DataGrid ItemsSource="{Binding InstalledApps}" AutoGenerateColumns="False" CanUserAddRows="False"
+                                          IsReadOnly="True" MinHeight="260" Margin="0,0,0,6">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Display Name" Binding="{Binding Name}" Width="2*" />
+                                        <DataGridTextColumn Header="Package ID" Binding="{Binding Id}" Width="1.5*" />
+                                        <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="95" />
+                                        <DataGridTextColumn Header="Available" Binding="{Binding AvailableVersion}" Width="95" />
+                                        <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="80" />
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                                        <DataGridTemplateColumn Header="Action" Width="95">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="Uninstall"
+                                                            Command="{Binding DataContext.UninstallAppCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            IsEnabled="{Binding DataContext.IsNotBusy, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            Padding="10,4" Margin="2" HorizontalAlignment="Center" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Tab 3: Available Updates -->
+            <TabItem Header="Available Updates">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                    <StackPanel Margin="0,8,0,16">
+                        <Border Style="{StaticResource FluentCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Available Application Updates" Style="{StaticResource FluentSectionTitleStyle}" />
+                                <TextBlock Text="Detect outdated packages with newer versions published in Windows Package Manager and apply updates."
+                                           Style="{StaticResource FluentCaptionStyle}" Margin="0,0,0,12" />
+
+                                <WrapPanel Margin="0,0,0,10">
+                                    <Button Content="Check for Updates" Command="{Binding CheckUpdatesCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Padding="14,6" Margin="0,0,8,6" VerticalAlignment="Center" />
+                                    <Button Content="Upgrade All Applications" Command="{Binding UpgradeAllAppsCommand}"
+                                            IsEnabled="{Binding IsNotBusy}" Style="{DynamicResource AccentButtonStyle}"
+                                            Padding="14,6" Margin="0,0,8,6" VerticalAlignment="Center" />
+                                </WrapPanel>
+
+                                <!-- Status & Progress -->
+                                <DockPanel LastChildFill="True" Margin="0,0,0,8">
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding UpdatesStatusText}" Style="{StaticResource FluentCaptionStyle}" VerticalAlignment="Center" />
+                                    <ProgressBar DockPanel.Dock="Right" IsIndeterminate="True" Height="3" Width="100" Margin="10,0,0,0"
+                                                 VerticalAlignment="Center" Visibility="{Binding IsCheckingUpdates, Converter={StaticResource BoolToVisConverter}}" />
+                                </DockPanel>
+
+                                <!-- Updates DataGrid -->
+                                <DataGrid ItemsSource="{Binding AvailableUpdates}" AutoGenerateColumns="False" CanUserAddRows="False"
+                                          IsReadOnly="True" MinHeight="260" Margin="0,0,0,6">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Application Name" Binding="{Binding Name}" Width="2*" />
+                                        <DataGridTextColumn Header="Package ID" Binding="{Binding Id}" Width="1.5*" />
+                                        <DataGridTextColumn Header="Installed Version" Binding="{Binding InstalledVersion}" Width="110" />
+                                        <DataGridTextColumn Header="Available Version" Binding="{Binding AvailableVersion}" Width="110" />
+                                        <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="80" />
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="110" />
+                                        <DataGridTemplateColumn Header="Action" Width="95">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="Update"
+                                                            Command="{Binding DataContext.UpdateAppCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            IsEnabled="{Binding DataContext.IsNotBusy, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            Style="{DynamicResource AccentButtonStyle}"
+                                                            Padding="10,4" Margin="2" HorizontalAlignment="Center" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

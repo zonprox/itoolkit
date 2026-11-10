@@ -35,6 +35,9 @@
         <DataTemplate DataType="{x:Type vm:SoftwareOptimizationViewModel}">
             <views:SoftwareOptimizationView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AppManagementViewModel}">
+            <views:AppManagementView />
+        </DataTemplate>
 
         <!-- Compact Fluent NavRail Item Style -->
         <Style x:Key="NavRailItemStyle" TargetType="RadioButton">
@@ -159,6 +162,16 @@
                                           Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
                                           Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
                                     <TextBlock Text="Identity &amp; Backup" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <RadioButton GroupName="PillarNav" Style="{StaticResource NavRailItemStyle}"
+                                         Command="{Binding NavigateCommand}" CommandParameter="AppManagement">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="M4,4 L10,4 L10,10 L4,10 Z M14,4 L20,4 L20,10 L14,10 Z M4,14 L10,14 L10,20 L4,20 Z M14,14 L20,14 L20,20 L14,20 Z"
+                                          Fill="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                          Stretch="Uniform" Width="14" Height="14" Margin="2,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="App Management" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
                                 </StackPanel>
                             </RadioButton>
 

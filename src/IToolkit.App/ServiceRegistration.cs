@@ -97,6 +97,7 @@ public static class ServiceRegistration
         services.AddSingleton<ConnectivityViewModel>();
         services.AddSingleton<IdentityBackupViewModel>();
         services.AddSingleton<SoftwareOptimizationViewModel>();
+        services.AddSingleton<AppManagementViewModel>();
 
         services.AddSingleton<MainViewModel>();
     }

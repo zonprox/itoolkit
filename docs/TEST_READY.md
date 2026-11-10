@@ -563,3 +563,55 @@ A milestone or release is officially designated **GATE PASSED** if and only if:
 3. `Skipped` test count is strictly `0`.
 4. `dotnet build IToolkit.sln -c Release` compiles with `0 Errors` and `0 Warnings`.
 5. Static analysis confirms zero legacy scripts, 100% pure ASCII source, and exact `iToolKit` branding.
+
+---
+
+## 8. Milestone 4 Phase 1: Windows Built-In Winget Integration & App Management E2E Test Suite Readiness
+
+### 8.1 Status: **TEST READY** (100% Pass, 0 Failures, 0 Warnings, 0 Errors)
+
+The comprehensive opaque-box E2E test suite for Windows built-in Winget integration and dedicated App Management in `iToolKit` is complete, verified, and officially **TEST READY**.
+
+```
+Test Run Summary:
+------------------------------------------------------------
+Test File                                              Count    Result
+------------------------------------------------------------
+WingetE2ETier1FeatureCoverageTests.cs                  65       Passed (100%)
+WingetE2ETier2BoundaryAndCornerCaseTests.cs            89       Passed (100%)
+WingetE2ETier3PairwiseCombinationTests.cs              15       Passed (100%)
+WingetE2ETier4RealWorldApplicationScenarioTests.cs     10       Passed (100%)
+------------------------------------------------------------
+Total E2E Tests:                                      179       Passed (100%)
+Total Execution Time:                                 2.909s
+Errors:                                               0
+Warnings:                                             0
+Skipped:                                              0
+ASCII Compliance:                                     100% (7-bit ASCII only)
+Target Framework:                                     .NET 10 (net10.0)
+------------------------------------------------------------
+```
+
+### 8.2 Scope & Tier Coverage Breakdown
+
+1. **Tier 1: Feature Coverage (`WingetE2ETier1FeatureCoverageTests.cs`) -- 65 Tests**
+   - Strictly validates all 13 features from `docs/PROJECT.md` with at least 5 isolated tests per feature.
+   - Covers: Output & error parser, search queries, installed inventory, update detection, unattended installs, in-place upgrades, safe uninstalls, enterprise catalog, dedicated MVVM, Fluent XAML view, main navigation & DI, live host verification contract, and machine state restoration.
+
+2. **Tier 2: Boundary & Corner Cases (`WingetE2ETier2BoundaryAndCornerCaseTests.cs`) -- 89 Tests**
+   - Probes edge cases, empty buffers, whitespace, special characters, quote escaping, timeout handling, non-zero error codes, UAC cancellation (1223), reboot required (3010), missing winget detection, and self-healing cleanup across all 13 features.
+
+3. **Tier 3: Pairwise Combinations (`WingetE2ETier3PairwiseCombinationTests.cs`) -- 15 Tests**
+   - Validates cross-feature interactions and state transitions: Search-to-Install-to-Inventory refresh lifecycle, Update-to-Single-Upgrade-to-Grid refresh, Dynamic Filter with confirmed/cancelled uninstallation, Mixed-outcome batch upgrades, Busy state command suppression, Search query reset lifecycle, Enterprise catalog batch sequencing with custom Winget install, Live dynamic filter typing, Simultaneous inventory and update clearing on uninstall, UAC exit code propagation, Exit code 3010 reboot flag propagation, NavRail view switching state preservation, Mid-stream operation cancellation halting, and Search-to-install failure telemetry capture.
+
+4. **Tier 4: Real-World Application Scenarios (`WingetE2ETier4RealWorldApplicationScenarioTests.cs`) -- 10 Tests**
+   - Simulates complete end-to-end user journeys: Developer workstation toolchain setup (Git, VS Code, Terminal), Sysadmin bulk update routine maintenance, Enterprise software deprecation and confirmed removal, Transient network outage and retry recovery, UAC prompt elevation rejection and subsequent approval, Enterprise bulk provisioning across catalog and Winget, Rapid tab navigation during background tasks, Corrupted CLI output noise filtering and recovery, Package already installed (0x8A150061) handling, and Package already up-to-date (0x8A15002B) handling.
+
+### 8.3 Master Verification Command
+
+```powershell
+$env:DOTNET_ROOT = "C:\Users\haolta.st\.dotnet"
+$env:PATH = "C:\Users\haolta.st\.dotnet;$env:PATH"
+dotnet test tests/IToolkit.Tests/IToolkit.Tests.csproj --filter FullyQualifiedName~WingetE2E -v normal
+```
+

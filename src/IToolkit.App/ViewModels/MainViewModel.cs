@@ -17,6 +17,7 @@ public class MainViewModel : ViewModelBase
     private readonly ConnectivityViewModel _connectivityViewModel;
     private readonly IdentityBackupViewModel _identityBackupViewModel;
     private readonly SoftwareOptimizationViewModel _softwareOptimizationViewModel;
+    private readonly AppManagementViewModel? _appManagementViewModel;
 
     private ViewModelBase _currentPageViewModel;
     private string _currentPillarName = "Dashboard";
@@ -36,6 +37,7 @@ public class MainViewModel : ViewModelBase
         ConnectivityViewModel connectivityViewModel,
         IdentityBackupViewModel identityBackupViewModel,
         SoftwareOptimizationViewModel softwareOptimizationViewModel,
+        AppManagementViewModel? appManagementViewModel = null,
         IActivityLogger? logger = null)
         : base(logger)
     {
@@ -48,6 +50,7 @@ public class MainViewModel : ViewModelBase
         _connectivityViewModel = connectivityViewModel ?? throw new ArgumentNullException(nameof(connectivityViewModel));
         _identityBackupViewModel = identityBackupViewModel ?? throw new ArgumentNullException(nameof(identityBackupViewModel));
         _softwareOptimizationViewModel = softwareOptimizationViewModel ?? throw new ArgumentNullException(nameof(softwareOptimizationViewModel));
+        _appManagementViewModel = appManagementViewModel;
 
         // Default landing view is Dashboard
         _currentPageViewModel = _dashboardViewModel;
@@ -59,6 +62,20 @@ public class MainViewModel : ViewModelBase
             Logger?.LogInfo(nameof(MainViewModel), $"Navigation rail toggled. Expanded={IsNavRailExpanded}.");
         });
         ScanSystemCommand = new AsyncRelayCommand(RunSystemScanAsync, () => !IsScanning);
+    }
+
+    public MainViewModel(
+        TelemetryHeaderViewModel telemetryHeader,
+        ActivityConsoleViewModel activityConsole,
+        DashboardViewModel dashboardViewModel,
+        SystemHealthViewModel systemHealthViewModel,
+        OfficeOutlookViewModel officeOutlookViewModel,
+        ConnectivityViewModel connectivityViewModel,
+        IdentityBackupViewModel identityBackupViewModel,
+        SoftwareOptimizationViewModel softwareOptimizationViewModel,
+        IActivityLogger? logger)
+        : this(telemetryHeader, activityConsole, dashboardViewModel, systemHealthViewModel, officeOutlookViewModel, connectivityViewModel, identityBackupViewModel, softwareOptimizationViewModel, null, logger)
+    {
     }
 
     public string AppTitle => "iToolKit";
@@ -73,6 +90,7 @@ public class MainViewModel : ViewModelBase
     public ConnectivityViewModel ConnectivityViewModel => _connectivityViewModel;
     public IdentityBackupViewModel IdentityBackupViewModel => _identityBackupViewModel;
     public SoftwareOptimizationViewModel SoftwareOptimizationViewModel => _softwareOptimizationViewModel;
+    public AppManagementViewModel? AppManagementViewModel => _appManagementViewModel;
 
     public ViewModelBase CurrentPageViewModel
     {
@@ -208,6 +226,7 @@ public class MainViewModel : ViewModelBase
             "Connectivity" => _connectivityViewModel,
             "IdentityBackup" => _identityBackupViewModel,
             "SoftwareOptimization" => _softwareOptimizationViewModel,
+            "AppManagement" => (ViewModelBase?)_appManagementViewModel ?? _dashboardViewModel,
             _ => _dashboardViewModel
         };
 

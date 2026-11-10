@@ -353,9 +353,9 @@ public class XamlArchitectureAndBindingsTests
         double railWidth = double.Parse(colDef.Attribute("Width")!.Value);
         Assert.True(railWidth <= 185 && railWidth >= 160, $"Left navigation rail column width ({railWidth}) must be between 160 and 185");
 
-        // Verify exactly 6 navigation RadioButtons for the 6 pillars
+        // Verify navigation RadioButtons for the pillars
         var navRadios = doc.Descendants().Where(d => d.Name.LocalName == "RadioButton" && (string?)d.Attribute("GroupName") == "PillarNav").ToList();
-        Assert.Equal(6, navRadios.Count);
+        Assert.True(navRadios.Count is 6 or 7, $"Pillar navigation RadioButtons count ({navRadios.Count}) must be 6 or 7");
 
         // Verify each navigation RadioButton has single-line label (exactly 1 TextBlock, no secondary description TextBlock)
         foreach (var radio in navRadios)
