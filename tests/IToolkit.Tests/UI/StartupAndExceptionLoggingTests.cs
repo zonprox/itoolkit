@@ -474,4 +474,19 @@ public class StartupAndExceptionLoggingTests : IDisposable
         Assert.Equal(expectedFileName, fileName);
         Assert.Contains("Logs", Path.GetDirectoryName(logPath)!);
     }
+
+    [Fact]
+    public void DispatcherUnhandledException_HasReentrancyGuard_AndActivityConsoleGuardsScrollAndFonts()
+    {
+        string repoRoot = StaticAnalysisHelper.GetRepoRoot();
+        string appXamlCs = File.ReadAllText(Path.Combine(repoRoot, "src", "IToolkit.App", "App.xaml.cs"));
+        string consoleXaml = File.ReadAllText(Path.Combine(repoRoot, "src", "IToolkit.App", "Views", "ActivityConsoleView.xaml"));
+        string consoleCodeBehind = File.ReadAllText(Path.Combine(repoRoot, "src", "IToolkit.App", "Views", "ActivityConsoleView.xaml.cs"));
+
+        Assert.Contains("_isHandlingDispatcherException", appXamlCs);
+        Assert.DoesNotContain("Cascadia Mono", consoleXaml);
+        Assert.Contains("FontFamily=\"Consolas\"", consoleXaml);
+        Assert.Contains("try", consoleCodeBehind);
+        Assert.Contains("LogListBox.ScrollIntoView", consoleCodeBehind);
+    }
 }

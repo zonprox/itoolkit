@@ -116,7 +116,7 @@
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0" Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss.fff}'}"
-                                   FontFamily="Cascadia Mono, Consolas" FontSize="10.5"
+                                   FontFamily="Consolas" FontSize="10.5"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
 
                         <Border Grid.Column="1" CornerRadius="3" Padding="4,1" HorizontalAlignment="Left" VerticalAlignment="Center"
@@ -126,12 +126,12 @@
                         </Border>
 
                         <TextBlock Grid.Column="2" Text="{Binding Component, StringFormat='[{0}]'}"
-                                   FontFamily="Cascadia Mono, Consolas" FontSize="10.5" FontWeight="SemiBold"
+                                   FontFamily="Consolas" FontSize="10.5" FontWeight="SemiBold"
                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                                    TextTrimming="CharacterEllipsis" Margin="4,0" VerticalAlignment="Center" />
 
                         <TextBlock Grid.Column="3" Text="{Binding Message}"
-                                   FontFamily="Cascadia Mono, Consolas" FontSize="10.5"
+                                   FontFamily="Consolas" FontSize="10.5"
                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                    TextWrapping="Wrap" VerticalAlignment="Center" />
                     </Grid>

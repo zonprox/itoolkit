@@ -28,7 +28,14 @@ public partial class ActivityConsoleView : UserControl
     {
         if (DataContext is ActivityConsoleViewModel vm && vm.AutoScroll && LogListBox.Items.Count > 0)
         {
-            LogListBox.ScrollIntoView(LogListBox.Items[^1]);
+            try
+            {
+                LogListBox.ScrollIntoView(LogListBox.Items[^1]);
+            }
+            catch
+            {
+                // Ignore transient layout or glyph errors during auto-scroll
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ public partial class App : Application
 {
     private static readonly IActivityLogger _earlyLogger = new ActivityLogger();
     private bool _isFatalStartupError;
+    private bool _isHandlingDispatcherException;
 
     /// <summary>
     /// Global application service provider.
@@ -61,26 +62,34 @@ public partial class App : Application
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs args)
     {
-        if (_isFatalStartupError)
+        if (_isFatalStartupError || _isHandlingDispatcherException)
         {
             args.Handled = true;
             return;
         }
 
-        var logger = ResolveLogger();
-        logger.LogError("Application", "Unhandled UI dispatcher exception", args.Exception);
-        logger.LogError("DialogService", "Displayed unhandled exception error dialog.", args.Exception);
-        MessageBox.Show(
-            $"An unexpected error occurred:\n\n{args.Exception.Message}",
-            "iToolKit Error",
-            MessageBoxButton.OK,
-            MessageBoxImage.Error);
-        logger.LogInfo("DialogService", "User dismissed unhandled exception error dialog: [iToolKit Error] Result=OK");
-        args.Handled = true;
-
-        if (MainWindow == null || !MainWindow.IsVisible)
+        _isHandlingDispatcherException = true;
+        try
         {
-            Environment.Exit(1);
+            var logger = ResolveLogger();
+            logger.LogError("Application", "Unhandled UI dispatcher exception", args.Exception);
+            logger.LogError("DialogService", "Displayed unhandled exception error dialog.", args.Exception);
+            MessageBox.Show(
+                $"An unexpected error occurred:\n\n{args.Exception.Message}",
+                "iToolKit Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            logger.LogInfo("DialogService", "User dismissed unhandled exception error dialog: [iToolKit Error] Result=OK");
+            args.Handled = true;
+
+            if (MainWindow == null || !MainWindow.IsVisible)
+            {
+                Environment.Exit(1);
+            }
+        }
+        finally
+        {
+            _isHandlingDispatcherException = false;
         }
     }
 
